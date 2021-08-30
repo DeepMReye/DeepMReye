@@ -7,7 +7,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 
-def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="rgb(247,247,247)"):
+def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="rgb(247,247,247)", ylim=[-6, 6]):
     # Prepare data for plotting
     # For visualisation we use a downsampled and padded version of X and split the eye balls.
     X_right = np.pad(X[:, 0:25, ..., 0], ((0, 0), (0, 5), (1, 2), (0, 0)))
@@ -61,8 +61,8 @@ def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="r
                       plot_bgcolor=bg_color, paper_bgcolor=bg_color, annotations=annotations)
     fig.update_xaxes(showticklabels=False, row=1, col=1)  # title=dict(text='Eyeball signal', font=dict(size=50), standoff=0))
     fig.update_yaxes(showticklabels=False, row=1, col=1)
-    fig.update_yaxes(range=[-6, 6], row=1, col=3, ticksuffix='°', title=dict(text='X', standoff=0, font=dict(size=20)))
-    fig.update_yaxes(range=[-6, 6], row=2, col=3, ticksuffix='°', title=dict(text='Y', standoff=0, font=dict(size=20)))
+    fig.update_yaxes(range=ylim, row=1, col=3, ticksuffix='°', title=dict(text='X', standoff=0, font=dict(size=20)))
+    fig.update_yaxes(range=ylim, row=2, col=3, ticksuffix='°', title=dict(text='Y', standoff=0, font=dict(size=20)))
     fig.update_xaxes(range=[-2, 150+2], row=1, col=3, title=dict(text='Functional Volume (TR)', standoff=16, font=dict(size=20)))
     fig.update_xaxes(range=[-2, 150+2], row=2, col=3)
     fig.update_layout()
