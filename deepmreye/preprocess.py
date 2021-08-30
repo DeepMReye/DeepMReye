@@ -60,18 +60,38 @@ def transform_to_mni_with_anatomical(fn_func, fn_anat, fn_rcollin27=fn_rcollin27
     return func_mni
 
 
-def register_to_middle(average_nau_ants, func, masks, verbose=1, transforms=None, metrics=None):
+def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None, metric='GC'):
+    """Register functional to DeepMReye template (dme_template) using different sized masks
+
+    Parameters
+    ----------
+    dme_template : ants Image
+        Ants image with template file
+    func : ants Image
+        Functional image to register to dme_template
+    masks : list
+        List of Ants image objects containing variable sized masks
+    verbose : int, optional
+        Verbosity level of function, by default 1
+    transforms : string, optional
+        Which transforms should be used to transform image, by default None & set to Similarity
+    metric : str, optional
+        Which metric to quantify fit, by default 'GC'
+
+    Returns
+    -------
+    func : ants Image
+        Functional image registered to dme_template
+    transformation_stats : array
+        Statistics of transformation, used for dataset report
+    """
     transformation_stats = []
     for idx, mask in enumerate(masks):
         if transforms is None:
             type_of_transform = 'Similarity'
         else:
             type_of_transform = transforms[idx]
-        if metrics is None:
-            metric = 'GC'
-        else:
-            metric = metrics[idx]
-        register_to_nau = ants.registration(fixed=average_nau_ants, moving=func.get_average_of_timeseries(), aff_random_sampling_rate=1,
+        register_to_nau = ants.registration(fixed=dme_template, moving=func.get_average_of_timeseries(), aff_random_sampling_rate=1,
                                             type_of_transform=type_of_transform, mask=mask, aff_metric=metric, aff_sampling=512,
                                             aff_iterations=(200, 200, 200, 10), aff_smoothing_sigmas=(0, 0, 0, 0))
         if verbose > 0:
@@ -83,17 +103,72 @@ def register_to_middle(average_nau_ants, func, masks, verbose=1, transforms=None
                                                                            np.mean(registered_fwd), np.std(registered_fwd), np.median(registered_fwd)))
         transformation_stats.append(np.mean(registered_fwd))
         # Transform
-        func = ants.apply_transforms(fixed=average_nau_ants, moving=func,
+        func = ants.apply_transforms(fixed=dme_template, moving=func,
                                      transformlist=register_to_nau['fwdtransforms'], imagetype=3)
     return func, np.array(transformation_stats)
+
+def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None):
+    """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead
+
+    Parameters
+    ----------
+    fp_func : string
+        Filepath to participant functional
+    dme_template : ants Image
+        Preloaded Image to dme_template
+    eyemask_big : ants Image
+        Big eyemask as ants Image
+    eyemask_small : ants Image
+        Small eyemask as ants Image
+    x_edges : list
+        Edges of mask in x-dimension
+    y_edges : list
+        Edges of mask in y-dimension
+    z_edges : list
+        Edges of mask in z-dimension
+    replace_with : int, optional
+        Values outside of mask are set to this, by default 0
+    """
+    # Load subject specific run. File should be Nifti and 4D but should also work with other formats which can be read with AntsPy
+    func = ants.image_read(fp_func)
+    # Register to deepmreye template (dme_template). If registration fails quality check, try below line with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
+    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=None)
+    # Cut mask and save to subject folder with subject report / quality control plots
+    cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
 
 # --------------------------------------------------------------------------------
 # --------------------------MASKING-----------------------------------------------
 # --------------------------------------------------------------------------------
 
-def get_mask_edges(fn_mask=fn_rcollin27_eye_mask, split=True):
-    # Read to ants format
-    mask = ants.image_read(fn_mask)
+def get_masks(data_path='../deepmreye/masks/'):
+    try:
+        eyemask_small = ants.image_read(data_path + 'eyemask_small.nii')
+        eyemask_big = ants.image_read(data_path + 'eyemask_big.nii')
+        dme_template = ants.image_read(data_path + 'dme_template.nii')
+    except ValueError as e:
+        print('ERROR - No masks found. Make sure your masks folder contains all three masks for DeepMReye (eyemask_small, eyemask_big, dme_templat)')
+        print(e)
+    (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
+    return (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges)
+
+
+def get_mask_edges(mask, split=True):
+    """Gets edges of mask
+
+    Parameters
+    ----------
+    fp_mask : filepath, optional
+        Filepath to mask
+    split : bool, optional
+        Splits masks into hemispheres, by default True
+
+    Returns
+    -------
+    mask:
+        Array of extracted mask edges
+    x_edges, y_edges, z_edges: 
+        Edges in (x,y,z)-dimension
+    """
     # Get indices for left and right eye seperately
     edge_indices = np.where(mask.numpy() == 1)
     if split:
@@ -113,9 +188,39 @@ def get_mask_edges(fn_mask=fn_rcollin27_eye_mask, split=True):
     return (mask.numpy(), x_edges, y_edges, z_edges)
 
 
-def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=np.NaN, save_overview=True, fn_func=None, verbose=0):
-    # Read to ants format
-    # to_mask = ants.image_read(fn_func)
+def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_overview=True, fp_func=None, verbose=0):
+    """Cut mask into given shape given edges
+
+    Parameters
+    ----------
+    to_mask : ants Image
+        Image to mask
+    mask : ants Image
+        Mask as numpy array
+    x_edges : list
+        Edges of mask in x-dimension
+    y_edges : list
+        Edges of mask in y-dimension
+    z_edges : list
+        Edges of mask in z-dimension
+    replace_with : int, optional
+        Values outside of mask are set to this, by default 0
+    save_overview : bool, optional
+        Saves report / quality control figure when set to True, by default True
+    fp_func : str, optional
+        Filepath to new functional, by default None
+    verbose : int, optional
+        Verbosity level of this function, by default 0
+
+    Returns
+    -------
+    original_input : ants Image
+        Returns to_mask
+    masked_eye : ants Image
+        masked_eye as numpy array
+    mask : ants Image
+        Return mask
+    """
     # Mask image to set out of mask values
     original_input = to_mask.copy()
     to_mask[mask < 1, ...] = replace_with
@@ -127,13 +232,16 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=np.NaN, save
         print('Voxels > 0 / Mean of voxels: {} / {}'.format(np.sum(np.mean(masked_eye, axis=3) > 0), np.mean(masked_eye)))
     # Save back masked func to .nii and masked eye to .p
     if save_overview:
-        fn_full_mask = os.path.dirname(fn_func) + os.path.sep + 'mask_overview' + os.path.basename(fn_func)[:-4]
+        fn_full_mask = os.path.dirname(fp_func) + os.path.sep + 'mask_overview' + os.path.basename(fp_func)[:-4]
         plot_subject_report(fn_full_mask, original_input, masked_eye, mask)
-    fn_masked_eye = os.path.dirname(fn_func) + os.path.sep + 'mask_' + os.path.basename(fn_func)[:-4] + '.p'
+    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + os.path.basename(fp_func)[:-4] + '.p'
     pickle.dump(masked_eye, open(fn_masked_eye, 'wb'))
     
     return (original_input, masked_eye, mask)
 
+# --------------------------------------------------------------------------------
+# --------------------------VISUALIZATIONS----------------------------------------
+# --------------------------------------------------------------------------------
 
 def plot_overview(plot_values, save=True, fig_filename='./fig'):
     # Plot overview of three axes to check if eye is in mask
@@ -158,15 +266,32 @@ def plot_overview(plot_values, save=True, fig_filename='./fig'):
     plt.close('all')
 
 
-def plot_subject_report(fn_subject, transform_to_nau, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0,0,0)"):
+def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0,0,0)"):
+    """Plots quality check figure for given subject
+
+    Parameters
+    ----------
+    fn_subject : string
+        Filepath to subject
+    original_input : ants Image
+        Filepath to functional image of subject
+    masked_eye : array
+        Numpy array of masked eye
+    mask : ants Image
+        ants mask
+    color : str, optional
+        Boxplot color, by default "rgb(0, 150, 175)"
+    bg_color : str, optional
+        Background color, by default "rgb(0,0,0)"
+    """
     # Prepare data
-    whole_brain_mask = transform_to_nau.get_average_of_timeseries()
+    whole_brain_mask = original_input.get_average_of_timeseries()
     eye_mask = np.mean(masked_eye, axis=3)
     eye_mask_flat = eye_mask.flatten()
     # Also remove zero for histogram
     eye_mask_flat = eye_mask_flat[eye_mask_flat > 0]
 
-    whole_brain_timecourse = np.mean(transform_to_nau.numpy(), axis=(0,1,2))
+    whole_brain_timecourse = np.mean(original_input.numpy(), axis=(0,1,2))
     eye_mask_timecourse = np.mean(masked_eye, axis=(0,1,2))
 
     # Normalize
@@ -222,7 +347,6 @@ def plot_subject_report(fn_subject, transform_to_nau, masked_eye, mask, color="r
 # -----------------------IMG MANIPULATIONS----------------------------------------
 # --------------------------------------------------------------------------------
 
-
 def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
     # Transpose so time comes first
     img_in = np.transpose(img_in, axes=(3, 0, 1, 2))
@@ -253,3 +377,49 @@ def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
     img_in = np.transpose(img_in, axes=(1, 2, 3, 0))
 
     return img_in
+
+# --------------------------------------------------------------------------------
+# --------------------------LABEL I/O---------------------------------------------
+# --------------------------------------------------------------------------------
+
+def load_label(label_path, label_type='calibration_run'):
+    if label_type=='calibration_run':
+        # Load labels from file
+        fn_labels = label_path + os.path.sep + 'stim_vals.csv'
+        labels = np.genfromtxt(fn_labels, delimiter=',')
+        labels = labels[1:]
+        labels = np.repeat(labels, 5, axis=0)
+        this_label = labels[:, np.newaxis, :]
+        this_label = np.repeat(this_label, 10, axis=1)
+
+        # Normalize label
+        this_label = (this_label - -0.95) / ( 0.95 - -0.95)
+        this_label -= 0.5
+
+        # Convert to visual angles
+        this_label[...,0] *= 19
+        this_label[...,1] *= 14.7
+    
+    return this_label
+
+def save_data(participant, participant_data, participant_labels, participant_ids, processed_data, center_labels=False):
+    # Save npz file for each participant. The resulting file contains both the eye mask and the labels which are used for model training
+    participant_data = np.transpose(np.concatenate(participant_data, axis=3), axes=(3,0,1,2))
+    participant_labels = np.concatenate(participant_labels, axis=0).astype('float32')
+    participant_ids = np.concatenate(participant_ids, axis=1).transpose()
+
+    # Adjust labels to be centered at (0,0)
+    if center_labels:
+        participant_labels = participant_labels - np.nanmedian(participant_labels, axis=(0,1))
+        
+    # Save data and labels in npz file (lazy loading)
+    data_dict = dict()
+    for idx, (data, label, identifier) in enumerate(zip(participant_data, participant_labels, participant_ids)):
+        data_dict['data_{}'.format(idx)] = data
+        data_dict['label_{}'.format(idx)] = label
+        data_dict['identifier_{}'.format(idx)] = identifier
+
+    # Save each subject in seperate .npz files (fast to load)
+    subject_file_path = processed_data + participant
+    print('Saving eye data {} and targets {} (NaN {}) to file {}'.format(participant_data.shape, participant_labels.shape, np.sum(np.isnan(participant_labels.flatten())), subject_file_path))
+    np.savez(subject_file_path, **data_dict)
