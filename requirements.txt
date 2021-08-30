@@ -1,0 +1,7 @@
+tensorflow-gpu
+numpy
+pandas
+matplotlib
+scipy
+ipython
+plotly

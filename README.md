@@ -5,12 +5,39 @@
 ![Logo](media/deepmreye_logo.png)
 
 ## Example Usage
-```python
-import deepmreye
-```
+See [here](./notebooks/deepmreye_example_usage.ipynb) for a full walkthrough of how to use DeepMReye to preprocess your data, run the model training and obtain gaze labels.
 
 ## Installation
-Install DeepMReye with the following command 
+# Pip install
+Currently unsopported until Ants pip install is fixed.
+
+# Anaconda / Miniconda installation
+
+Install Anaconda or miniconda and clone this repository:
+```
+git clone https://github.com/DeepMReye/DeepMReye.git
+cd DeepMReye
+```
+
+Install a virtual environment for DeepMReye with the following commands:
+```
+conda create --name deepmreye python=3.7
+conda install --file requirements.txt
+conda activate deepmreye
+pip install antspyx
+```
+If installation of ANTs fails try to manually install it via:
+```
+git clone https://github.com/ANTsX/ANTsPy
+cd ANTsPy
+python3 setup.py install
+```
+
+To import the DeepMReye module use this at the top of your script / notebook:
+```python
+import sys
+sys.path.insert(0, "/your/path/to/DeepMReye")
+```
 
 ## System Requirements
 
@@ -19,14 +46,13 @@ Install DeepMReye with the following command
 ### Software requirements
 The following python dependencies are being automatically installed when installing DeepMReye (specified in requirements.txt):
 ```
-tensorflow-gpu (2.1.0)
-numpy (1.18.1)
-pandas (1.0.1)
-joblib (0.14.1)
-seaborn (0.10.0)
-matplotlib (3.1.3)
-h5py (2.10.0)
-scipy (1.4.1)
-ipython (7.12.0)
+tensorflow-gpu (2.2.0)
+numpy (1.19.1)
+pandas (1.0.5)
+matplotlib (3.2.2)
+scipy (1.5.0)
+ipython (7.13.0)
+plotly (4.14.3)
+
 ```
 Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.6 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
