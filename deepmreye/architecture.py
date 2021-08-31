@@ -7,37 +7,53 @@ import tensorflow as tf
 
 
 def create_standard_model(input_shape, opts):
-    input_layer = Input(input_shape)
+    """Creates convolutional model for training and inference
 
+    Parameters
+    ----------
+    input_shape : list
+        Input shape for each sample (X,Y,Z). Size given by shape of smallest eye mask
+    opts : dict
+        All model options used for creating and training the model. See util.model_opts for available options
+
+    Returns
+    -------
+    model : Keras Model
+        Full model instance, used for training uncertainty estimate
+    model_inference : Keras Model
+        Model instance used for inference, provides uncertainty estimate (unsupervised model)
+    """
+    # Create input layer and add optional noise
+    input_layer = Input(input_shape)
     input_layer_noise = GaussianNoise(opts['gaussian_noise'])(input_layer)
 
-    # 1.) Initial convolution + dropout
+    # Initial convolution + dropout
     x = conv3d_block(input_layer_noise, filters=opts['filters'],
                      kernel_size=opts['kernel'], strides=1, activation=opts['activation'])
     x = Dropout(opts['dropout_rate'])(x, training=opts['mc_dropout'])
 
-    # 2.) Downsample to bottleneck layer, but keep skip layers
+    # Downsample to bottleneck layer, but keep skip layers
     x, skip_layers = downsample_block(x, filters=opts['filters'], depth=opts['depth'],
                                       multiplier=opts['multiplier'], groups=opts['groups'], activation=opts['activation'])
 
-    # 3.) After this layer we split into segmentation, autoencoder and regression part
+    # After this layer we split into segmentation and regression part
     bottleneck_layer = Flatten()(x)
 
-    # 4) Regression
+    # Regression block
     out_regression = regression_block(bottleneck_layer, num_dense=opts['num_dense'], num_fc=opts['num_fc'],
                                       activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
 
-    # 5) Confidence on regression
+    # Confidence for regression block
     out_confidence = confidence_block(
         bottleneck_layer, num_fc=opts['num_fc'], activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
 
-    # 6.) Create model
+    # Create model
     real_regression_shape = out_regression.shape.as_list()
     real_regression = Input(real_regression_shape[1::])
     model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
     model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
 
-    # 7.) Add losses
+    # Add losses
     loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
     model.add_loss(opts['loss_euclidean']*loss_euclidean)
     model.add_loss(opts['loss_confidence']*loss_confidence)
@@ -66,11 +82,7 @@ def res_block(input_layer, filters, groups, activation):
     out = Add()([x, input_layer_res])
     return out
 
-
 def downsample_block(input_layer, filters, depth, multiplier, groups, activation):
-    """
-    First 3D Conv, to downsample input, results in bottleneck layer
-    """
     x = input_layer
     skip_layers = []
     for level_number in range(depth):
@@ -80,14 +92,12 @@ def downsample_block(input_layer, filters, depth, multiplier, groups, activation
             x = res_block(x, filters=n_level_filters, groups=groups, activation=activation)
         # For segmentation save layer after res_blocks
         skip_layers.append(x)
-
         if level_number < (depth - 1):
             x = conv3d_block(x, filters=n_level_filters, kernel_size=3, strides=2, activation=activation)
     x = GroupNormalization(groups=groups, axis=-1)(x)
     x = Activation(activation)(x)
 
     return x, skip_layers
-
 
 def regression_block(input_layer, num_dense, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout, dense_out=2):
     x = RepeatVector(inner_timesteps)(input_layer)
@@ -103,12 +113,9 @@ def regression_block(input_layer, num_dense, num_fc, activation, dropout_rate, i
         all_xs.append(x0)
 
     out = concatenate(all_xs, axis=1)
-    #out = Dense(dense_out, activation='linear')(concatenate(all_xs, axis=1))
     return out
 
-
 def confidence_block(input_layer, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout):
-    # Create decoder for confidence score
     out_conf = Dense(num_fc, activation=activation)(input_layer)
     out_conf = Dropout(dropout_rate)(out_conf, training=mc_dropout)
     out_conf = Dense(inner_timesteps, activation=activation)(out_conf)
@@ -125,52 +132,25 @@ def conv3d_block(input_layer, filters, kernel_size, strides, activation):
                    strides=strides, padding='same', activation=activation)(input_layer)
     return x
 
-
 def upsampling_block(input_layer, size=2):
     x = UpSampling3D(size=size)(input_layer)
     return x
 
 # --- loss blocks
-def compute_loss(input_layer, out_reconstruction, mean, logvar, out_confidence, real_reg, pred_reg, n):
-    # Reconstruction loss from autoencoder part
-    loss_reconstruction = K.sum(K.square(input_layer - out_reconstruction),
-                                axis=-1)  # Sum across three output channels
-    loss_vae = (1 / n) * K.sum(K.exp(logvar) + K.square(mean) - 1. - logvar, axis=-1)
-
-    loss_euclidean = euclidean_distance(real_reg, pred_reg)
-    loss_confidence = mean_squared_error(loss_euclidean, out_confidence)
-
-    return K.mean(loss_reconstruction), K.mean(loss_vae), K.mean(loss_euclidean), K.mean(loss_confidence)
-
-def compute_1d_loss(out_confidence, real_reg, pred_reg):
-    # Reconstruction loss from autoencoder part
-    loss_d1 = mean_squared_error(real_reg[...,0], pred_reg[...,0])
-    loss_d2 = mean_squared_error(real_reg[...,1], pred_reg[...,1])
-    loss_confidence = mean_squared_error(loss_d1, out_confidence)
-
-    return K.mean(loss_d1), K.mean(loss_d2), K.mean(loss_confidence)
-
-
 def compute_standard_loss(out_confidence, real_reg, pred_reg):
-    # Reconstruction loss from autoencoder part
     loss_euclidean = euclidean_distance(real_reg, pred_reg)
     loss_confidence = mean_squared_error(loss_euclidean, out_confidence)
 
     return K.mean(loss_euclidean), K.mean(loss_confidence)
 
-
 def euclidean_distance(y_true, y_pred):
     return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
-
 
 def mean_squared_error(y_true, y_pred):
     return K.square(y_true - y_pred)
 
-
 # --- Custom Layers
 # Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py
-
-
 class GroupNormalization(Layer):
     """Group normalization layer
 
