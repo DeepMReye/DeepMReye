@@ -4,13 +4,46 @@ import pandas as pd
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from sklearn.metrics import r2_score
 from deepmreye import architecture
 from deepmreye.util import util
 from deepmreye.util import data_generator
 
 
 def train_model(dataset, generators, opts, clear_graph=True, save=False, model_path='./', workers=4, use_multiprocessing=True, models=None, return_untrained=False, verbose=0):
+    """Trains the model given a cross validation, hold out or leave one out generator, given model options
+
+    Parameters
+    ----------
+    dataset : str
+        Description of dataset, used for saving dataset to file
+    generators : generator
+        Cross validation, Hold out or Leave one out generator, yielding X,y pairs
+    opts : dict
+        Model options for training
+    clear_graph : bool, optional
+        If computational graph should be reset before each run, by default True
+    save : bool, optional
+        If model weights should be saved to file, by default False
+    model_path : str, optional
+        Filepath to where model weights should be stored, by default './'
+    workers : int, optional
+        Number of workers used when using multiprocessing, by default 4
+    use_multiprocessing : bool, optional
+        If multiprocessing should be used, can speed up training by 10x if data loader is bottleneck, by default True
+    models : Keras Model instance, optional
+        Can be provided if already trained model should be used instead of training a new one, by default None
+    return_untrained : bool, optional
+        If true, returns untrained but compiled model, by default False
+    verbose : int, optional
+        Verbosity level, by default 0
+
+    Returns
+    -------
+    model : Keras Model
+        Full model instance, used for training uncertainty estimate
+    model_inference : Keras Model
+        Model instance used for inference, provides uncertainty estimate (unsupervised model)
+    """    
     # Clear session if needed
     if clear_graph:
         K.clear_session()
@@ -58,6 +91,32 @@ def train_model(dataset, generators, opts, clear_graph=True, save=False, model_p
 
 
 def evaluate_model(dataset, model, generators, save=False, model_path='./', model_description='', verbose=0, **args):
+    """Evaluates model performance given model and generators used for training the model. Evaluates only on test set. 
+
+    Parameters
+    ----------
+    dataset : str
+        Description of dataset, used for saving dataset to file
+    model : Keras Model
+        Full model instance, used for training uncertainty estimate
+    generators : generator
+        Cross validation, Hold out or Leave one out generator, yielding X,y pairs
+    save : bool, optional
+        If true, save test set predictions to file, by default False
+    model_path : str, optional
+        Filepath to where model weights should be stored, by default './'
+    model_description : str, optional
+        Description of model used for saving the model evaluations, by default ''
+    verbose : int, optional
+        Verbosity level, by default 0
+
+    Returns
+    -------
+    evaluation: dict
+        Raw gaze coordinates, returned for each participant
+    scores: pandas DataFrame
+        Evaluation metrics for gaze coordinates (Pearson, R2-Score, Euclidean Error)
+    """    
     (training_generator, testing_generator, single_testing_generators, single_testing_names,
      single_training_generators, single_training_names, full_testing_list, full_training_list) = generators
     evaluation, scores = dict(), dict()
