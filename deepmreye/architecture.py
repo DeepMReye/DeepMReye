@@ -51,52 +51,7 @@ def create_standard_model(input_shape, opts):
 
     return model, model_inference
 
-def create_1d_model(input_shape, opts):
-    input_layer = Input(input_shape)
-
-    input_layer_noise = GaussianNoise(opts['gaussian_noise'])(input_layer)
-
-    # 1.) Initial convolution + dropout
-    x = conv3d_block(input_layer_noise, filters=opts['filters'], kernel_size=opts['kernel'], strides=1, activation=opts['activation'])
-    x = Dropout(opts['dropout_rate'])(x)
-
-    # 2.) Downsample to bottleneck layer, but keep skip layers
-    x, skip_layers = downsample_block(x, filters=opts['filters'], depth=opts['depth'], multiplier=opts['multiplier'], groups=opts['groups'], activation=opts['activation'])
-
-    # 3.) After this layer we split into segmentation, autoencoder and regression part
-    bottleneck_layer = Flatten()(x)
-
-    # 4) Regression
-    out_regression = regression_block(bottleneck_layer, num_dense=opts['num_dense'], num_fc=opts['num_fc'], activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
-
-    # 5) Confidence on regression
-    out_confidence = confidence_block(bottleneck_layer, num_fc=opts['num_fc'], activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
-
-    # 6.) Create model
-    real_regression_shape = out_regression.shape.as_list()
-    real_regression = Input(real_regression_shape[1::])
-    model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
-    model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
-
-    # 7.) Add losses
-    loss_d1, loss_d2, loss_confidence = compute_1d_loss(out_confidence, real_regression, out_regression)
-    model.add_loss(opts['loss_d1']*loss_d1)
-    model.add_loss(opts['loss_d2']*loss_d2)
-    model.add_loss(opts['loss_confidence']*loss_confidence)
-    
-    # Compile it
-    model.compile(optimizer=optimizers.Adam(opts['lr']))
-    model.metrics.append(loss_d1)
-    model.metrics_names.append("Loss D1")    
-    model.metrics.append(loss_d2)
-    model.metrics_names.append("Loss D2")  
-    model.metrics.append(loss_confidence)
-    model.metrics_names.append("Confidence loss")    
-
-    return model, model_inference
 # --- adult blocks
-
-
 def res_block(input_layer, filters, groups, activation):
     input_layer_res = conv3d_block(input_layer, filters=filters, kernel_size=1, strides=1, activation=activation)
 
@@ -160,8 +115,6 @@ def confidence_block(input_layer, num_fc, activation, dropout_rate, inner_timest
     return out_conf
 
 # --- baby blocks
-
-
 def conv3d_block(input_layer, filters, kernel_size, strides, activation):
     if strides > 1:
         x = Conv3D(filters=filters, kernel_size=(kernel_size, kernel_size, kernel_size),
@@ -178,8 +131,6 @@ def upsampling_block(input_layer, size=2):
     return x
 
 # --- loss blocks
-
-
 def compute_loss(input_layer, out_reconstruction, mean, logvar, out_confidence, real_reg, pred_reg, n):
     # Reconstruction loss from autoencoder part
     loss_reconstruction = K.sum(K.square(input_layer - out_reconstruction),
