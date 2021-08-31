@@ -8,58 +8,9 @@ from scipy.io import loadmat
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-
-fn_base = '/mnt/CYHSM/Projects/DeepMReye/data/'
-fn_rcollin27 = fn_base + 'rcollin27/rcolin27_t1_tal_lin.nii'
-# Average functional mask! #fn_base + 'rcollin27/rcolin27_eyemask_big.nii'
-fn_rcollin27_eye_mask = '/mnt/CYHSM/Projects/DeepMReye/data/rcollin27/combined_eye_mask.nii'
-
 # --------------------------------------------------------------------------------
 # --------------------------ANTS TRANSFORMS---------------------------------------
 # --------------------------------------------------------------------------------
-def transform_to_mni(fn_func, fn_rcollin27=fn_rcollin27, save_anat=True):
-    # Read all images in ants format
-    func = ants.image_read(fn_func)
-    func_mean = func.get_average_of_timeseries()
-    rcollin27 = ants.image_read(fn_rcollin27)
-
-    # Use ants to registrate anat to collin27
-    # anat_to_mni = ants.registration(fixed=rcollin27, moving=anat, type_of_transform='SyN', syn_metric='CC', syn_sampling=4)
-    # V-2, fit directly to functional
-    anat_to_mni = ants.registration(fixed=rcollin27, moving=func_mean, type_of_transform='SyNBold')
-
-    # Transform (pre-registered) func to collin27 space
-    func_mni = ants.apply_transforms(fixed=rcollin27, moving=func,
-                                     transformlist=anat_to_mni['fwdtransforms'], imagetype=3)
-
-    # Save functional image
-    if save_anat:
-        fn_func_mni = os.path.dirname(fn_func) + os.path.sep + 'collin27_' + os.path.basename(fn_func)
-        ants.image_write(func_mni, fn_func_mni)
-    return func_mni
-
-
-def transform_to_mni_with_anatomical(fn_func, fn_anat, fn_rcollin27=fn_rcollin27, save_anat=True):
-    # Read all images in ants format
-    anat = ants.image_read(fn_anat)
-    func = ants.image_read(fn_func)
-    rcollin27 = ants.image_read(fn_rcollin27)
-
-    # Use ants to registrate anat to collin27
-    anat_to_mni = ants.registration(fixed=rcollin27, moving=anat,
-                                    type_of_transform='SyN', syn_metric='CC', syn_sampling=4)
-
-    # Transform (pre-registered) func to collin27 space
-    func_mni = ants.apply_transforms(fixed=rcollin27, moving=func,
-                                     transformlist=anat_to_mni['fwdtransforms'], imagetype=3)
-
-    # Save functional image
-    if save_anat:
-        fn_func_mni = os.path.dirname(fn_func) + os.path.sep + 'collin27_' + os.path.basename(fn_func)
-        ants.image_write(func_mni, fn_func_mni)
-    return func_mni
-
-
 def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None, metric='GC'):
     """Register functional to DeepMReye template (dme_template) using different sized masks
 
@@ -139,8 +90,31 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
 # --------------------------------------------------------------------------------
 # --------------------------MASKING-----------------------------------------------
 # --------------------------------------------------------------------------------
-
 def get_masks(data_path='../deepmreye/masks/'):
+    """Loads masks for whole brain, big eye mask and small eye mask
+
+    Parameters
+    ----------
+    data_path : str, optional
+        Path to where masks are stored in .nii format, by default '../deepmreye/masks/'
+
+    Returns
+    -------
+    eyemask_small : ants Image
+        Eyemask containing voxels within the eye
+    eyemask_big : ants Image
+        Square eye mask centered on both eyes
+    dme_template : ants Image
+        Template brain using centered gaze positions
+    mask : ants Image
+        Mask which is used to cut 3D shape for model (in this case the same as eyemask_small)
+    x_edges : list
+        Edges of mask in x-dimension
+    y_edges : list
+        Edges of mask in y-dimension
+    z_edges : list
+        Edges of mask in z-dimension
+    """     
     try:
         eyemask_small = ants.image_read(data_path + 'eyemask_small.nii')
         eyemask_big = ants.image_read(data_path + 'eyemask_big.nii')
@@ -149,7 +123,7 @@ def get_masks(data_path='../deepmreye/masks/'):
         print('ERROR - No masks found. Make sure your masks folder contains all three masks for DeepMReye (eyemask_small, eyemask_big, dme_templat)')
         print(e)
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
-    return (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges)
+    return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
 
 def get_mask_edges(mask, split=True):
@@ -243,29 +217,6 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
 # --------------------------VISUALIZATIONS----------------------------------------
 # --------------------------------------------------------------------------------
 
-def plot_overview(plot_values, save=True, fig_filename='./fig'):
-    # Plot overview of three axes to check if eye is in mask
-    plot_value_nozero = plot_values[plot_values > 1]
-    fig, axes = plt.subplots(1, 5, figsize=(26, 10))
-    im1 = axes[0].matshow(np.mean(plot_values, axis=0), aspect='auto', cmap='jet')
-    im2 = axes[1].matshow(np.mean(plot_values, axis=1), aspect='auto', cmap='jet')
-    im3 = axes[2].matshow(np.mean(plot_values, axis=2), aspect='auto', cmap='jet')
-    images = [im1, im2, im3]
-    axes[3].hist(plot_values.flatten(), bins=100)
-    axes[3].grid(True)
-    axes[4].hist(plot_value_nozero.flatten(), bins=100)
-    axes[4].grid(True)
-    for idx, ax in enumerate(axes[0:3]):
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(images[idx], cax=cax, orientation='vertical')
-    if save:
-        fig.savefig(fig_filename + '.png', dpi=100)
-    else:
-        fig.show()
-    plt.close('all')
-
-
 def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0,0,0)"):
     """Plots quality check figure for given subject
 
@@ -348,6 +299,24 @@ def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb
 # --------------------------------------------------------------------------------
 
 def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
+    """As part of preprocessing the 4D input is normalized across different dimensions
+
+    Parameters
+    ----------
+    img_in : ants Image
+        Image to normalize
+    mad_time : bool, optional
+        Determines if median absolute deviation should be used across time dimension, by default False
+    standardize_tr : bool, optional
+        Determines if each image should be normalized across spatial dimensions, by default True
+    std_cut_after : int, optional
+        Gets rid of outliers after normalization, by default 5
+
+    Returns
+    -------
+    img_in : ants Image
+        Normalized output image
+    """    
     # Transpose so time comes first
     img_in = np.transpose(img_in, axes=(3, 0, 1, 2))
     zero_indices = img_in == 0
