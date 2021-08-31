@@ -6,6 +6,9 @@ import warnings
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
+# --------------------------------------------------------------------------------
+# --------------------------VISUALIZATIONS----------------------------------------
+# --------------------------------------------------------------------------------
 
 def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="rgb(247,247,247)", ylim=[-6, 6]):
     # Prepare data for plotting
