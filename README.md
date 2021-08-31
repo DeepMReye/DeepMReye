@@ -4,14 +4,14 @@
 
 ![Logo](media/deepmreye_logo.png)
 
-## Example Usage
-See [here](./notebooks/deepmreye_example_usage.ipynb) for a full walkthrough of how to use DeepMReye to preprocess your data, run the model training and obtain gaze labels.
+# Example Usage
+See [here](./notebooks/deepmreye_example_usage.ipynb) for a full walkthrough of how to use DeepMReye to preprocess your data, run the model training and obtain gaze labels. Find documentation for DeepMReye [here](https://deepmreye.slite.com/app/channels/7Kll094Aa).
 
-## Installation
-# Pip install
+# Installation
+## Pip install
 Currently unsopported until Ants pip install is fixed.
 
-# Anaconda / Miniconda installation
+## Anaconda / Miniconda installation
 
 Install Anaconda or miniconda and clone this repository:
 ```
