@@ -352,6 +352,21 @@ def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
 # --------------------------------------------------------------------------------
 
 def load_label(label_path, label_type='calibration_run'):
+    """Load label for experiment, which should return X,Y coordinates for each timepoint.
+    This function can be exchanged for experiment specific loading of labels, or by using different label types.
+
+    Parameters
+    ----------
+    label_path : str
+        Path to file with labels
+    label_type : str, optional
+        Which type of labels are used in the experiment, by default 'calibration_run'
+
+    Returns
+    -------
+    this_label : numpy array
+        X,Y coordinates for each functional describing gaze position during this timepoint. 
+    """    
     if label_type=='calibration_run':
         # Load labels from file
         fn_labels = label_path + os.path.sep + 'stim_vals.csv'
@@ -372,6 +387,23 @@ def load_label(label_path, label_type='calibration_run'):
     return this_label
 
 def save_data(participant, participant_data, participant_labels, participant_ids, processed_data, center_labels=False):
+    """Save participant data to npz file for fast (lazy) loading during model training
+
+    Parameters
+    ----------
+    participant : str
+        Participant label
+    participant_data : list
+        4D (X,Y,Z,t) data for participant across runs
+    participant_labels : list
+        3D (t,X,Y) data, with corresponding labels to participant data
+    participant_ids : str
+        Participant identifier with run id
+    processed_data : str
+        Filepath to where processed data should be stored
+    center_labels : bool, optional
+        Centers labels to (0,0) which can improve performance of model, by default False
+    """
     # Save npz file for each participant. The resulting file contains both the eye mask and the labels which are used for model training
     participant_data = np.transpose(np.concatenate(participant_data, axis=3), axes=(3,0,1,2))
     participant_labels = np.concatenate(participant_labels, axis=0).astype('float32')
