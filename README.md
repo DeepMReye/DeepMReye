@@ -26,17 +26,25 @@ conda install --file requirements.txt
 conda activate deepmreye
 pip install antspyx
 ```
-If installation of ANTs fails try to manually install it via:
+If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
 git clone https://github.com/ANTsX/ANTsPy
 cd ANTsPy
 python3 setup.py install
 ```
+For training and evaluating models you need [tensorflow](https://www.tensorflow.org/install/) which you can install via:
+```
+conda install tensorflow-gpu
+or
+conda install tensorflow
+```
+Use the first command if your system has access to a GPU. Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
-To import the DeepMReye module use this at the top of your script / notebook:
+To finally import the DeepMReye module use this at the top of your script / notebook:
 ```python
 import sys
 sys.path.insert(0, "/your/path/to/DeepMReye")
+import deepmreye
 ```
 
 ## System Requirements
