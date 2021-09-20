@@ -5,7 +5,9 @@
 ![Logo](media/deepmreye_logo.png)
 
 # Example Usage
-See [here](./notebooks/deepmreye_example_usage.ipynb) for a full walkthrough of how to use DeepMReye to preprocess your data, run the model training and obtain gaze labels. Find documentation for DeepMReye [here](https://deepmreye.slite.com/app/channels/7Kll094Aa).
+See [here](./notebooks/deepmreye_example_usage.ipynb) for a full walkthrough of how to use DeepMReye. This includes eyeball coregistration and voxel extraction, model training and test as well as basic performance measures. 
+
+See [here](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ) for User Recommendations and a Frequently-Asked-Questions page.
 
 # Installation
 ## Pip install
