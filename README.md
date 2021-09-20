@@ -5,9 +5,9 @@
 ![Logo](media/deepmreye_logo.png)
 
 # Example Usage
-[SEE HERE](./notebooks/deepmreye_example_usage.ipynb) for a <b> full walkthrough </b> of how to use DeepMReye. This includes eyeball coregistration and voxel extraction, model training and test as well as basic performance measures. 
+[Click here for a walkthrough of the code](./notebooks/deepmreye_example_usage.ipynb), including eyeball coregistration and voxel extraction, model training and test and basic performance measures.
 
-[SEE HERE](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ) for <b> User Recommendations </b> and <b> Frequently-Asked-Questions </b>.
+[Click here for user recommendations and the Frequently-Asked-Questions page (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ).
 
 # Installation
 ## Pip install
