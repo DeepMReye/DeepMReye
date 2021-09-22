@@ -201,3 +201,36 @@ class color:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     END = '\033[0m'
+
+
+# --------------------------------------------------------------------------------
+# ------------------------Command Line Options------------------------------------
+# --------------------------------------------------------------------------------
+class Arg:
+    def __init__(self, *args, **kwargs):
+        self.cli = args
+        self.kwargs = kwargs
+
+CLI_OPTIONS = {
+    "verbosity": Arg(
+        '-v', '--verbose',
+        help='Verbosity level',
+        default=0,
+    ),
+    "gpu_id": Arg(
+        '--gpu_id',
+        help="Which GPU to use for training",
+        metavar='gpu_id',
+        default=''
+    ), 
+    "dataset_path": Arg(
+        '--dataset_path',
+        help="Path to dataset. Base folder is also dataset name.",
+        metavar='dataset_path',
+        default='./'
+    ), 
+    "weights_path": Arg(
+        '--weights_path',
+        help="Path to where weights should be stored.",
+        metavar='weights_path',
+        default='./weights/')}
