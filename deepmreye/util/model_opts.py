@@ -22,7 +22,7 @@ def get_opts():
     opts['loss_confidence'] = 0.1 # Loss weight for uncertainty measure
 
     # Training
-    opts['epochs'] = 125 # Number of epochs
+    opts['epochs'] = 25 # Number of epochs
     opts['steps_per_epoch'] = 1500 # Number of steps per training epoch
     opts['validation_steps'] = 1500 # Number of steps per validation epoch
     opts['train_test_split'] = 0.6 # Default proportion of train (60%)-test(40%) split
