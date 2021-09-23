@@ -6,3 +6,4 @@ ipython
 plotly
 tensorflow>=2.0
 scikit-learn
+antspyx
