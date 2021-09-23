@@ -10,9 +10,6 @@
 [Click here for user recommendations and Frequently-Asked-Questions (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ).
 
 # Installation
-## Pip install
-Currently unsopported until Ants pip install is fixed.
-
 ## Anaconda / Miniconda installation
 
 Install Anaconda or miniconda and clone this repository:
