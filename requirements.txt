@@ -4,3 +4,4 @@ matplotlib
 scipy
 ipython
 plotly
+tensorflow>=2.0
