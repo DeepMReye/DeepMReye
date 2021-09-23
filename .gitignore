@@ -7,7 +7,6 @@
 *.npy
 *.npz
 *.h5
-*.nii
 .ipynb_checkpoints
 *.gif
 *.png
