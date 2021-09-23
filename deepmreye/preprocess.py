@@ -85,7 +85,9 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
     # Register to deepmreye template (dme_template). If registration fails quality check, try below line with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
     transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=None)
     # Cut mask and save to subject folder with subject report / quality control plots
-    cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
+    (original_input, masked_eye, mask) = cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
+
+    return (masked_eye, transformation_statistics)
 
 # --------------------------------------------------------------------------------
 # --------------------------MASKING-----------------------------------------------
@@ -115,13 +117,9 @@ def get_masks(data_path='../deepmreye/masks/'):
     z_edges : list
         Edges of mask in z-dimension
     """     
-    try:
-        eyemask_small = ants.image_read(data_path + 'eyemask_small.nii')
-        eyemask_big = ants.image_read(data_path + 'eyemask_big.nii')
-        dme_template = ants.image_read(data_path + 'dme_template.nii')
-    except ValueError as e:
-        print('ERROR - No masks found. Make sure your masks folder contains all three masks for DeepMReye (eyemask_small, eyemask_big, dme_templat)')
-        print(e)
+    eyemask_small = ants.image_read(data_path + 'eyemask_small.nii')
+    eyemask_big = ants.image_read(data_path + 'eyemask_big.nii')
+    dme_template = ants.image_read(data_path + 'dme_template.nii')
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
