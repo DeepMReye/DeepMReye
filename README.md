@@ -24,12 +24,14 @@ conda create --name deepmreye python=3.7
 conda install --file requirements.txt
 conda activate deepmreye
 ```
+
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
 git clone https://github.com/ANTsX/ANTsPy
 cd ANTsPy
 python3 setup.py install
 ```
+
 For training and evaluating models you need [tensorflow](https://www.tensorflow.org/install/) which you can install via:
 ```
 conda install tensorflow-gpu
