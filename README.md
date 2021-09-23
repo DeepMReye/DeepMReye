@@ -26,7 +26,6 @@ Install a virtual environment for DeepMReye with the following commands:
 conda create --name deepmreye python=3.7
 conda install --file requirements.txt
 conda activate deepmreye
-pip install antspyx
 ```
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
