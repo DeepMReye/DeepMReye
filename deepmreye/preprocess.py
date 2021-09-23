@@ -203,10 +203,11 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     if verbose > 0:
         print('Voxels > 0 / Mean of voxels: {} / {}'.format(np.sum(np.mean(masked_eye, axis=3) > 0), np.mean(masked_eye)))
     # Save back masked func to .nii and masked eye to .p
+    participant_basename = os.path.basename(fp_func).split('.')[0]
     if save_overview:
-        fn_full_mask = os.path.dirname(fp_func) + os.path.sep + 'mask_overview' + os.path.basename(fp_func)[:-4]
+        fn_full_mask = os.path.dirname(fp_func) + os.path.sep + 'report_' + participant_basename
         plot_subject_report(fn_full_mask, original_input, masked_eye, mask)
-    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + os.path.basename(fp_func)[:-4] + '.p'
+    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + participant_basename + '.p'
     pickle.dump(masked_eye, open(fn_masked_eye, 'wb'))
     
     return (original_input, masked_eye, mask)
@@ -289,8 +290,7 @@ def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb
     fig.add_vline(x=np.mean(eye_mask_flat), annotation=dict(text='Mean', y=0.9), line=dict(color='rgb(255, 255, 255)'), row=1, col=4)
     fig.add_vline(x=np.median(eye_mask_flat), annotation=dict(text='Median'), line=dict(color='rgb(255, 255, 255)'), row=1, col=4)
     
-    fn_full_mask = os.path.dirname(fn_subject) + os.path.sep + 'mask_report' + os.path.basename(fn_subject)[:-4]
-    fig.write_html(fn_full_mask + ".html")
+    fig.write_html(fn_subject + ".html")
     
 # --------------------------------------------------------------------------------
 # -----------------------IMG MANIPULATIONS----------------------------------------
