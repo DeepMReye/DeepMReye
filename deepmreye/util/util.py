@@ -233,4 +233,10 @@ CLI_OPTIONS = {
         '--weights_path',
         help="Path to where weights should be stored.",
         metavar='weights_path',
-        default='./weights/')}
+        default='./weights/'
+    ), 
+    "datasets": Arg(
+        '--datasets',
+        help="If given only train subset of all datasets.",
+        metavar='datasets',
+        default=None)}
