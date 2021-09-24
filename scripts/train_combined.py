@@ -33,7 +33,7 @@ opts = model_opts.get_opts()
 generators = data_generator.create_leaveoneout_generators(datasets, batch_size=opts['batch_size'], augment_list=((opts['rotation_x'], opts['rotation_y'], opts['rotation_z']), opts['shift'], opts['zoom']), mixed_batches=True)
 
 # User options which are different than the default are adjusted *within* the script (uncomment line below) not at command line
-opts['epochs'] = 50
+opts['epochs'] = 125
 
 # Train model and save weights into weights_path
 (model, model_inference) = train.train_model(dataset='_'.join(parsed_datasets), generators=generators[0], opts=opts, use_multiprocessing=True,

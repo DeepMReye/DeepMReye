@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 from deepmreye import preprocess
+from deepmreye.util import model_opts, data_generator
 
 # --------------------------------------------------------------------------------
 # --------------------------PREPROCESSING-----------------------------------------
@@ -37,3 +38,6 @@ def test_load_label(path_to_testdata):
 # --------------------------------------------------------------------------------
 # --------------------------MODEL TRAINING----------------------------------------
 # --------------------------------------------------------------------------------
+def test_model_training(path_to_testdata):
+    opts = model_opts.get_opts()
+    generators = data_generator.create_holdout_generators([args.dataset_path], train_split=0.90, batch_size=opts['batch_size'], augment_list=((opts['rotation_x'], opts['rotation_y'], opts['rotation_z']), opts['shift'], opts['zoom']), mixed_batches=True)
