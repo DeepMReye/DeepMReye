@@ -32,13 +32,11 @@ cd ANTsPy
 python3 setup.py install
 ```
 
-For training and evaluating models you need [tensorflow](https://www.tensorflow.org/install/) which you can install via:
+By default the CPU version of [tensorflow](https://www.tensorflow.org/install/) is installed, if you want to train on GPU (recommended) install tensorflow via:
 ```
 conda install tensorflow-gpu
-or
-conda install tensorflow
 ```
-Use the first command if your system has access to a GPU. Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
+Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
 To finally import the DeepMReye module use this at the top of your script / notebook:
 ```python
