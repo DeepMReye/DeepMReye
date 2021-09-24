@@ -11,14 +11,13 @@
 
 [Click here for online documentation](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ), including user recommendations and Frequently-Asked-Questions (FAQ).
 
-# Installation
+# How to install DeepMReye (CPU version)
 
 ## Pip installation
-Install DeepMReye with the following command:
+Install DeepMReye with a CPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
 ```
 pip install git+https://github.com/DeepMReye/DeepMReye.git
 ```
-Note that this installs a CPU version of tensorflow. See below for the GPU install. 
 
 ## Anaconda / Miniconda installation
 
@@ -28,7 +27,7 @@ git clone https://github.com/DeepMReye/DeepMReye.git
 cd DeepMReye
 ```
 
-Install a virtual environment for DeepMReye with the following commands:
+Create a virtual environment for DeepMReye with the following commands:
 ```
 conda create --name deepmreye python=3.7
 conda install --file requirements.txt
@@ -41,18 +40,22 @@ cd ANTsPy
 python3 setup.py install
 ```
 
-## GPU Install
-By default the CPU version of [tensorflow](https://www.tensorflow.org/install/) is installed, if you want to train on GPU (recommended) install tensorflow via:
+This CPU version runs on Windows, Mac and Linux, but it takes substantially more time to compute than the GPU version (see below). 
+
+# How to install DeepMReye (GPU version, recommended)
+Install DeepMReye with a GPU version of [TensorFlow](https://www.tensorflow.org/install/) using following command. This version is substantially faster than the CPU version, but it requires CUDA and a NVIDIA GPU (not supported by Mac). The GPU version runs on Windows and Linux.
 ```
 conda install tensorflow-gpu
 ```
 Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
-## System Requirements
+# System Requirements
 
-### Hardware requirements
+# Hardware requirements
 
-### Software requirements
+The GPU version of DeepMReye requires a NVIDIA GPU.
+
+# Software requirements
 The following python dependencies are being automatically installed when installing DeepMReye (specified in requirements.txt):
 ```
 tensorflow-gpu (2.2.0)
