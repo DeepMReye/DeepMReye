@@ -8,6 +8,6 @@ def path_to_masks():
     return path
 
 @pytest.fixture
-def path_to_participant():
-    path = str(Path(__file__).parents[0]) + os.path.sep + 'data/test_participant.nii'
+def path_to_testdata():
+    path = str(Path(__file__).parents[0]) + os.path.sep + 'data/'
     return path

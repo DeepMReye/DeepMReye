@@ -1,4 +1,3 @@
-/data
 *.p
 *.mp4
 *.pyc
@@ -14,5 +13,5 @@
 *.html
 .vscode/
 __pycache__
-
+!/tests/data/**
 
