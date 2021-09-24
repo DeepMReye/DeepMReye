@@ -11,15 +11,15 @@
 
 [Click here for online documentation](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ), including user recommendations and Frequently-Asked-Questions (FAQ).
 
-# How to install DeepMReye (CPU version)
+## How to install DeepMReye (CPU version)
 
-## Pip installation
+### Pip installation
 Install DeepMReye with a CPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
 ```
 pip install git+https://github.com/DeepMReye/DeepMReye.git
 ```
 
-## Anaconda / Miniconda installation
+### Anaconda / Miniconda installation
 
 Install Anaconda or miniconda and clone this repository:
 ```
@@ -42,20 +42,20 @@ python3 setup.py install
 
 This CPU version runs on Windows, Mac and Linux, but it takes substantially more time to compute than the GPU version (see below). 
 
-# How to install DeepMReye (GPU version, recommended)
+## How to install DeepMReye (GPU version, recommended)
 Install DeepMReye with a GPU version of [TensorFlow](https://www.tensorflow.org/install/) using following command. This version is substantially faster than the CPU version, but it requires CUDA and a NVIDIA GPU (not supported by Mac). The GPU version runs on Windows and Linux.
 ```
 conda install tensorflow-gpu
 ```
 Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
-# System Requirements
+## System Requirements
 
-# Hardware requirements
+## Hardware requirements
 
 The GPU version of DeepMReye requires a NVIDIA GPU.
 
-# Software requirements
+## Software requirements
 The following python dependencies are being automatically installed when installing DeepMReye (specified in requirements.txt):
 ```
 tensorflow-gpu (2.2.0)
