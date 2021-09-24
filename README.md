@@ -10,6 +10,13 @@
 [Click here for user recommendations and Frequently-Asked-Questions (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ).
 
 # Installation
+
+## Pip Install
+Install DeepMReye with the following command:
+```
+pip install git+https://github.com/DeepMReye/DeepMReye.git
+```
+
 ## Anaconda / Miniconda installation
 
 Install Anaconda or miniconda and clone this repository:
@@ -24,7 +31,6 @@ conda create --name deepmreye python=3.7
 conda install --file requirements.txt
 conda activate deepmreye
 ```
-
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
 git clone https://github.com/ANTsX/ANTsPy
@@ -32,6 +38,7 @@ cd ANTsPy
 python3 setup.py install
 ```
 
+## GPU Install
 By default the CPU version of [tensorflow](https://www.tensorflow.org/install/) is installed, if you want to train on GPU (recommended) install tensorflow via:
 ```
 conda install tensorflow-gpu
