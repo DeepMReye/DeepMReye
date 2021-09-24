@@ -4,12 +4,14 @@
 
 ![Logo](media/deepmreye_logo.png)
 
-# DeepMReye: Magnetic resonance-based eye tracking using deep neural networks
+# DeepMReye: magnetic resonance-based eye tracking using deep neural networks
 [Click here for a walkthrough of the code](./notebooks/deepmreye_example_usage.ipynb), including eyeball coregistration and voxel extraction, model training and test and basic performance measures.
 
 [Click here for data](https://osf.io/mrhk9/), including exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
 
-[Click here for online documentation](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ), including user recommendations and Frequently-Asked-Questions (FAQ).
+[Click here for user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe).
+
+[Click here for the Frequently-Asked-Questions (FAQ) page](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t).
 
 ## How to install DeepMReye (CPU version)
 
