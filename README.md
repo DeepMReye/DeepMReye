@@ -39,13 +39,6 @@ cd ANTsPy
 python3 setup.py install
 ```
 
-To finally import the DeepMReye module use this at the top of your script / notebook:
-```python
-import sys
-sys.path.insert(0, "/your/path/to/DeepMReye")
-import deepmreye
-```
-
 ## GPU Install
 By default the CPU version of [tensorflow](https://www.tensorflow.org/install/) is installed, if you want to train on GPU (recommended) install tensorflow via:
 ```
