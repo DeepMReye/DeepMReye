@@ -1,11 +1,9 @@
 # System imports
-import sys
-sys.path.insert(0, "/home/marx/Documents/Github/DeepMReye")
 import os
 from argparse import ArgumentParser
 
 # DeepMReye imports
-from deepmreye import architecture, train, analyse, preprocess
+from deepmreye import train
 from deepmreye.util import data_generator, model_opts
 from deepmreye.util.util import CLI_OPTIONS
 
