@@ -10,7 +10,7 @@ from plotly.subplots import make_subplots
 # --------------------------VISUALIZATIONS----------------------------------------
 # --------------------------------------------------------------------------------
 
-def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="rgb(247,247,247)", ylim=[-6, 6]):
+def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="rgb(247,247,247)", ylim=[-6, 6], num_functionals=78):
     # Prepare data for plotting
     # For visualisation we use a downsampled and padded version of X and split the eye balls.
     X_right = np.pad(X[:, 0:25, ..., 0], ((0, 0), (0, 5), (1, 2), (0, 0)))
@@ -38,9 +38,9 @@ def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="r
         elif bg_color == "rgb(255,255,255)":
             colorscale = 'RdGy'
         fig.add_heatmap(z=this_z, colorscale=colorscale, visible=False, showscale=False, zmid=0, row=1, col=1, name="TR: {}".format(i))  # colorbar=dict(x=0.45, y=0.5, thickness=10, len=0.5))
-    fig.data[78*3+2].visible = True  # Some arithmetics;
-    fig.data[78*3+2+1].visible = True  # connects to the active value below;
-    fig.data[78*3+2+2].visible = True  # should be abstracted as a variable;
+    fig.data[num_functionals*3+2].visible = True  # Some arithmetics;
+    fig.data[num_functionals*3+2+1].visible = True  # connects to the active value below;
+    fig.data[num_functionals*3+2+2].visible = True  # should be abstracted as a variable;
 
     # Add slider for changing TR
     steps, stepcount = [], 0
@@ -51,7 +51,7 @@ def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="r
         step["args"][0]["visible"][i+2] = True
         steps.append(step)
         stepcount += 1
-    sliders = [dict(active=78, currentvalue={"prefix": "TR: ", "visible": False}, pad={"t": 40}, steps=steps)]
+    sliders = [dict(active=num_functionals, currentvalue={"prefix": "TR: ", "visible": False}, pad={"t": 40}, steps=steps)]
 
     # Add arrows
     annotations = [dict(x=11, y=8, xref="x", yref="y", text="Left eye", font=(dict(size=20)), showarrow=True, arrowhead=5, ax=-40, ay=80),
