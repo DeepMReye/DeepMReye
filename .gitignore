@@ -7,7 +7,6 @@
 *.npz
 *.h5
 .ipynb_checkpoints
-*.gif
 *.png
 *.csv
 *.html
