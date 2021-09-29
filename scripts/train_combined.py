@@ -1,6 +1,4 @@
 # System imports
-import sys
-sys.path.insert(0, "/home/marx/Documents/Github/DeepMReye")
 import os
 from argparse import ArgumentParser
 
