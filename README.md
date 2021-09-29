@@ -52,6 +52,14 @@ conda install tensorflow-gpu
 ```
 Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
+## How to install DeepMReye (Colab)
+
+We provide a Colab notebook showcasing model training and evaluation on a GPU provided by Colab. Note that it is easiest to preprocess your data locally and only upload the eyeballs to save storage space. See [example notebook](./notebooks/deepmreye_example_usage.ipynb) for code instructions on how to preprocess and extract eyeballs from your experiments.
+
+[![Model Training & Evaluation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing)
+
+![Colab Walkthrough](media/colab_walkthrough.gif)
+
 ## System Requirements
 
 ## Hardware requirements
