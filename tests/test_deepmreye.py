@@ -23,7 +23,7 @@ def test_example_participant(path_to_masks, path_to_testdata):
     # Ants transform is not fully deterministic so check for rough match of transformation
     assert(transformation_statistics[0] < -2)
     assert(transformation_statistics[1] < 0.5)
-    assert(transformation_statistics[2] < 0)
+    assert(transformation_statistics[2] < 0.5)
     
     # Combine with labels
     this_mask = preprocess.normalize_img(masked_eye)
