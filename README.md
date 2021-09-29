@@ -14,7 +14,7 @@
 
 [Click here for the Frequently-Asked-Questions (FAQ) page](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t).
 
-![DeepMReye gif](media/deepMReye_video.gif){width="110%"}
+<img src="media/deepMReye_video.gif" width="100" height="100">
 
 ## How to install DeepMReye (CPU version)
 
