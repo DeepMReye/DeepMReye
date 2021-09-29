@@ -8,7 +8,7 @@ from deepmreye.util import data_generator, model_opts
 from deepmreye.util.util import CLI_OPTIONS
 
 # --------------------------------------------------------------------------------
-# ------------------------Evaluate model on all datasets--------------------------
+# -----------------Preprocess dataset stored in BIDS format-----------------------
 # --------------------------------------------------------------------------------
 
 # Parse input arguments
