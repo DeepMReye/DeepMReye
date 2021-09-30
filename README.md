@@ -6,13 +6,11 @@
 ![Logo](media/deepmreye_logo.png)
 
 # DeepMReye: magnetic resonance-based eye tracking using deep neural networks
-[Click here for a walkthrough of the code](./notebooks/deepmreye_example_usage.ipynb). This Jupyter notebook includes eyeball coregistration, voxel extraction, model training and test as well as basic performance measures. Alternatively, [click here for a Colab notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing).
+This [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) provides a step-by-step walkthrough of the code. It includes eyeball coregistration, voxel extraction, model training and test as well as basic performance measures. Alternatively, here is a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing).
 
-[Click here for data](https://osf.io/mrhk9/), including exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
+This [Data Repository](https://osf.io/mrhk9/) includes exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
 
-[Click here for user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe).
-
-[Click here for the Frequently-Asked-Questions (FAQ) page](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t).
+Moreover, here are additional [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) as well as a [Frequently-Asked-Questions (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t) page. If you have other questions, please reach out to us.
 
 ![deepMReye video](media/deepMReye_video.gif)
 
