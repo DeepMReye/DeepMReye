@@ -6,7 +6,7 @@
 ![Logo](media/deepmreye_logo.png)
 
 # DeepMReye: magnetic resonance-based eye tracking using deep neural networks
-[Click here for a walkthrough of the code](./notebooks/deepmreye_example_usage.ipynb), including eyeball coregistration and voxel extraction, model training and test and basic performance measures.
+[Click here for a walkthrough of the code](./notebooks/deepmreye_example_usage.ipynb). This Jupyter notebook includes eyeball coregistration, voxel extraction, model training and test as well as basic performance measures. Alternatively, [click here for a Colab notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing).
 
 [Click here for data](https://osf.io/mrhk9/), including exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
 
@@ -56,7 +56,7 @@ Note that you might need to install cudnn first (conda install -c conda-forge cu
 
 ## Installation - Option 3: Colab
 
-We provide a Colab notebook showcasing model training and evaluation on a GPU provided by Colab. Note that it is easiest to preprocess your data locally and only upload the eyeballs to save storage space. See [example notebook](./notebooks/deepmreye_example_usage.ipynb) for code instructions on how to preprocess and extract eyeballs from your experiments.
+We provide a Colab notebook showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
 
 [![Model Training & Evaluation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing)
 
