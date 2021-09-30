@@ -16,7 +16,7 @@
 
 ![deepMReye video](media/deepMReye_video.gif)
 
-## How to install DeepMReye (CPU version)
+## Installation - Option 1: CPU version
 
 ### Pip installation
 Install DeepMReye with a CPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
@@ -47,14 +47,14 @@ python3 setup.py install
 
 This CPU version runs on Windows, Mac and Linux, but it takes substantially more time to compute than the GPU version (see below). 
 
-## How to install DeepMReye (GPU version, recommended)
+## Installation - Option 2: GPU version (recommended)
 Install DeepMReye with a GPU version of [TensorFlow](https://www.tensorflow.org/install/) using following command. This version is substantially faster than the CPU version, but it requires CUDA and a NVIDIA GPU (not supported by Mac). The GPU version runs on Windows and Linux.
 ```
 conda install tensorflow-gpu
 ```
 Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
 
-## How to install DeepMReye (Colab)
+## Installation - Option 3: Colab
 
 We provide a Colab notebook showcasing model training and evaluation on a GPU provided by Colab. Note that it is easiest to preprocess your data locally and only upload the eyeballs to save storage space. See [example notebook](./notebooks/deepmreye_example_usage.ipynb) for code instructions on how to preprocess and extract eyeballs from your experiments.
 
