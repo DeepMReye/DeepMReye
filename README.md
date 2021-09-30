@@ -54,7 +54,7 @@ Note that you might need to install cudnn first (conda install -c conda-forge cu
 
 ## Installation - Option 3: Colab
 
-We provide a Colab notebook showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
+We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing) showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
 
 [![Model Training & Evaluation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing)
 
