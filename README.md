@@ -1,8 +1,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
 ![py38 status](https://img.shields.io/badge/python3.8-supported-green.svg)
 ![Build Status](https://github.com/DeepMReye/DeepMReye/actions/workflows/main.yml/badge.svg)
-[![NatNeuro Paper](https://img.shields.io/badge/DOI-10.XXXX%2FsXXXXX--XXX--XXXX--X-blue)](https://doi.org/XXX/XXX)
-
+[![NatNeuro Paper](https://img.shields.io/badge/DOI-10.1038%2Fs41593--021--00947--w-blue)](https://doi.org/10.1038/s41593-021-00947-w)
 ![Logo](media/deepmreye_logo.png)
 
 # DeepMReye: magnetic resonance-based eye tracking using deep neural networks
