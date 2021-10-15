@@ -60,13 +60,7 @@ We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbK
 ![Colab Walkthrough](media/colab_walkthrough.gif)
 
 ### Data formats
-For model training, the pipeline requires the following data.
-
-**fMRI data** organized as 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. Our pipeline extracts the eyeball voxels from these images and saves them as Python Pickle file, which then serves as model input.
-
-**Training labels** as numpy array (.npy/.npz) containing 10 gaze coordinates per functional volume. These gaze coordinates can be either camera-based eye-tracking labels or the coordinates of a fixation target. Other file formats such as .mat, .csv .ascii etc. can easily be read in as well. 
-
-For model test, only the fMRI data is required as specified above.
+For model training, the pipeline requires <u>**fMRI data**</u> organized as 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. Our pipeline extracts the eyeball voxels from these files and saves them as Python Pickle files, which then serves as model input. As <u>**Training labels**</u>, it uses 10 gaze coordinates per functional volume organized as numpy array (.npy/.npz). These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target. Other file formats such as .mat, .csv .ascii etc. can easily be read in as well. For model test, only the fMRI data is required as specified above.
 
 Please see our [FAQ](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t) page for more details on data formats and preprocessing.
 
