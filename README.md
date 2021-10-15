@@ -59,8 +59,6 @@ We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbK
 
 ![Colab Walkthrough](media/colab_walkthrough.gif)
 
-## System Requirements
-
 ## Hardware requirements
 
 The GPU version of DeepMReye requires a NVIDIA GPU.
