@@ -49,7 +49,10 @@ Install DeepMReye with a GPU version of [TensorFlow](https://www.tensorflow.org/
 ```
 conda install tensorflow-gpu
 ```
-Note that you might need to install cudnn first (conda install -c conda-forge cudnn).
+Note that you might need to install cudnn first (conda install -c conda-forge cudnn). After installing the GPU version of tensorflow in the conda environment install DeepMReye via pip:
+```
+pip install git+https://github.com/DeepMReye/DeepMReye.git
+```
 
 ## Installation - Option 3: Colab
 
