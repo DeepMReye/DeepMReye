@@ -23,16 +23,10 @@ pip install git+https://github.com/DeepMReye/DeepMReye.git
 
 ### Anaconda / Miniconda installation
 
-Install Anaconda or miniconda and clone this repository:
-```
-git clone https://github.com/DeepMReye/DeepMReye.git
-cd DeepMReye
-```
-
-Create a virtual environment for DeepMReye with the following commands:
+To encapsulate DeepMReye in a virtual environment install with the following commands:
 ```
 conda create --name deepmreye python=3.7
-conda install --file requirements.txt
+pip install git+https://github.com/DeepMReye/DeepMReye.git
 conda activate deepmreye
 ```
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
