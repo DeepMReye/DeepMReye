@@ -33,6 +33,7 @@ If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manual
 ```
 git clone https://github.com/ANTsX/ANTsPy
 cd ANTsPy
+pip install CMake
 python3 setup.py install
 ```
 
