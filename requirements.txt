@@ -6,3 +6,4 @@ ipython
 plotly
 scikit-learn
 antspyx
+tensorflow

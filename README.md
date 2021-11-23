@@ -19,7 +19,6 @@ Moreover, here are additional [User Recommendations](https://deepmreye.slite.com
 Install DeepMReye with a CPU/GPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
 ```
 pip install git+https://github.com/DeepMReye/DeepMReye.git
-pip install tensorflow
 ```
 
 ### Anaconda / Miniconda installation
@@ -29,7 +28,6 @@ To encapsulate DeepMReye in a virtual environment install with the following com
 conda create --name deepmreye python=3.7
 conda activate deepmreye
 pip install git+https://github.com/DeepMReye/DeepMReye.git
-pip install tensorflow 
 ```
 The tensorflow version supports both CPU and GPU instructions. Note that you might need to install cudnn first (conda install -c conda-forge cudnn). 
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
