@@ -13,12 +13,13 @@ Moreover, here are additional [User Recommendations](https://deepmreye.slite.com
 
 ![deepMReye video](media/deepMReye_video.gif)
 
-## Installation - Option 1: CPU version
+## Installation - Option 1: Pip install
 
 ### Pip installation
-Install DeepMReye with a CPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
+Install DeepMReye with a CPU/GPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
 ```
 pip install git+https://github.com/DeepMReye/DeepMReye.git
+pip install tensorflow
 ```
 
 ### Anaconda / Miniconda installation
@@ -28,7 +29,9 @@ To encapsulate DeepMReye in a virtual environment install with the following com
 conda create --name deepmreye python=3.7
 conda activate deepmreye
 pip install git+https://github.com/DeepMReye/DeepMReye.git
+pip install tensorflow 
 ```
+The tensorflow version supports both CPU and GPU instructions. Note that you might need to install cudnn first (conda install -c conda-forge cudnn). 
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
 git clone https://github.com/ANTsX/ANTsPy
@@ -37,19 +40,7 @@ pip install CMake
 python3 setup.py install
 ```
 
-This CPU version runs on Windows, Mac and Linux, but it takes substantially more time to compute than the GPU version (see below). 
-
-## Installation - Option 2: GPU version (recommended)
-Install DeepMReye with a GPU version of [TensorFlow](https://www.tensorflow.org/install/) using following command. This version is substantially faster than the CPU version, but it requires CUDA and a NVIDIA GPU (not supported by Mac). The GPU version runs on Windows and Linux.
-```
-conda install tensorflow-gpu
-```
-Note that you might need to install cudnn first (conda install -c conda-forge cudnn). After installing the GPU version of tensorflow in the conda environment install DeepMReye via pip:
-```
-pip install git+https://github.com/DeepMReye/DeepMReye.git
-```
-
-## Installation - Option 3: Colab
+## Installation - Option 2: Colab
 
 We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing) showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
 
