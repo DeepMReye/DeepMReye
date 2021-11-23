@@ -6,4 +6,4 @@ ipython
 plotly
 scikit-learn
 antspyx
-tensorflow
+tensorflow<2.7
