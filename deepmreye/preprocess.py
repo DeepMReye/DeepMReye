@@ -50,7 +50,7 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
                 registered_fwd = loadmat(register_to_nau['fwdtransforms'][1])['AffineTransform_float_3_3']
             else:
                 registered_fwd = loadmat(register_to_nau['fwdtransforms'][0])['AffineTransform_float_3_3']
-            print('Mask {}/{}, Sum: {}, Mean {}, Std {}, Median {}'.format(idx, len(masks)-1, np.sum(registered_fwd),
+            print('Mask {}/{}, Sum: {:.3f}, Mean {:.3f}, Std {:.3f}, Median {:.3f}'.format(idx, len(masks)-1, np.sum(registered_fwd),
                                                                            np.mean(registered_fwd), np.std(registered_fwd), np.median(registered_fwd)))
         transformation_stats.append(np.mean(registered_fwd))
         # Transform
