@@ -7,3 +7,4 @@ plotly
 scikit-learn
 antspyx
 tensorflow<2.7
+jupyter
