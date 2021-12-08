@@ -117,9 +117,9 @@ def get_masks(data_path='../deepmreye/masks/'):
     z_edges : list
         Edges of mask in z-dimension
     """     
-    eyemask_small = ants.image_read(data_path + 'eyemask_small.nii')
-    eyemask_big = ants.image_read(data_path + 'eyemask_big.nii')
-    dme_template = ants.image_read(data_path + 'dme_template.nii')
+    eyemask_small = ants.image_read(os.path.join(data_path, 'eyemask_small.nii'))
+    eyemask_big = ants.image_read(os.path.join(data_path,  'eyemask_big.nii'))
+    dme_template = ants.image_read(os.path.join(data_path, 'dme_template.nii'))
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
