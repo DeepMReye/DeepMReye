@@ -92,7 +92,7 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
 # --------------------------------------------------------------------------------
 # --------------------------MASKING-----------------------------------------------
 # --------------------------------------------------------------------------------
-def get_masks(data_path='../deepmreye/masks/'):
+def get_masks(data_path=''):
     """Loads masks for whole brain, big eye mask and small eye mask
 
     Parameters
@@ -117,6 +117,10 @@ def get_masks(data_path='../deepmreye/masks/'):
     z_edges : list
         Edges of mask in z-dimension
     """     
+
+    if data_path == "":
+        data_path = os.path.abspath(os.path.join(__file__, "..", "masks"))
+
     eyemask_small = ants.image_read(os.path.join(data_path, 'eyemask_small.nii'))
     eyemask_big = ants.image_read(os.path.join(data_path,  'eyemask_big.nii'))
     dme_template = ants.image_read(os.path.join(data_path, 'dme_template.nii'))
