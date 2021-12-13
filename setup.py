@@ -30,5 +30,6 @@ setup(
     packages=find_packages(),
     package_data={
         "": ["*.p", "*.nii", "*.csv", "*.npz", "*.png", "*.txt"],
+        "deepmreye": ["deepmreye/masks/*", "tests/data/*"]
     },
 )
