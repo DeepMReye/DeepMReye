@@ -7,6 +7,13 @@ from deepmreye.util import model_opts, data_generator
 # --------------------------------------------------------------------------------
 # --------------------------PREPROCESSING-----------------------------------------
 # --------------------------------------------------------------------------------
+def test_download(path_to_masks):
+    # Delete files if already in folder to see if download works
+    for m in ['eyemask_small.nii', 'eyemask_big.nii', 'dme_template.nii']:
+        if os.path.exists(path_to_masks + m):
+            os.remove(path_to_masks + m)
+    test_masks(path_to_masks)
+
 def test_masks(path_to_masks):
     (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges) = preprocess.get_masks(path_to_masks)
     for m in [eyemask_small, eyemask_big, dme_template, mask]:
