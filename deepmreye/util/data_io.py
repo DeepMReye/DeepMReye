@@ -1,3 +1,5 @@
+import os
+import urllib
 import numpy as np
 from scipy.io import loadmat
 
@@ -130,3 +132,17 @@ def get_all_subject_labels_mmd(subject_string, run_idx, num_downsampled=10):
                               if x.size > 0 else np.zeros((num_downsampled, 2)) * np.nan for x in this_run])
         return all_subtr
     return np.array([])
+
+
+# --------------------------------------------------------------------------------
+# --------------------------IO-MASKS----------------------------------------------
+# --------------------------------------------------------------------------------
+
+
+def download_mask(data_path, remote_path='https://github.com/DeepMReye/DeepMReye/blob/main/deepmreye/masks/'):
+    mask_name = os.path.basename(data_path)
+    mask_remote = remote_path + '{}?raw=true'.format(mask_name)
+    try:
+        (f, m) = urllib.request.urlretrieve(mask_remote, data_path)
+    except urllib.error.URLError as e:
+        raise RuntimeError("Failed to download '{}'. '{}'".format(mask_remote, e.reason))
