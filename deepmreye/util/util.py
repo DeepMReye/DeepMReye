@@ -113,8 +113,12 @@ def angle_between_points(y_true, y_pred):
 
 
 def get_model_scores(real_y, pred_y, euc_pred, **args):
-    (agg_scores, subtr_scores) = quantify_predictions(real_y, pred_y, euc_pred, percentile_cut=None)
-    (agg_scores_pct, subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred, **args)
+    try:
+        (agg_scores, subtr_scores) = quantify_predictions(real_y, pred_y, euc_pred, percentile_cut=None)
+        (agg_scores_pct, subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred, **args)
+    except ValueError:
+        # Participant has only NaNs or no data, return empty dataframes
+        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN # 9 return paramteres
     df_scores = pd.DataFrame([agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct], index=['Default', 'Default subTR', 'Refined', 'Refined subTR'])
     df_scores.columns = pd.MultiIndex.from_tuples((('Pearson', 'X'), ('Pearson', 'Y'), ('Pearson', 'Mean'), ('R^2-Score', 'X'), ('R^2-Score', 'Y'), ('R^2-Score', 'Mean'),
                                                    ('Eucl. Error', 'Mean'), ('Eucl. Error', 'Median'), ('Eucl. Error', 'Std')))
@@ -127,6 +131,9 @@ def quantify_predictions(y_true, y_pred, euc_pred, subtr_functor=np.median, perc
     y_true = y_true[~nan_indices, ...]
     y_pred = y_pred[~nan_indices, ...]
     euc_pred = euc_pred[~nan_indices, ...]
+
+    if y_true.size < 1:
+        raise ValueError('Participant has no ground truth data, nothing to quantify')
 
     # Aggregate across subTR values
     y_true_agg = subtr_functor(y_true, axis=1)
