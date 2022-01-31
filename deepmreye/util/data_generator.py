@@ -48,23 +48,25 @@ def create_holdout_generators(datasets, train_split=0.6, **args):
             single_training_generators, single_training_names, full_testing_list, full_training_list)
 
 
-def create_cv_generators(dataset, num_cvs=5, **args):
+def create_cv_generators(datasets, num_cvs=5, **args):
     # Create lists for each cv
-    this_file_list = [dataset + p for p in os.listdir(dataset)]
-    np.random.shuffle(this_file_list)
-    cv_split = np.array_split(this_file_list, num_cvs)
-    cv_return = []
-    for idx, cvs in enumerate(cv_split):
-        full_testing_list = cvs.tolist()
-        full_training_list = np.concatenate([x for i, x in enumerate(cv_split) if i != idx]).tolist()
+    print(datasets)
+    for fn_data in datasets:
+        this_file_list = [fn_data + p for p in os.listdir(fn_data)]
+        np.random.shuffle(this_file_list)
+        cv_split = np.array_split(this_file_list, num_cvs)
+        cv_return = []
+        for idx, cvs in enumerate(cv_split):
+            full_testing_list = cvs.tolist()
+            full_training_list = np.concatenate([x for i, x in enumerate(cv_split) if i != idx]).tolist()
 
-        (training_generator, testing_generator,
-         single_testing_generators, single_testing_names,
-         single_all_generators, single_all_names) = create_generators(full_training_list, full_testing_list, **args)
-        cv_return.append((training_generator, testing_generator, single_testing_generators, single_testing_names,
-                          single_all_generators, single_all_names, full_testing_list, full_training_list))
+            (training_generator, testing_generator,
+             single_testing_generators, single_testing_names,
+             single_all_generators, single_all_names) = create_generators(full_training_list, full_testing_list, **args)
+            cv_return.append((training_generator, testing_generator, single_testing_generators, single_testing_names,
+                             single_all_generators, single_all_names, full_testing_list, full_training_list))
 
-    return cv_return
+        return cv_return
 
 
 def create_leaveoneout_generators(datasets, training_subset=None, **args):
