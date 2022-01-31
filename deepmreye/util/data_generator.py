@@ -63,9 +63,10 @@ def create_cv_generators(datasets, num_cvs=5, **args):
             (training_generator, testing_generator,
              single_testing_generators, single_testing_names,
              single_all_generators, single_all_names) = create_generators(full_training_list, full_testing_list, **args)
+            cv_return.append((training_generator, testing_generator, single_testing_generators, single_testing_names,
+                             single_all_generators, single_all_names, full_testing_list, full_training_list))
 
-        return (training_generator, testing_generator, single_testing_generators, single_testing_names,
-                             single_all_generators, single_all_names, full_testing_list, full_training_list)
+        return cv_return
 
 
 def create_leaveoneout_generators(datasets, training_subset=None, **args):
