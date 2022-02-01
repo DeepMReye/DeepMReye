@@ -48,10 +48,9 @@ def create_holdout_generators(datasets, train_split=0.6, **args):
             single_training_generators, single_training_names, full_testing_list, full_training_list)
 
 
-def create_cv_generators(datasets, num_cvs=5, **args):
+def create_cv_generators(dataset, num_cvs=5, **args):
     # Create lists for each cv
-    datasets = ' '.join(map(str, datasets))
-    this_file_list = [datasets + p for p in os.listdir(datasets)]
+    this_file_list = [dataset + p for p in os.listdir(dataset)]
     np.random.shuffle(this_file_list)
     cv_split = np.array_split(this_file_list, num_cvs)
     cv_return = []
@@ -63,7 +62,7 @@ def create_cv_generators(datasets, num_cvs=5, **args):
          single_testing_generators, single_testing_names,
          single_all_generators, single_all_names) = create_generators(full_training_list, full_testing_list, **args)
         cv_return.append((training_generator, testing_generator, single_testing_generators, single_testing_names,
-                             single_all_generators, single_all_names, full_testing_list, full_training_list))
+                          single_all_generators, single_all_names, full_testing_list, full_training_list))
 
     return cv_return
 
