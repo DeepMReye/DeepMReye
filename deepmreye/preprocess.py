@@ -84,7 +84,7 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
     # Load subject specific run. File should be Nifti and 4D but should also work with other formats which can be read with AntsPy
     func = ants.image_read(fp_func)
     # Register to deepmreye template (dme_template). If registration fails quality check, try below line with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
-    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=None)
+    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=transforms)
     # Cut mask and save to subject folder with subject report / quality control plots
     (original_input, masked_eye, mask) = cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
 
