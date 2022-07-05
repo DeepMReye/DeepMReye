@@ -37,6 +37,6 @@ docker build --tag deepmreye:0.1.0 --file Dockerfile .
 Run it
 
 ```bash
-docker run -it --rm \
+docker run -it -p 8888:8888 --rm \
     deepmreye:0.1.0
 ```

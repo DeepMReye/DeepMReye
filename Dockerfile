@@ -91,11 +91,18 @@ RUN chown -R neuro /home
 
 USER neuro
 
-RUN mkdir -p /home/neuro/inputs/models
+RUN mkdir -p /home/neuro/experiment_folder/functional_data/model_weights
+RUN mkdir -p /home/neuro/experiment_folder/functional_data/gaze_data
+RUN mkdir -p /home/neuro/experiment_folder/functional_data/processed_data
+RUN mkdir -p /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
 
-RUN wget https://osf.io/cqf74/download -O /home/neuro/inputs/models/dataset1_guided_fixations.h5
+RUN wget https://osf.io/cqf74/download -O /home/neuro/experiment_folder/functional_data/model_weights/dataset1_guided_fixations.h5
 
 RUN mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \"0.0.0.0\" > ~/.jupyter/jupyter_notebook_config.py
+
+COPY run1_sub-NDARAA948VFH.nii /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
+COPY run2_sub-NDARAA948VFH.nii /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
+COPY deepmreye/masks /home/neuro/experiment_folder/functional_data/masks
 
 RUN echo '{ \
     \n  "pkg_manager": "apt", \
