@@ -2,8 +2,7 @@ import os
 import pickle
 import numpy as np
 import ants
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+from os.path import join
 from scipy.io import loadmat
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
