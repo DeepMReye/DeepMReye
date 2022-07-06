@@ -14,6 +14,10 @@
 
 !/tests/data/**
 
+# demo
+notebooks/functional_data
+notebooks/*.zip
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
