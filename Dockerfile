@@ -103,6 +103,7 @@ RUN mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \"0.0.0.0\" > ~/.jupyter/jupy
 COPY run1_sub-NDARAA948VFH.nii /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
 COPY run2_sub-NDARAA948VFH.nii /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
 COPY deepmreye/masks /home/neuro/experiment_folder/functional_data/masks
+COPY testnotebook.py /home/neuro
 
 RUN echo '{ \
     \n  "pkg_manager": "apt", \
