@@ -24,6 +24,9 @@ gaze_data = experiment_folder + 'gaze_data/'
 model_weights = experiment_folder + 'model_weights/'
 mask_path = functional_data + 'masks/'
 
+if not os.path.exists(processed_data):
+    os.makedirs(processed_data)
+
 # Get participants from functional folder
 participants = os.listdir(functional_data) # (if needed, remove single participants with participants.remove('participant01') or recreate participants list)
 
@@ -79,7 +82,6 @@ X, y = data_generator.get_all_subject_data(datasets[0])
 print('Input: {}, Output: {}'.format(X.shape, y.shape))
 
 fig = analyse.visualise_input_data(X, y, bg_color="rgb(255,255,255)", ylim=[-11, 11])
-fig.show()
 
 opts = model_opts.get_opts()
 test_participants = [processed_data + p for p in os.listdir(processed_data) if 'no_label' in p]
@@ -96,4 +98,4 @@ model_inference.load_weights(model_weights)
                                             save=False, model_path=experiment_folder, model_description='', verbose=2, percentile_cut=80)
 
 fig = analyse.visualise_predictions_slider(evaluation, scores, color="rgb(0, 150, 175)", bg_color="rgb(255,255,255)", ylim=[-11, 11])
-fig.show()
+

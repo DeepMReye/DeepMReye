@@ -91,12 +91,12 @@ RUN chown -R neuro /home
 
 USER neuro
 
-RUN mkdir -p /home/neuro/experiment_folder/functional_data/model_weights
-RUN mkdir -p /home/neuro/experiment_folder/functional_data/gaze_data
+RUN mkdir -p /home/neuro/experiment_folder/model_weights
+RUN mkdir -p /home/neuro/experiment_folder/gaze_data
 RUN mkdir -p /home/neuro/experiment_folder/functional_data/processed_data
 RUN mkdir -p /home/neuro/experiment_folder/functional_data/sub-NDARAA948VFH
 
-RUN wget https://osf.io/cqf74/download -O /home/neuro/experiment_folder/functional_data/model_weights/dataset1_guided_fixations.h5
+RUN wget https://osf.io/download/23t5v/ -O /home/neuro/experiment_folder/model_weights/datasets_1to5.h5
 
 RUN mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \"0.0.0.0\" > ~/.jupyter/jupyter_notebook_config.py
 
