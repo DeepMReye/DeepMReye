@@ -13,13 +13,15 @@ on:
     branches: ["*"]
 
 jobs:
-  build:
+
+  test_notebooks:
+
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-10.15, windows-latest]
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [3.9]
         include:
           - os: ubuntu-latest
             path: ~/.cache/pip
@@ -50,5 +52,8 @@ jobs:
           python -c "import sys; print(sys.version)"
           pip list
 
+      - name: Get data from OSF
+        run: cd notebooks && make all          
+
       - name: Run notebooks
-        run: pytest --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_usage_pretrained_weights.ipynb"
+        run: pytest -srP -vv --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_usage_pretrained_weights.ipynb"
