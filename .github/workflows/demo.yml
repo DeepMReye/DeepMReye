@@ -2,7 +2,7 @@ name: test notebooks
 
 # this aims to test the notebooks, the way the user would
 # - install package from github
-# - runs the notebooks from top to bottom
+# - use the nbmake pytest plugin to run the notebooks from top to bottom
 
 #
 

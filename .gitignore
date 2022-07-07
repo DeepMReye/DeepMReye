@@ -17,6 +17,7 @@
 # demo
 notebooks/functional_data
 notebooks/*.zip
+notebooks/*log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
