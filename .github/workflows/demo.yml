@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-10.15, windows-latest]
-        python-version: [3.9]
+        python-version: ["3.9"]
         notebook: [usage_pretrained_weights]
         include:
           - os: ubuntu-latest
