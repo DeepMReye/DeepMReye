@@ -16,27 +16,25 @@ jobs:
 
   test_notebooks:
 
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-10.15, windows-latest]
+        os: [ubuntu-latest]
         python-version: ["3.9"]
         notebook: [usage_pretrained_weights]
-        include:
-          - os: ubuntu-latest
-            path: ~/.cache/pip
-          - os: macOS-10.15
-            path: ~/Library/Caches/pip
-          - os: windows-latest
-            path: ~\AppData\Local\pip\Cache
+
+    runs-on: ${{ matrix.os }}
 
     steps:
+
       - name: Clone repo
         uses: actions/checkout@v3
 
+      - name: Get data from OSF
+        run: cd notebooks && make all  
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -51,10 +49,7 @@ jobs:
       - name: Display Python version and packages
         run: |
           python -c "import sys; print(sys.version)"
-          pip list
-
-      - name: Get data from OSF
-        run: cd notebooks && make all          
+          pip list     
 
       - name: Run notebook ${{ matrix.notebook }}
         run: pytest -srP -vv --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"

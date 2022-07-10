@@ -1,4 +1,6 @@
 
+# TODO consider replacing this makefile with a python equivalent to make it portable on windows 
+
 .PHONY: all clean
 
 subject1       = functional_data/sub-NDARAA948VFH
