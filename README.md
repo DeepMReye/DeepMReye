@@ -69,4 +69,4 @@ plotly (4.14.3)
 Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.6 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
 
 ## Correspondence
-If you have questions, comments or inquiries, please check out the online [User documention](https://deepmreye.slite.com/api/s/channel/MUgmvViEbaATSrqt3susLZ/DeepMReye%3A%20Documentation) and reach out to us: markus.frey[at]ntnu.no and matthias.nau[at]ntnu.no
+If you have questions, comments or inquiries, please check out the online [User documention](https://deepmreye.slite.com/api/s/channel/MUgmvViEbaATSrqt3susLZ/DeepMReye%3A%20Documentation) and reach out to us: markus.frey[at]ntnu.no & matthias.nau[at]ntnu.no

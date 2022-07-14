@@ -7,6 +7,7 @@ from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from scipy.io import loadmat
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from deepmreye.util.data_io import download_mask
 
 # --------------------------------------------------------------------------------
 # --------------------------ANTS TRANSFORMS---------------------------------------
@@ -83,7 +84,7 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
     # Load subject specific run. File should be Nifti and 4D but should also work with other formats which can be read with AntsPy
     func = ants.image_read(fp_func)
     # Register to deepmreye template (dme_template). If registration fails quality check, try below line with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
-    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=None)
+    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=transforms)
     # Cut mask and save to subject folder with subject report / quality control plots
     (original_input, masked_eye, mask) = cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
 
@@ -117,13 +118,20 @@ def get_masks(data_path=''):
     z_edges : list
         Edges of mask in z-dimension
     """     
+    def load_from_path(fn_mask):
+        if os.path.exists(fn_mask):
+            return ants.image_read(fn_mask)
+        else:
+            print('Downloading mask: {}'.format(fn_mask))
+            download_mask(fn_mask)
+            return ants.image_read(fn_mask)
 
     if data_path == "":
         data_path = os.path.abspath(os.path.join(__file__, "..", "masks"))
 
-    eyemask_small = ants.image_read(os.path.join(data_path, 'eyemask_small.nii'))
-    eyemask_big = ants.image_read(os.path.join(data_path,  'eyemask_big.nii'))
-    dme_template = ants.image_read(os.path.join(data_path, 'dme_template.nii'))
+    eyemask_small = load_from_path(os.path.join(data_path, 'eyemask_small.nii'))
+    eyemask_big = load_from_path(os.path.join(data_path,  'eyemask_big.nii'))
+    dme_template = load_from_path(os.path.join(data_path, 'dme_template.nii'))
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 

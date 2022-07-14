@@ -2,11 +2,19 @@ import os
 import pytest
 import numpy as np
 from deepmreye import preprocess, train
-from deepmreye.util import model_opts, data_generator
+from deepmreye.util import model_opts, data_generator, util
 
 # --------------------------------------------------------------------------------
 # --------------------------PREPROCESSING-----------------------------------------
 # --------------------------------------------------------------------------------
+def test_download(path_to_masks):
+    # To only test this commmand python -m pytest -k 'download', all commands python -m pytest
+    # Delete files if already in folder to see if download works
+    for m in ['eyemask_small.nii', 'eyemask_big.nii', 'dme_template.nii']:
+        if os.path.exists(path_to_masks + m):
+            os.remove(path_to_masks + m)
+    test_masks(path_to_masks)
+
 def test_masks(path_to_masks):
     (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges) = preprocess.get_masks(path_to_masks)
     for m in [eyemask_small, eyemask_big, dme_template, mask]:
@@ -62,3 +70,16 @@ def test_model_training(path_to_testdata):
     (evaluation, scores) = train.evaluate_model(dataset='example_data', model=model_inference, generators=generators[0], save=False, model_description='', verbose=2, percentile_cut=80)
     assert(isinstance(evaluation, dict))
 
+def test_model_evaluation():
+    # Generate artificial data
+    num_points = 1000
+    real_y = np.random.rand(num_points, 10, 2)
+    pred_y = np.random.rand(num_points, 10, 2)
+    euc_pred = np.random.rand(num_points, 10, 1)
+    df_scores = util.get_model_scores(real_y, pred_y, euc_pred)
+    
+    # For all NaN participant
+    real_y = np.random.rand(num_points, 10, 2) * np.NaN
+    pred_y = np.random.rand(num_points, 10, 2) * np.NaN
+    euc_pred = np.random.rand(num_points, 10, 1) * np.NaN
+    df_scores = util.get_model_scores(real_y, pred_y, euc_pred)
