@@ -2,8 +2,7 @@ import os
 import pickle
 import numpy as np
 import ants
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+from os.path import join
 from scipy.io import loadmat
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -127,11 +126,11 @@ def get_masks(data_path=''):
             return ants.image_read(fn_mask)
 
     if data_path == "":
-        data_path = os.path.abspath(os.path.join(__file__, "..", "masks"))
+        data_path = os.path.abspath(join(__file__, "..", "masks"))
 
-    eyemask_small = load_from_path(os.path.join(data_path, 'eyemask_small.nii'))
-    eyemask_big = load_from_path(os.path.join(data_path,  'eyemask_big.nii'))
-    dme_template = load_from_path(os.path.join(data_path, 'dme_template.nii'))
+    eyemask_small = load_from_path(join(data_path, 'eyemask_small.nii'))
+    eyemask_big = load_from_path(join(data_path,  'eyemask_big.nii'))
+    dme_template = load_from_path(join(data_path, 'dme_template.nii'))
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
@@ -217,11 +216,11 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     # Save back masked func to .nii and masked eye to .p
     participant_basename = os.path.basename(fp_func).split('.')[0]
     if save_overview:
-        fn_full_mask = os.path.dirname(fp_func) + os.path.sep + 'report_' + participant_basename
+        fn_full_mask = join(os.path.dirname(fp_func), f'report_{participant_basename}')
         plot_subject_report(fn_full_mask, original_input, masked_eye, mask)
-    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + participant_basename + '.p'
+    fn_masked_eye = join(os.path.dirname(fp_func), f'mask_{participant_basename}.p')
     pickle.dump(masked_eye, open(fn_masked_eye, 'wb'))
-    
+
     return (original_input, masked_eye, mask)
 
 # --------------------------------------------------------------------------------
@@ -379,7 +378,7 @@ def load_label(label_path, label_type='calibration_run'):
     """    
     if label_type=='calibration_run':
         # Load labels from file
-        fn_labels = label_path + os.path.sep + 'stim_vals.csv'
+        fn_labels = join(label_path, 'stim_vals.csv')
         labels = np.genfromtxt(fn_labels, delimiter=',')
         labels = labels[1:]
         labels = np.repeat(labels, 5, axis=0)
@@ -431,6 +430,6 @@ def save_data(participant, participant_data, participant_labels, participant_ids
         data_dict['identifier_{}'.format(idx)] = identifier
 
     # Save each subject in seperate .npz files (fast to load)
-    subject_file_path = processed_data + participant
+    subject_file_path = join(processed_data, participant)
     print('Saving eye data {} and targets {} (NaN {}) to file {}'.format(participant_data.shape, participant_labels.shape, np.sum(np.isnan(participant_labels.flatten())), subject_file_path))
     np.savez(subject_file_path, **data_dict)
