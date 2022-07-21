@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macOS-latest]
         python-version: ["3.9"]
         notebook: [usage_pretrained_weights]
 
@@ -39,7 +39,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install deepmreye from github
-        run: pip install git+https://github.com/Remi-Gau/DeepMReye@setup
+        run: pip install git+https://github.com/DeepMReye/DeepMReye@setup
 
       - name: Install dependencies
         run: |
