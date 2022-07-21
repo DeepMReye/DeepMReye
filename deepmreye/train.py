@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from os.path import join
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -82,7 +83,7 @@ def train_model(dataset, generators, opts, clear_graph=True, save=False, model_p
 
     # Save model weights
     if save:
-        model_inference.save_weights(model_path + 'modelinference_{}.h5'.format(dataset))
+        model_inference.save_weights(join(model_path, f'modelinference_{dataset}.h5'))
     if use_multiprocessing:
         tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
@@ -142,6 +143,6 @@ def evaluate_model(dataset, model, generators, save=False, model_path='./', mode
 
     # Save dict
     if save:
-        np.save(model_path + 'results{}_{}.npy'.format(model_description, dataset), evaluation)
+        np.save(join(model_path, f'results{model_description}_{dataset}.npy'), evaluation)
 
     return (evaluation, scores)
