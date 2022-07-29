@@ -9,6 +9,7 @@ on:
 jobs:
   build:
 
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -21,13 +22,11 @@ jobs:
             path: ~/Library/Caches/pip
           - os: windows-latest
             path: ~\AppData\Local\pip\Cache
-            
-    runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
