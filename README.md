@@ -25,7 +25,7 @@ pip install git+https://github.com/DeepMReye/DeepMReye.git
 
 To encapsulate DeepMReye in a virtual environment install with the following commands:
 ```
-conda create --name deepmreye python=3.7
+conda create --name deepmreye python=3.9
 conda activate deepmreye
 pip install git+https://github.com/DeepMReye/DeepMReye.git
 ```
