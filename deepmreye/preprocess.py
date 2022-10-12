@@ -390,6 +390,9 @@ def load_label(label_path, label_type='calibration_run'):
         this_label = (this_label - -0.95) / ( 0.95 - -0.95)
         this_label -= 0.5
 
+        # Y-axis is flipped for this dataset
+        this_label[...,1] *= -1
+
         # Convert to visual angles
         this_label[...,0] *= 19
         this_label[...,1] *= 14.7
