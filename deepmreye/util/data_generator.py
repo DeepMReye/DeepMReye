@@ -147,25 +147,25 @@ def data_generator(file_list, batch_size, training=False, mixed_batches=True,
 
 
 def get_subject_data(fn_subject, batch_size=None, sample_index=None, start_tr=None, end_tr=None, nonan_indices=None):
-    data = np.load(fn_subject, mmap_mode='r')
-    if batch_size is not None:
-        try:
-            _ = data['identifier_0']
-            divisor = 3
-        except:
-            divisor = 2
-        num_trs = len(data) // divisor
-        start_tr, end_tr = get_tr_indices(num_trs, start_tr, end_tr)
-        nonan_indices = nonan_indices[(nonan_indices >= start_tr) & (nonan_indices <= end_tr)]
-        batch_indices = np.random.choice(nonan_indices, batch_size)
-        X = [data['data_' + str(b)] for b in batch_indices]
-        y = [data['label_' + str(b)] for b in batch_indices]
-    elif sample_index is not None:
-        X = data['data_' + str(sample_index)]
-        y = data['label_' + str(sample_index)]
-    else:
-        return data
-    return X, y
+    with np.load(fn_subject, mmap_mode='r') as data:
+        if batch_size is not None:
+            try:
+                _ = data['identifier_0']
+                divisor = 3
+            except:
+                divisor = 2
+            num_trs = len(data) // divisor
+            start_tr, end_tr = get_tr_indices(num_trs, start_tr, end_tr)
+            nonan_indices = nonan_indices[(nonan_indices >= start_tr) & (nonan_indices <= end_tr)]
+            batch_indices = np.random.choice(nonan_indices, batch_size)
+            X = [data['data_' + str(b)] for b in batch_indices]
+            y = [data['label_' + str(b)] for b in batch_indices]
+        elif sample_index is not None:
+            X = data['data_' + str(sample_index)]
+            y = data['label_' + str(sample_index)]
+        else:
+            return data
+        return X, y
 
 
 def get_tr_indices(num_trs, start_tr, end_tr):

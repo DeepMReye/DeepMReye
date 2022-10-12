@@ -59,7 +59,7 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
                                      transformlist=register_to_nau['fwdtransforms'], imagetype=3)
     return func, np.array(transformation_stats)
 
-def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None):
+def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None, mask_name=''):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead
 
     Parameters
@@ -83,10 +83,19 @@ def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, 
     """
     # Load subject specific run. File should be Nifti and 4D but should also work with other formats which can be read with AntsPy
     func = ants.image_read(fp_func)
+    # Replace NaN values
+    func_np = func.numpy()
+    func_np[np.isnan(func_np)] = replace_with
+    func = func.new_image_like(func_np)
     # Register to deepmreye template (dme_template). If registration fails quality check, try below line with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
-    transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=None)
+    if eyemask_big is None: # For functionals which are already in MNI space
+        print('No eyemask provided, skipping registration')
+        transform_to_dme = func.copy()
+        transformation_statistics = 0
+    else:
+        transform_to_dme, transformation_statistics = register_to_eye_masks(dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=transforms)
     # Cut mask and save to subject folder with subject report / quality control plots
-    (original_input, masked_eye, mask) = cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, fp_func=fp_func)
+    (original_input, masked_eye, mask) = cut_mask(transform_to_dme, eyemask_small.numpy(), x_edges, y_edges, z_edges, replace_with=replace_with, save_overview=True, mask_name=mask_name, fp_func=fp_func)
 
     return (masked_eye, transformation_statistics)
 
@@ -172,7 +181,7 @@ def get_mask_edges(mask, split=True):
     return (mask.numpy(), x_edges, y_edges, z_edges)
 
 
-def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_overview=True, fp_func=None, verbose=0):
+def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_overview=True, fp_func=None, mask_name='', verbose=0):
     """Cut mask into given shape given edges
 
     Parameters
@@ -219,7 +228,7 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     if save_overview:
         fn_full_mask = os.path.dirname(fp_func) + os.path.sep + 'report_' + participant_basename
         plot_subject_report(fn_full_mask, original_input, masked_eye, mask)
-    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + participant_basename + '.p'
+    fn_masked_eye = os.path.dirname(fp_func) + os.path.sep + 'mask_' + mask_name + participant_basename + '.p'
     pickle.dump(masked_eye, open(fn_masked_eye, 'wb'))
     
     return (original_input, masked_eye, mask)
