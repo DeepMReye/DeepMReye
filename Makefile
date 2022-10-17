@@ -1,6 +1,3 @@
-################################################################################
-# 	DOCKER
-
 .PHONY: Dockerfile 
 Dockerfile:
 	docker run --rm repronim/neurodocker:0.7.0 generate docker \
@@ -15,7 +12,7 @@ Dockerfile:
 		--workdir /home/neuro \
 		--copy notebooks /home/neuro/notebooks \
 		--run "mkdir -p /home/neuro/models" \
-		--run "wget https://osf.io/cqf74/download -O /home/neuro/dataset1_guided_fixations.h5" \
+		--run "wget https://osf.io/23t5v/download -O /home/neuro/dataset1to5.h5" \
 		--expose 8888 > Dockerfile
 
 docker_build: Dockerfile
