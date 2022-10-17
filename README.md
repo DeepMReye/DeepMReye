@@ -13,7 +13,7 @@ Moreover, here are additional [User Recommendations](https://deepmreye.slite.com
 
 ![deepMReye video](media/deepMReye_video.gif)
 
-## Installation - 
+## Installation
 
 ### Option 1: Pip install
 
@@ -56,7 +56,7 @@ Build the image locally
 docker build . -t deepmreye:latest
 ```
 
-Use deepMreye in the docker via a jupyter notebook:
+Use deepMreye in the docker via a jupyterlab:
 
 ```bash
 mkdir -p $PWD/notebooks
