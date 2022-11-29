@@ -13,15 +13,17 @@ Moreover, here are additional [User Recommendations](https://deepmreye.slite.com
 
 ![deepMReye video](media/deepMReye_video.gif)
 
-## Installation - Option 1: Pip install
+## Installation
 
-### Pip installation
+### Option 1: Pip install
+
+#### Pip installation
 Install DeepMReye with a CPU/GPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
 ```
 pip install deepmreye
 ```
 
-### Anaconda / Miniconda installation
+#### Anaconda / Miniconda installation
 
 To encapsulate DeepMReye in a virtual environment install with the following commands:
 ```
@@ -38,13 +40,32 @@ pip install CMake
 python3 setup.py install
 ```
 
-## Installation - Option 2: Colab
+### Option 2: Colab
 
 We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing) showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
 
 [![Model Training & Evaluation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing)
 
 ![Colab Walkthrough](media/colab_walkthrough.gif)
+
+### Option 3: Docker
+
+Build the image locally
+
+```bash
+docker build . -t deepmreye:latest
+```
+
+Use deepMreye in the docker via a jupyterlab:
+
+```bash
+mkdir -p $PWD/notebooks
+docker run -it --rm \
+    --publish 8888:8888 \
+    --volume $PWD/notebooks:/home/neuro/notebooks \
+    deepmreye:latest \
+        jupyter-lab --no-browser --ip 0.0.0.0
+```
 
 ### Data formats
 The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. The pipeline then extracts the eyeball voxels automatically and saves them as Python Pickle files, which serve as model input. For model training, you additionally need <u>**training labels**</u>, a numpy array containing 10 gaze coordinates per functional volume. These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target, and many file formats can be easily read (e.g. .npy, .npz, .mat, .csv etc.).

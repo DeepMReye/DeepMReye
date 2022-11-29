@@ -152,7 +152,7 @@ def get_mask_edges(mask, split=True):
     x_edges, y_edges, z_edges: 
         Edges in (x,y,z)-dimension
     """
-    # Get indices for left and right eye seperately
+    # Get indices for left and right eye separately
     edge_indices = np.where(mask.numpy() == 1)
     if split:
         # Get left and right based on middle between left and right eye. For collin27 : 45
@@ -432,7 +432,7 @@ def save_data(participant, participant_data, participant_labels, participant_ids
         data_dict['label_{}'.format(idx)] = label
         data_dict['identifier_{}'.format(idx)] = identifier
 
-    # Save each subject in seperate .npz files (fast to load)
+    # Save each subject in separate .npz files (fast to load)
     subject_file_path = join(processed_data, participant)
     print('Saving eye data {} and targets {} (NaN {}) to file {}'.format(participant_data.shape, participant_labels.shape, np.sum(np.isnan(participant_labels.flatten())), subject_file_path))
     np.savez(subject_file_path, **data_dict)
