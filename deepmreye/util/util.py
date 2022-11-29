@@ -118,7 +118,7 @@ def get_model_scores(real_y, pred_y, euc_pred, **args):
         (agg_scores_pct, subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred, **args)
     except ValueError:
         # Participant has only NaNs or no data, return empty dataframes
-        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN # 9 return paramteres
+        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN # 9 return parameters
     df_scores = pd.DataFrame([agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct], index=['Default', 'Default subTR', 'Refined', 'Refined subTR'])
     df_scores.columns = pd.MultiIndex.from_tuples((('Pearson', 'X'), ('Pearson', 'Y'), ('Pearson', 'Mean'), ('R^2-Score', 'X'), ('R^2-Score', 'Y'), ('R^2-Score', 'Mean'),
                                                    ('Eucl. Error', 'Mean'), ('Eucl. Error', 'Median'), ('Eucl. Error', 'Std')))
