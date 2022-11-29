@@ -1,37 +1,17 @@
+#!/usr/bin/env python
 """
 DeepMReye Toolbox
 © Markus Frey, Matthias Nau
 https://github.com/DeepMReye/DeepMReye
 Licensed under LGPL-3.0 License
 """
-from setuptools import setup, find_packages
+import sys
 
-long_description = open('README.md').read()
-with open('requirements.txt') as f:
-    requirements = f.read().splitlines()
+from setuptools import setup
 
-setup(
-    name='deepmreye',
-    version='0.1',
-    install_requires=requirements,
-    use_scm_version=True,
-    setup_requires=['setuptools_scm'],
-    author='Markus Frey',
-    author_email='markus.frey1@gmail.com',
-    description="MR-based eye tracker without eye tracking",
-    long_description=long_description,
-    url='https://github.com/DeepMReye/DeepMReye/',
-    license='LGPL-3.0',
-    classifiers=[
-        'Development Status :: 3 - Alpha',
-        'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
-        'Natural Language :: English',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3',
-    ],
-    packages=find_packages(),
-    package_data={
-        "": ["*.p", "*.nii", "*.csv", "*.npz", "*.png", "*.txt"],
-        "deepmreye": ["deepmreye/masks/*", "tests/data/*"]
-    },
-)
+
+SETUP_REQUIRES = ['setuptools >= 30.3.0']
+SETUP_REQUIRES += ['wheel'] if 'bdist_wheel' in sys.argv else []
+
+if __name__ == "__main__":
+    setup(setup_requires=SETUP_REQUIRES)

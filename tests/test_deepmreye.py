@@ -8,7 +8,7 @@ from deepmreye.util import model_opts, data_generator, util
 # --------------------------PREPROCESSING-----------------------------------------
 # --------------------------------------------------------------------------------
 def test_download(path_to_masks):
-    # To only test this commmand python -m pytest -k 'download', all commands python -m pytest
+    # To only test this command python -m pytest -k 'download', all commands python -m pytest
     # Delete files if already in folder to see if download works
     for m in ['eyemask_small.nii', 'eyemask_big.nii', 'dme_template.nii']:
         if os.path.exists(path_to_masks + m):

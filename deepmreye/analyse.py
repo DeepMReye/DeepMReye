@@ -38,7 +38,7 @@ def visualise_input_data(X, y, color="rgb(0, 150, 175)", cut_at=151, bg_color="r
         elif bg_color == "rgb(255,255,255)":
             colorscale = 'RdGy'
         fig.add_heatmap(z=this_z, colorscale=colorscale, visible=False, showscale=False, zmid=0, row=1, col=1, name="TR: {}".format(i))  # colorbar=dict(x=0.45, y=0.5, thickness=10, len=0.5))
-    fig.data[num_functionals*3+2].visible = True  # Some arithmetics;
+    fig.data[num_functionals*3+2].visible = True  # Some arithmetic;
     fig.data[num_functionals*3+2+1].visible = True  # connects to the active value below;
     fig.data[num_functionals*3+2+2].visible = True  # should be abstracted as a variable;
 
