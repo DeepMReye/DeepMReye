@@ -1,0 +1,55 @@
+name: test notebooks
+
+# this aims to test the notebooks, the way the user would
+# - install package from github
+# - use the nbmake pytest plugin to run the notebooks from top to bottom
+
+#
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+
+  test_notebooks:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest]
+        python-version: ["3.9"]
+        notebook: [usage_pretrained_weights]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Get data from OSF
+        run: cd notebooks && make all  
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install deepmreye from github
+        run: pip install git+https://github.com/DeepMReye/DeepMReye
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools
+          pip install pytest nbmake
+
+      - name: Display Python version and packages
+        run: |
+          python -c "import sys; print(sys.version)"
+          pip list     
+
+      - name: Run notebook ${{ matrix.notebook }}
+        run: pytest -srP -vv --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"
