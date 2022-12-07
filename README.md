@@ -56,7 +56,7 @@ Build the image locally
 docker build . -t deepmreye:latest
 ```
 
-Use deepMreye in the docker via a jupyterlab:
+Use deepMReye in the docker via a jupyterlab:
 
 ```bash
 mkdir -p $PWD/notebooks
