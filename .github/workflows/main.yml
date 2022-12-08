@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        python-version: ["3.8", "3.9", "3.10"] 
+        os: [ubuntu-latest, macOS-latest] # windows-latest: does not work because antspyx is not available for windows
+        python-version: ["3.8", "3.9", "3.10"] # '3.11' : some dependencies are not yet available for python 3.11
 
     runs-on: ${{ matrix.os }}
 
