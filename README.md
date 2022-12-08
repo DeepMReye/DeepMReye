@@ -77,7 +77,7 @@ Please see our [FAQ](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susL
 The GPU version of DeepMReye requires a NVIDIA GPU.
 
 ## Software requirements
-The following python dependencies are being automatically installed when installing DeepMReye (specified in requirements.txt):
+The following python dependencies are being automatically installed when installing DeepMReye (specified in setup.cfg):
 ```
 tensorflow-gpu (2.2.0)
 numpy (1.19.1)
@@ -87,7 +87,7 @@ scipy (1.5.0)
 ipython (7.13.0)
 plotly (4.14.3)
 ```
-Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.6 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
+Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.8 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
 
 ## Correspondence
 If you have questions, comments or inquiries, please check out the online [User documention](https://deepmreye.slite.com/api/s/channel/MUgmvViEbaATSrqt3susLZ/DeepMReye%3A%20Documentation) and reach out to us: markus.frey[at]ntnu.no & matthias.nau[at]ntnu.no
