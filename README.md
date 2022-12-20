@@ -31,7 +31,10 @@ conda create --name deepmreye python=3.9
 conda activate deepmreye
 pip install deepmreye
 ```
-The tensorflow version supports both CPU and GPU instructions. Note that you might need to install cudnn first (conda install -c conda-forge cudnn). 
+For GPU support, follow tensorflow [install](https://www.tensorflow.org/install/pip) instruction, e.g.:
+```
+conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0
+```
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
 git clone https://github.com/ANTsX/ANTsPy
