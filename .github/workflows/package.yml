@@ -44,13 +44,13 @@ jobs:
       - name: Build sdist and wheel
         run: python -m build
 
-      - name: Test PyPI upload
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
-          skip_existing: true
+#       - name: Test PyPI upload
+#         uses: pypa/gh-action-pypi-publish@release/v1
+#         with:
+#           user: __token__
+#           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+#           repository_url: https://test.pypi.org/legacy/
+#           skip_existing: true
 
       - name: Upload to PyPI (on tags)
         uses: pypa/gh-action-pypi-publish@release/v1
