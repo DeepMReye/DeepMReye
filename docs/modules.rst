@@ -5,5 +5,3 @@ DeepMReye
    :maxdepth: 4
 
    deepmreye
-   setup
-   tests
