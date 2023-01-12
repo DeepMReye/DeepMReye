@@ -16,6 +16,7 @@ jobs:
         command: |
           # taken from https://raw.githubusercontent.com/bids-apps/maintenance-tools/main/circleci/
           # make sure we have a lowercase repo
+          set -eux -o pipefail
           user_name=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')
           repo_name=$(echo "${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]')
 
@@ -53,6 +54,7 @@ jobs:
         name: push to dockerhub
         command: |
           # taken from https://raw.githubusercontent.com/bids-apps/maintenance-tools/main/circleci/
+          set -eux -o pipefail
           if [[ -n "${DOCKER_TOKEN}" ]]; then
               # make sure we have a lowercase repo
               user_name=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')
