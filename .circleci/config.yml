@@ -80,6 +80,8 @@ workflows:
     jobs:
     - build
     - deploy:
+        context:
+        - default    
         requires:
         - build
         filters:
