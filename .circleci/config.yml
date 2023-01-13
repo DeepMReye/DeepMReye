@@ -54,7 +54,7 @@ jobs:
         name: push to dockerhub
         command: |
           # taken from https://raw.githubusercontent.com/bids-apps/maintenance-tools/main/circleci/
-          set -eux -o pipefail
+          set -ex -o pipefail
           if [[ -n "${DOCKER_TOKEN}" ]]; then
               # make sure we have a lowercase repo
               user_name=deepmreye
