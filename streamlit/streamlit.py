@@ -3,6 +3,7 @@ import os
 import pickle
 import numpy as np
 import pandas as pd
+import requests
 
 import deepmreye
 
@@ -11,9 +12,11 @@ import streamlit.components.v1 as components
 
 
 def main():
-    st.markdown(f"""
+    st.markdown(
+        f"""
         ### This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant.
-    """)
+    """
+    )
     # st.image("https://github.com/DeepMReye/DeepMReye/raw/main/media/deepmreye_logo.png", width=300)
     # st.write("DeepMReye is a deep learning model for predicting eye movements from fMRI data.")
     # st.write(
@@ -182,7 +185,10 @@ def download_model_weights(model_str):
         url = "https://osf.io/download/8cr2j"
     # Download file with wget and store in weights folder
     weights_folder = os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")
-    os.system("wget -O {} {}".format(weights_folder, url))
+    # Download file with requests and save in weights folder
+    r = requests.get(url, allow_redirects=True)
+    with open(weights_folder, "wb") as f:
+        f.write(r.content)
 
 
 def load_model(fn_participant):
