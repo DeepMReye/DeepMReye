@@ -78,10 +78,7 @@ def run_participant(path_to_nifti, model_str):
 
     # Now load model weights
     st.write("Loading model weights...")
-    model, generators = load_model(fn_participant)
-    model_weights = os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")
-    st.write("Loading model weights from: ", model_weights)
-    model.load_weights(model_weights)
+    model, generators = load_model(fn_participant, model_str)
 
     # Run through tensorflow model
     st.write("Predicting gaze coordinates...")
@@ -186,8 +183,8 @@ def download_model_weights(model_str):
     with open(weights_folder, "wb") as f:
         f.write(r.content)
 
-
-def load_model(fn_participant):
+# @st.cache
+def load_model(fn_participant, model_str):
     opts = deepmreye.util.model_opts.get_opts()
     test_participants = [fn_participant]
     generators = deepmreye.util.data_generator.create_generators(test_participants, test_participants)
@@ -195,6 +192,9 @@ def load_model(fn_participant):
     (model, model_inference) = deepmreye.train.train_model(
         dataset="example_data", generators=generators, opts=opts, return_untrained=True
     )
+    model_weights = os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")
+    model.load_weights(model_weights)
+
     return model_inference, generators
 
 

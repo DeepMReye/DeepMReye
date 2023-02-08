@@ -3,6 +3,7 @@
 *.pyc
 *.avi
 
+/tmp/*.nii
 *.npy
 *.npz
 *.h5
