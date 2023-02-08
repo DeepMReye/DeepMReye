@@ -12,7 +12,7 @@ ipython = "*"
 plotly = "*"
 scikit-learn = "*"
 antspyx = "*"
-tensorflow = "*"
+tensorflow-cpu = "*"
 jupyter = "*"
 deepmreye = "*"
 

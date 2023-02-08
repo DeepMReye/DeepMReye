@@ -1,6 +1,5 @@
 import streamlit as st
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "" # Disable GPU
 
 import pickle
 import numpy as np
