@@ -11,11 +11,14 @@ import streamlit.components.v1 as components
 
 
 def main():
-    st.title("DeepMReye")
-    st.write("DeepMReye is a deep learning model for predicting eye movements from fMRI data.")
-    st.write(
-        "This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant."
-    )
+    st.markdown(f"""
+        ### This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant.
+    """)
+    # st.image("https://github.com/DeepMReye/DeepMReye/raw/main/media/deepmreye_logo.png", width=300)
+    # st.write("DeepMReye is a deep learning model for predicting eye movements from fMRI data.")
+    # st.write(
+    #     "This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant."
+    # )
 
     # Create folders
     create_folders()
