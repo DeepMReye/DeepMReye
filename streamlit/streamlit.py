@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "" # Disable GPU
+
 import pickle
 import numpy as np
 import pandas as pd
@@ -17,11 +19,6 @@ def main():
         ### This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant.
     """
     )
-    # st.image("https://github.com/DeepMReye/DeepMReye/raw/main/media/deepmreye_logo.png", width=300)
-    # st.write("DeepMReye is a deep learning model for predicting eye movements from fMRI data.")
-    # st.write(
-    #     "This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant."
-    # )
 
     # Create folders
     create_folders()
