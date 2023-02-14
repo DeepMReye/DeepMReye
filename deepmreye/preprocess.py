@@ -56,7 +56,24 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
         # Transform
         func = ants.apply_transforms(fixed=dme_template, moving=func,
                                      transformlist=register_to_nau['fwdtransforms'], imagetype=3)
+        # Make this more memory efficient by transforming one timestep of func at a time
+        #func = apply_transforms_time_step(fixed=dme_template, moving=func, transformlist=register_to_nau['fwdtransforms'], imagetype=2)
+            
     return func, np.array(transformation_stats)
+
+def apply_transforms_time_step(fixed, moving, transformlist, imagetype=3):
+    moving = moving.numpy()
+    num_time_steps = moving.shape[-1]
+    transformed_func = np.zeros_like(moving)
+    
+    for t in range(num_time_steps):
+        moving_time_step = np.expand_dims(moving[..., t], axis=-1)
+        moving_time_step = ants.from_numpy(moving_time_step)
+        transformed_time_step = ants.apply_transforms(fixed=fixed, moving=moving_time_step, transformlist=transformlist, imagetype=imagetype)
+        transformed_func[..., t] = np.squeeze(transformed_time_step.numpy(), axis=-1)
+
+    transformed_func = ants.from_numpy(transformed_func)
+    return transformed_func
 
 def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead
