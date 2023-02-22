@@ -23,7 +23,8 @@
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
+.eggs/
 build/
 env/
-.eggs/
 deepmreye.egg-info/
+dist/

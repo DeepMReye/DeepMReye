@@ -2,6 +2,7 @@
 ![py38 status](https://img.shields.io/badge/python3.8-supported-green.svg)
 ![Build Status](https://github.com/DeepMReye/DeepMReye/actions/workflows/main.yml/badge.svg)
 [![NatNeuro Paper](https://img.shields.io/badge/DOI-10.1038%2Fs41593--021--00947--w-blue)](https://doi.org/10.1038/s41593-021-00947-w)
+![Docker Pulls](https://img.shields.io/docker/pulls/deepmreye/deepmreye)
 ![Logo](media/deepmreye_logo.png)
 
 # DeepMReye: magnetic resonance-based eye tracking using deep neural networks
@@ -53,10 +54,10 @@ We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbK
 
 ### Option 3: Docker
 
-Build the image locally
+Pull the image from docker hub.
 
 ```bash
-docker build . -t deepmreye:latest
+docker pull deepmreye/deepmreye
 ```
 
 Use deepMReye in the docker via a jupyterlab:
@@ -66,7 +67,7 @@ mkdir -p $PWD/notebooks
 docker run -it --rm \
     --publish 8888:8888 \
     --volume $PWD/notebooks:/home/neuro/notebooks \
-    deepmreye:latest \
+    deepmreye/deepmreye:latest \
         jupyter-lab --no-browser --ip 0.0.0.0
 ```
 
