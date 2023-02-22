@@ -87,5 +87,7 @@ workflows:
         filters:
           tags:
             only: /.*/
+          branches:
+            only: main
 
 # VS Code Extension Version: 1.5.1
