@@ -13,14 +13,12 @@ import streamlit.components.v1 as components
 
 
 def main():
+    st.set_page_config(layout="wide")
     st.markdown(
         f"""
         ### This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant.
     """
     )
-
-    # Create folders
-    create_folders()
 
     # Create a file uploader widget
     uploaded_file = st.file_uploader("Choose a NIFTI file", type=["nii"])
@@ -39,23 +37,29 @@ def main():
             "dataset6_openclosed",
         ),
     )
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")):
-        with st.spinner("Downloading model weights {}...".format(model_str)):
-            download_model_weights(model_str)
 
     # Show the uploaded file
     if uploaded_file:
-        path_to_nifti = save_uploaded_file(uploaded_file)
+        # Create folders
+        create_folders()
+        # Download weights
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")):
+            with st.spinner("Downloading model weights {}...".format(model_str)):
+                download_model_weights(model_str)
+
+        with st.spinner("Preprocess file..."):
+            path_to_nifti = save_uploaded_file(uploaded_file)
         run_participant(path_to_nifti, model_str)
+        # Clean folders
+        clean_folders()
 
 
 def run_participant(path_to_nifti, model_str):
     participant_string = os.path.splitext(os.path.basename(path_to_nifti))[0]
     # Preprocess nifti file
     (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges) = deepmreye.preprocess.get_masks()
-    deepmreye.preprocess.run_participant(
-        path_to_nifti, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges
-    )
+    with st.spinner("Transform {} into MNI space...".format(path_to_nifti)):
+        deepmreye.preprocess.run_participant(path_to_nifti, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges)
     # Show preprocessed results
     html_results = os.path.join(os.path.dirname(path_to_nifti), "report_" + participant_string + ".html")
     show_html(html_results)
@@ -63,7 +67,8 @@ def run_participant(path_to_nifti, model_str):
     # Save into npz file for easy loading
     this_mask = os.path.join(os.path.dirname(path_to_nifti), "mask_" + participant_string + ".p")
     this_mask = pickle.load(open(this_mask, "rb"))
-    this_mask = deepmreye.preprocess.normalize_img(this_mask)
+    with st.spinner("Normalize Image..."):
+        this_mask = deepmreye.preprocess.normalize_img(this_mask)
 
     # Add dummy labels
     this_label = np.zeros(
@@ -74,39 +79,43 @@ def run_participant(path_to_nifti, model_str):
         participant_string, [this_mask], [this_label], [this_id], os.path.dirname(path_to_nifti), center_labels=False
     )
     fn_participant = os.path.join(os.path.dirname(path_to_nifti), participant_string + ".npz")
-    st.write("Saved preprocessed data in: ", fn_participant)
 
     # Now load model weights
-    st.write("Loading model weights...")
-    model, generators = load_model(fn_participant, model_str)
+    with st.spinner("Loading model weights..."):
+        model, generators = load_model(fn_participant, model_str)
 
     # Run through tensorflow model
-    st.write("Predicting gaze coordinates...")
-    (evaluation, scores) = deepmreye.train.evaluate_model(
-        dataset=participant_string,
-        model=model,
-        generators=generators,
-        save=False,
-        verbose=0,
-        percentile_cut=80,
-    )
-    df_pred_median, df_pred_subtr = adapt_evaluation(evaluation[list(evaluation.keys())[0]])
+    with st.spinner("Predicting gaze coordinates..."):
+        (evaluation, scores) = deepmreye.train.evaluate_model(
+            dataset=participant_string,
+            model=model,
+            generators=generators,
+            save=False,
+            verbose=0,
+            percentile_cut=80,
+        )
+        df_pred_median, df_pred_subtr = adapt_evaluation(evaluation[list(evaluation.keys())[0]])
 
-    st.dataframe(df_pred_median.style.format("{:.4}"))
-    st.dataframe(df_pred_subtr.style.format("{:.4}"))
+    st.success("Inference done for {}".format(participant_string))
+    
+    tab1, tab2 = st.tabs(["Gaze Coordinates", "Sub-TR Gaze Coordinates"])
+    with tab1:
+        st.dataframe(df_pred_median.style.format("{:.4}"))
+    with tab2:
+        st.dataframe(df_pred_subtr.style.format("{:.4}"))
 
     # Offer results as download
     st.download_button(
-        "Download median gaze coordinates (one per TR)",
+        "Download Gaze Coordinates (one per TR)",
         convert_df(df_pred_median),
-        "predicted_gaze_median.csv",
+        "predicted_gaze_median_{}.csv".format(participant_string),
         "text/csv",
         key="download-median-csv",
     )
     st.download_button(
-        "Download subTR gaze coordinates (10 per TR)",
+        "Download subTR Gaze Coordinates (10 per TR)",
         convert_df(df_pred_subtr),
-        "predicted_gaze_subTR.csv",
+        "predicted_gaze_subTR_{}.csv".format(participant_string),
         "text/csv",
         key="download-subTR-csv",
     )
@@ -119,7 +128,6 @@ def save_uploaded_file(uploadedfile):
     path_to_file = os.path.join(os.path.dirname(__file__), "tmp", uploadedfile.name)
     with open(path_to_file, "wb") as f:
         f.write(uploadedfile.getbuffer())
-    st.success("Saved file in {}".format(path_to_file))
     return path_to_file
 
 
@@ -130,6 +138,12 @@ def create_folders():
         os.makedirs(weights_folder)
     if not os.path.exists(tmp_folder):
         os.makedirs(tmp_folder)
+
+
+def clean_folders():
+    tmp_folder = os.path.join(os.path.dirname(__file__), "tmp")
+    for file in os.listdir(tmp_folder):
+        os.remove(os.path.join(tmp_folder, file))
 
 
 @st.experimental_memo
@@ -148,7 +162,6 @@ def adapt_evaluation(participant_evaluation):
     )
     # With subTR
     subtr_values = np.concatenate((pred_y, pred_uncertainty[..., np.newaxis]), axis=2)
-    st.write(subtr_values.shape)
     index = pd.MultiIndex.from_product(
         [range(subtr_values.shape[0]), range(subtr_values.shape[1])], names=["TR", "subTR"]
     )
@@ -182,6 +195,7 @@ def download_model_weights(model_str):
     r = requests.get(url, allow_redirects=True)
     with open(weights_folder, "wb") as f:
         f.write(r.content)
+
 
 # @st.cache
 def load_model(fn_participant, model_str):
