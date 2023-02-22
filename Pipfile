@@ -12,11 +12,16 @@ ipython = "*"
 plotly = "*"
 scikit-learn = "*"
 antspyx = "*"
-tensorflow-cpu = "*"
+tensorflow = "*"
 jupyter = "*"
-deepmreye = "*"
+
 
 [dev-packages]
 
+
+[streamlit]
+tensorflow-cpu = "*"
+deepmreye = "*"
+
 [requires]
-python_version = ">=3.7"
+python_version = "3.8"
