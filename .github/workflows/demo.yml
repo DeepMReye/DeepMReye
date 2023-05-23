@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest]
-        python-version: ["3.9"]
+        python-version: ["3.10"]
         notebook: [usage_pretrained_weights]
 
     runs-on: ${{ matrix.os }}
