@@ -81,7 +81,7 @@ Please see our [FAQ](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susL
 The GPU version of DeepMReye requires a NVIDIA GPU.
 
 ## Software requirements
-The following python dependencies are being automatically installed when installing DeepMReye (specified in requirements.txt):
+The following python dependencies are being automatically installed when installing DeepMReye (specified in setup.cfg):
 ```
 tensorflow-gpu (2.2.0)
 numpy (1.19.1)
@@ -91,7 +91,7 @@ scipy (1.5.0)
 ipython (7.13.0)
 plotly (4.14.3)
 ```
-Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.6 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
+Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.8 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda). 
 
 ## BIDS app
 If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/). Please read the paper and [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before you use it.
