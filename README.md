@@ -60,7 +60,7 @@ Pull the image from docker hub.
 docker pull deepmreye/deepmreye
 ```
 
-Use deepMReye in the docker via a jupyterlab:
+Use deepMReye in a docker container via jupyterlab:
 
 ```bash
 mkdir -p $PWD/notebooks
@@ -71,16 +71,17 @@ docker run -it --rm \
         jupyter-lab --no-browser --ip 0.0.0.0
 ```
 
-### Option 4: Streamlit
+### Option 4: Streamlit (Browser version)
 
-The easiest way if you just want to get gaze coordinates from a pretrained model is by using our streamlit app. To do so, run the following commands:
+If you would just like to try it out and decode gaze coordinates in your data using a pretrained model, the easiest way is using our streamlit app. 
+
+Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after. 
+Please read the [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using the pretrained models.
 
 ```bash
 pip install deepmreye[streamlit]
 streamlit run streamlit/streamlit.py
 ```
-This will open a browser window with the streamlit app. You can then upload your own data and it will give you the option to download gaze coordinates.
-
 
 ### Data formats
 The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. The pipeline then extracts the eyeball voxels automatically and saves them as Python Pickle files, which serve as model input. For model training, you additionally need <u>**training labels**</u>, a numpy array containing 10 gaze coordinates per functional volume. These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target, and many file formats can be easily read (e.g. .npy, .npz, .mat, .csv etc.).
