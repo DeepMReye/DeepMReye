@@ -16,7 +16,8 @@ def main():
     st.set_page_config(layout="wide")
     st.markdown(
         f"""
-        ### This web app allows you to upload a participant as a NIFTI file and get the gaze coordinates of the participant.
+        ### DeepMReye reconstructs gaze position from the MR-signal of the eyeballs. Upon loading your fMRI data (head motion-corrected 4D-NIFTI files), this app automatically extracts the eyeball voxels and decodes the gaze coordinates corresponding to each functional volume. 
+        Please read the [paper](https://img.shields.io/badge/DOI-10.1038%2Fs41593--021--00947--w-blue)](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
     """
     )
 
@@ -98,7 +99,7 @@ def run_participant(path_to_nifti, model_str):
 
     st.success("Inference done for {}".format(participant_string))
     
-    tab1, tab2 = st.tabs(["Gaze Coordinates", "Sub-TR Gaze Coordinates"])
+    tab1, tab2 = st.tabs(["Gaze coordinates", "Sub-TR gaze coordinates"])
     with tab1:
         st.dataframe(df_pred_median.style.format("{:.4}"))
     with tab2:
@@ -106,14 +107,14 @@ def run_participant(path_to_nifti, model_str):
 
     # Offer results as download
     st.download_button(
-        "Download Gaze Coordinates (one per TR)",
+        "Download gaze coordinates (one per TR)",
         convert_df(df_pred_median),
         "predicted_gaze_median_{}.csv".format(participant_string),
         "text/csv",
         key="download-median-csv",
     )
     st.download_button(
-        "Download subTR Gaze Coordinates (10 per TR)",
+        "Download sub-TR gaze coordinates (10 per TR)",
         convert_df(df_pred_subtr),
         "predicted_gaze_subTR_{}.csv".format(participant_string),
         "text/csv",
@@ -166,7 +167,7 @@ def adapt_evaluation(participant_evaluation):
         [range(subtr_values.shape[0]), range(subtr_values.shape[1])], names=["TR", "subTR"]
     )
     df_pred_subtr = pd.DataFrame(
-        subtr_values.reshape(-1, subtr_values.shape[-1]), index=index, columns=["X", "Y", "Uncertainty"]
+        subtr_values.reshape(-1, subtr_values.shape[-1]), index=index, columns=["X", "Y", "pred_error"]
     )
 
     return df_pred_median, df_pred_subtr
