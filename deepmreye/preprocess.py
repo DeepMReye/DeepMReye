@@ -56,7 +56,9 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
         # Transform
         func = ants.apply_transforms(fixed=dme_template, moving=func,
                                      transformlist=register_to_nau['fwdtransforms'], imagetype=3)
+            
     return func, np.array(transformation_stats)
+
 
 def run_participant(fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead
@@ -227,7 +229,7 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
 # --------------------------VISUALIZATIONS----------------------------------------
 # --------------------------------------------------------------------------------
 
-def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0,0,0)"):
+def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(14, 17, 23, 0)"):
     """Plots quality check figure for given subject
 
     Parameters
@@ -290,13 +292,13 @@ def plot_subject_report(fn_subject, original_input, masked_eye, mask, color="rgb
     fig.update_xaxes(showgrid=False, showticklabels=True, col=4)
     fig.update_yaxes(showgrid=False, showticklabels=True, col=4)
     fig.update_yaxes(showgrid=False, showticklabels=True, showline=True, col=4, row=1)
-    # Remove labels from brain plots
-    fig.update_yaxes(showgrid=False, showticklabels=False, col=1)
-    fig.update_yaxes(showgrid=False, showticklabels=False, col=2)
-    fig.update_yaxes(showgrid=False, showticklabels=False, col=3)
-    fig.update_xaxes(showgrid=False, showticklabels=False, col=1)
-    fig.update_xaxes(showgrid=False, showticklabels=False, col=2)
-    fig.update_xaxes(showgrid=False, showticklabels=False, col=3)
+    # # Remove labels from brain plots
+    fig.update_yaxes(showgrid=False, showticklabels=True, col=1)
+    fig.update_yaxes(showgrid=False, showticklabels=True, col=2)
+    fig.update_yaxes(showgrid=False, showticklabels=True, col=3)
+    fig.update_xaxes(showgrid=False, showticklabels=True, col=1)
+    fig.update_xaxes(showgrid=False, showticklabels=True, col=2)
+    fig.update_xaxes(showgrid=False, showticklabels=True, col=3)
     # Add mean and median to hist
     fig.add_vline(x=np.mean(eye_mask_flat), annotation=dict(text='Mean', y=0.9), line=dict(color='rgb(255, 255, 255)'), row=1, col=4)
     fig.add_vline(x=np.median(eye_mask_flat), annotation=dict(text='Median'), line=dict(color='rgb(255, 255, 255)'), row=1, col=4)

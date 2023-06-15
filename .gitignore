@@ -3,6 +3,7 @@
 *.pyc
 *.avi
 
+/tmp/*.nii
 *.npy
 *.npz
 *.h5
@@ -12,7 +13,7 @@
 *.html
 .vscode/
 
-!/tests/data/**
+/tests/data/**
 
 # demo
 notebooks/functional_data
