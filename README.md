@@ -79,7 +79,10 @@ Running the following commands will open a browser window that allows you to upl
 Please read the [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using the pretrained models.
 
 ```bash
-pip install deepmreye[streamlit]
+pip install deepmreye
+pip install streamlit
+git clone https://github.com/DeepMReye/DeepMReye.git
+cd DeepMReye
 streamlit run streamlit/streamlit.py
 ```
 

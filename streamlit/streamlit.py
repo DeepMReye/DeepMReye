@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(layout="wide")
 import os
 
 import pickle
@@ -13,11 +14,10 @@ import streamlit.components.v1 as components
 
 
 def main():
-    st.set_page_config(layout="wide")
     st.markdown(
         f"""
         ### DeepMReye reconstructs gaze position from the MR-signal of the eyeballs. Upon loading your fMRI data (head motion-corrected 4D-NIFTI files), this app automatically extracts the eyeball voxels and decodes the gaze coordinates corresponding to each functional volume. 
-        Please read the [paper](https://img.shields.io/badge/DOI-10.1038%2Fs41593--021--00947--w-blue)](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
+        Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
     """
     )
 
@@ -147,7 +147,7 @@ def clean_folders():
         os.remove(os.path.join(tmp_folder, file))
 
 
-@st.experimental_memo
+@st.cache_data
 def convert_df(df):
     return df.to_csv(index=True).encode("utf-8")
 
