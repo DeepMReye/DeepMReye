@@ -80,9 +80,9 @@ Please read the [User Recommendations](https://deepmreye.slite.com/p/channel/MUg
 
 ```bash
 git clone https://github.com/DeepMReye/DeepMReye.git
-pip install deepmreye
-pip install streamlit
 cd DeepMReye
+pip install .
+pip install streamlit
 streamlit run streamlit/streamlit.py
 ```
 
