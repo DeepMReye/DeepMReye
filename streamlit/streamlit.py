@@ -14,9 +14,9 @@ import streamlit.components.v1 as components
 
 
 def main():
+    st.image(os.path.join(os.getcwd(), 'media/deepmreye_logo.png'), caption=None, width=None, use_column_width=None, clamp=False, channels="RGB", output_format="auto")
     st.markdown(
         f"""
-        ### DeepMReye: Magnetic resonance-based eye tracking using deep neural networks
         
         This app enables reconstructing gaze position from the MR-signal of the eyeballs. Load your fMRI data below (head motion-corrected 4D-NIFTI files), pick one of the pretrained models, and download the decoded gaze coordinates shortly after. 
         
@@ -25,7 +25,7 @@ def main():
     )
 
     # Create a file uploader widget
-    uploaded_file = st.file_uploader("Choose a NIFTI file", type=["nii"])
+    uploaded_file = st.file_uploader("Choose a NIFTI file (head motion-corrected)", type=["nii"])
 
     # Choose model weights
     model_str = st.selectbox(
@@ -38,7 +38,7 @@ def main():
             "dataset3_pursuit",
             "dataset4_pursuit",
             "dataset5_free_viewing",
-            "dataset6_openclosed",
+            #"dataset6_openclosed",
         ),
     )
 
@@ -57,6 +57,21 @@ def main():
         # Clean folders
         clean_folders()
 
+    st.markdown(
+        f"""
+        
+        The models have been trained on following datasets:
+
+        * dataset1_guided_fixations: [Alexander et al. 2017](https://doi.org/10.1038/sdata.2017.181)  
+        * dataset2_pursuit: [Nau et al. 2018](https://doi.org/10.1016/j.neuroimage.2018.04.012)  
+        * dataset3_pursuit: [Polti & Nau et al. 2022](https://elifesciences.org/articles/79027)  
+        * dataset4_pursuit: [Nau et al. 2018](https://doi.org/10.1038/s41593-017-0050-8)  
+        * dataset5_free_viewing: [Julian et al. 2018](https://doi.org/10.1038/s41593-017-0049-1)  
+        * dataset6: 4 Participants of [Frey & Nau et al. 2021](https://www.nature.com/articles/s41593-021-00947-w)  
+        * datasets_1to6: Datasets 1-6  
+        * datasets_1to5: Datasets 1-5 (recommended)  
+    """
+    )
 
 def run_participant(path_to_nifti, model_str):
     participant_string = os.path.splitext(os.path.basename(path_to_nifti))[0]
