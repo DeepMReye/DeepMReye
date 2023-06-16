@@ -18,7 +18,7 @@ def main():
     st.markdown(
         f"""
         
-        This app enables reconstructing gaze position from the MR-signal of the eyeballs. Load your fMRI data below (head motion-corrected 4D-NIFTI files), pick one of the pretrained models, and download the decoded gaze coordinates shortly after. 
+        This app enables reconstructing gaze position from the MR-signal of the eyeballs. Load your fMRI data below, pick one of the pretrained models, and download the decoded gaze coordinates shortly after. 
         
         Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
     """
