@@ -16,7 +16,10 @@ import streamlit.components.v1 as components
 def main():
     st.markdown(
         f"""
-        ### DeepMReye reconstructs gaze position from the MR-signal of the eyeballs. Upon loading your fMRI data (head motion-corrected 4D-NIFTI files), this app automatically extracts the eyeball voxels and decodes the gaze coordinates corresponding to each functional volume. 
+        ### DeepMReye: Magnetic resonance-based eye tracking using deep neural networks
+        
+        This app enables reconstructing gaze position from the MR-signal of the eyeballs. Load your fMRI data below (head motion-corrected 4D-NIFTI files), pick one of the pretrained models, and download the decoded gaze coordinates shortly after. 
+        
         Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
     """
     )
@@ -26,10 +29,10 @@ def main():
 
     # Choose model weights
     model_str = st.selectbox(
-        "Choose model weights",
+        "Choose pretrained model",
         (
-            "datasets_1to6",
             "datasets_1to5",
+            "datasets_1to6",
             "dataset1_guided_fixations",
             "dataset2_pursuit",
             "dataset3_pursuit",
