@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 
 def main():
-    st.image(os.path.join(os.getcwd(), 'media/deepmreye_logo.png'), caption=None, width=None, use_column_width=None, clamp=False, channels="RGB", output_format="auto")
+    st.image(os.path.join(os.getcwd(), 'media/deepmreye_logo_t.png'), caption=None, width=None, use_column_width=None, clamp=False, channels="RGB", output_format="auto")
     st.markdown(
         f"""
         

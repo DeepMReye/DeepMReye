@@ -8,7 +8,6 @@
 *.npz
 *.h5
 
-*.png
 *.csv
 *.html
 .vscode/
