@@ -78,7 +78,7 @@ def run_participant(path_to_nifti, model_str):
     # Preprocess nifti file
     (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges) = deepmreye.preprocess.get_masks()
     with st.spinner("Transform {} into MNI space...".format(path_to_nifti)):
-        deepmreye.preprocess.run_participant(path_to_nifti, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges)
+        deepmreye.preprocess.run_participant(path_to_nifti, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, transforms=['Affine', 'Affine', 'SyNAggro'])
     # Show preprocessed results
     html_results = os.path.join(os.path.dirname(path_to_nifti), "report_" + participant_string + ".html")
     show_html(html_results)
