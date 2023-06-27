@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-10.15]
+        os: [ubuntu-latest, macOS-latest]
         python-version: ["3.9"]
         notebook: [usage_pretrained_weights]
 
