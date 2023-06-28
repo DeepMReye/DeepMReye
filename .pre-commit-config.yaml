@@ -7,7 +7,6 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=5000']
-      - id: check-executables-have-shebangs
       - id: check-toml
   - repo: https://github.com/google/yapf
     rev: v0.33.0

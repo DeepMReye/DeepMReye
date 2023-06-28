@@ -1,18 +1,19 @@
 """ Additional methods which did not earn its own space in the main methods. Maybe because they are more general and made for higher purposes. """
+import warnings
+from math import atan2
+
 import numpy as np
 import pandas as pd
-from math import atan2
+import tensorflow as tf
+import tensorflow.keras.backend as K
 from scipy import ndimage
 from sklearn.metrics import r2_score
-import warnings
-import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import LearningRateScheduler
-import tensorflow as tf
 
 
 def augment_input(X, rotation=0, shift=0, zoom=0):
     """ Augments 3D images
-    Inputs: 
+    Inputs:
     - X : Batch of 3D images
     - rotation : Rotation in degree
     - shift : Shift in pixels
@@ -21,8 +22,10 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
     Outputs:
     - X : Augmented batch of 3D images
     """
+
     def scaleit(image, factor):
-        with warnings.catch_warnings():  # Weird bug, should be fixed in next scipy version
+        with warnings.catch_warnings(
+        ):  # Weird bug, should be fixed in next scipy version
             warnings.simplefilter("ignore")
             height, width, tiefe, depth = image.shape
             zheight = int(np.round(factor * height))
@@ -35,8 +38,14 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
                 row = (height - zheight) // 2
                 col = (width - zwidth) // 2
                 layer = (tiefe - ztiefe) // 2
-                newimg[row:row+zheight, col:col+zwidth, layer:layer+ztiefe, :] = ndimage.zoom(image, (float(factor), float(
-                    factor), float(factor), 1.0), order=0, mode='constant', cval=0, prefilter=False)[0:zheight, 0:zwidth, 0:ztiefe, :]
+                newimg[row:row + zheight, col:col + zwidth,
+                       layer:layer + ztiefe, :] = ndimage.zoom(
+                           image,
+                           (float(factor), float(factor), float(factor), 1.0),
+                           order=0,
+                           mode='constant',
+                           cval=0,
+                           prefilter=False)[0:zheight, 0:zwidth, 0:ztiefe, :]
 
                 return newimg
 
@@ -45,14 +54,18 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
                 col = (width - zwidth) // 2
                 layer = (tiefe - ztiefe) // 2
 
-                newimg = ndimage.zoom(image, (float(factor), float(factor), float(
-                    factor), 1.0),  order=0, mode='constant', cval=0, prefilter=False)
+                newimg = ndimage.zoom(
+                    image, (float(factor), float(factor), float(factor), 1.0),
+                    order=0,
+                    mode='constant',
+                    cval=0,
+                    prefilter=False)
 
                 extrah = (newimg.shape[0] - height) // 2
                 extraw = (newimg.shape[1] - width) // 2
                 extrad = (newimg.shape[2] - tiefe) // 2
-                newimg = newimg[extrah:extrah+height,
-                                extraw:extraw+width, extrad:extrad+tiefe, :]
+                newimg = newimg[extrah:extrah + height, extraw:extraw + width,
+                                extrad:extrad + tiefe, :]
 
                 return newimg
 
@@ -63,29 +76,57 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
         if 0 in axis:
             # rotate along x-axis
             angle = np.random.uniform(-max_angle[0], max_angle[0])
-            image1 = ndimage.rotate(image1, angle, mode='constant', cval=0, axes=(
-                1, 2), reshape=False, prefilter=False, order=0)
+            image1 = ndimage.rotate(image1,
+                                    angle,
+                                    mode='constant',
+                                    cval=0,
+                                    axes=(1, 2),
+                                    reshape=False,
+                                    prefilter=False,
+                                    order=0)
 
         if 1 in axis:
             # rotate along y-axis
             angle = np.random.uniform(-max_angle[1], max_angle[1])
-            image1 = ndimage.rotate(image1, angle, mode='constant', cval=0, axes=(
-                0, 2), reshape=False, prefilter=False, order=0)
+            image1 = ndimage.rotate(image1,
+                                    angle,
+                                    mode='constant',
+                                    cval=0,
+                                    axes=(0, 2),
+                                    reshape=False,
+                                    prefilter=False,
+                                    order=0)
 
         if 2 in axis:
             # rotate along z-axis
             angle = np.random.uniform(-max_angle[2], max_angle[2])
-            image1 = ndimage.rotate(image1, angle, mode='constant', cval=0, axes=(
-                0, 1), reshape=False, prefilter=False, order=0)
+            image1 = ndimage.rotate(image1,
+                                    angle,
+                                    mode='constant',
+                                    cval=0,
+                                    axes=(0, 1),
+                                    reshape=False,
+                                    prefilter=False,
+                                    order=0)
         return image1
+
     # Rotate
     X = np.array([rotate_img(x, rotation, axis=[0, 1, 2]) for x in X])
 
     # Then shift
-    X = np.array([ndimage.shift(x, shift=(np.random.randint(-shift, shift), np.random.randint(-shift, shift),
-                                          np.random.randint(-shift, shift), 0), order=0, mode='constant', cval=0, prefilter=False) for x in X])
+    X = np.array([
+        ndimage.shift(x,
+                      shift=(np.random.randint(-shift, shift),
+                             np.random.randint(-shift, shift),
+                             np.random.randint(-shift, shift), 0),
+                      order=0,
+                      mode='constant',
+                      cval=0,
+                      prefilter=False) for x in X
+    ])
     # Then zoom
-    X = np.array([scaleit(x, np.random.uniform(1-zoom, 1+zoom)) for x in X])
+    X = np.array(
+        [scaleit(x, np.random.uniform(1 - zoom, 1 + zoom)) for x in X])
 
     return X
 
@@ -95,8 +136,10 @@ def mish(x):
 
 
 def step_decay_schedule(initial_lr=1e-4, decay_factor=0.9, num_epochs=50):
+
     def schedule(epoch):
-        return initial_lr * (1 - epoch / num_epochs) ** decay_factor
+        return initial_lr * (1 - epoch / num_epochs)**decay_factor
+
     return LearningRateScheduler(schedule)
 
 
@@ -114,18 +157,34 @@ def angle_between_points(y_true, y_pred):
 
 def get_model_scores(real_y, pred_y, euc_pred, **args):
     try:
-        (agg_scores, subtr_scores) = quantify_predictions(real_y, pred_y, euc_pred, percentile_cut=None)
-        (agg_scores_pct, subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred, **args)
+        (agg_scores, subtr_scores) = quantify_predictions(real_y,
+                                                          pred_y,
+                                                          euc_pred,
+                                                          percentile_cut=None)
+        (agg_scores_pct,
+         subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred,
+                                                  **args)
     except ValueError:
         # Participant has only NaNs or no data, return empty dataframes
-        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN, np.random.rand(9)*np.NaN # 9 return parameters
-    df_scores = pd.DataFrame([agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct], index=['Default', 'Default subTR', 'Refined', 'Refined subTR'])
-    df_scores.columns = pd.MultiIndex.from_tuples((('Pearson', 'X'), ('Pearson', 'Y'), ('Pearson', 'Mean'), ('R^2-Score', 'X'), ('R^2-Score', 'Y'), ('R^2-Score', 'Mean'),
-                                                   ('Eucl. Error', 'Mean'), ('Eucl. Error', 'Median'), ('Eucl. Error', 'Std')))
+        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(
+            9) * np.NaN, np.random.rand(9) * np.NaN, np.random.rand(
+                9) * np.NaN, np.random.rand(9) * np.NaN  # 9 return parameters
+    df_scores = pd.DataFrame(
+        [agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct],
+        index=['Default', 'Default subTR', 'Refined', 'Refined subTR'])
+    df_scores.columns = pd.MultiIndex.from_tuples(
+        (('Pearson', 'X'), ('Pearson', 'Y'), ('Pearson', 'Mean'),
+         ('R^2-Score', 'X'), ('R^2-Score', 'Y'), ('R^2-Score', 'Mean'),
+         ('Eucl. Error', 'Mean'), ('Eucl. Error', 'Median'), ('Eucl. Error',
+                                                              'Std')))
     return df_scores
 
 
-def quantify_predictions(y_true, y_pred, euc_pred, subtr_functor=np.median, percentile_cut=None):
+def quantify_predictions(y_true,
+                         y_pred,
+                         euc_pred,
+                         subtr_functor=np.median,
+                         percentile_cut=None):
     # Take care of NaN in XYs
     nan_indices = np.any(np.isnan(y_true), axis=(1, 2))
     y_true = y_true[~nan_indices, ...]
@@ -133,7 +192,8 @@ def quantify_predictions(y_true, y_pred, euc_pred, subtr_functor=np.median, perc
     euc_pred = euc_pred[~nan_indices, ...]
 
     if y_true.size < 1:
-        raise ValueError('Participant has no ground truth data, nothing to quantify')
+        raise ValueError(
+            'Participant has no ground truth data, nothing to quantify')
 
     # Aggregate across subTR values
     y_true_agg = subtr_functor(y_true, axis=1)
@@ -143,10 +203,17 @@ def quantify_predictions(y_true, y_pred, euc_pred, subtr_functor=np.median, perc
     # Use flattened array for subTR comparison
     y_true_flat = np.reshape(y_true, (y_true.shape[0] * y_true.shape[1], -1))
     y_pred_flat = np.reshape(y_pred, (y_pred.shape[0] * y_pred.shape[1], -1))
-    euc_pred_flat = np.reshape(euc_pred, (euc_pred.shape[0] * euc_pred.shape[1], -1))
+    euc_pred_flat = np.reshape(euc_pred,
+                               (euc_pred.shape[0] * euc_pred.shape[1], -1))
 
-    agg_scores = calculate_scores(y_true_agg, y_pred_agg, euc_pred_agg, percentile_cut=percentile_cut)
-    flat_scores = calculate_scores(y_true_flat, y_pred_flat, euc_pred_flat[..., 0], percentile_cut=percentile_cut)
+    agg_scores = calculate_scores(y_true_agg,
+                                  y_pred_agg,
+                                  euc_pred_agg,
+                                  percentile_cut=percentile_cut)
+    flat_scores = calculate_scores(y_true_flat,
+                                   y_pred_flat,
+                                   euc_pred_flat[..., 0],
+                                   percentile_cut=percentile_cut)
 
     return (agg_scores, flat_scores)
 
@@ -167,7 +234,8 @@ def calculate_scores(y_true, y_pred, euc_pred, percentile_cut=None):
 
     euc = euclidean_distance(y_true, y_pred)
 
-    return (pearson_x, pearson_y, pearson_mean, r2_x, r2_y, r2_mean, np.mean(euc), np.median(euc), np.std(euc))
+    return (pearson_x, pearson_y, pearson_mean, r2_x, r2_y, r2_mean,
+            np.mean(euc), np.median(euc), np.std(euc))
 
 
 def smooth_signal(signal, N):
@@ -189,7 +257,7 @@ def smooth_signal(signal, N):
     # Preprocess edges
     signal = np.concatenate([signal[0:N], signal, signal[-N:]])
     # Convolve
-    signal = np.convolve(signal, np.ones((N,))/N, mode='same')
+    signal = np.convolve(signal, np.ones((N, )) / N, mode='same')
     # Postprocess edges
     signal = signal[N:-N]
 
@@ -214,36 +282,38 @@ class color:
 # ------------------------Command Line Options------------------------------------
 # --------------------------------------------------------------------------------
 class Arg:
+
     def __init__(self, *args, **kwargs):
         self.cli = args
         self.kwargs = kwargs
 
+
 CLI_OPTIONS = {
-    "verbosity": Arg(
-        '-v', '--verbose',
+    "verbosity":
+    Arg(
+        '-v',
+        '--verbose',
         help='Verbosity level',
         default=0,
     ),
-    "gpu_id": Arg(
-        '--gpu_id',
+    "gpu_id":
+    Arg('--gpu_id',
         help="Which GPU to use for training",
         metavar='gpu_id',
-        default=''
-    ), 
-    "dataset_path": Arg(
-        '--dataset_path',
+        default=''),
+    "dataset_path":
+    Arg('--dataset_path',
         help="Path to dataset. Base folder is also dataset name.",
         metavar='dataset_path',
-        default='./'
-    ), 
-    "weights_path": Arg(
-        '--weights_path',
+        default='./'),
+    "weights_path":
+    Arg('--weights_path',
         help="Path to where weights should be stored.",
         metavar='weights_path',
-        default='./weights/'
-    ), 
-    "datasets": Arg(
-        '--datasets',
+        default='./weights/'),
+    "datasets":
+    Arg('--datasets',
         help="If given only train subset of all datasets.",
         metavar='datasets',
-        default=None)}
+        default=None)
+}

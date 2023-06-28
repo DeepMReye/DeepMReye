@@ -1,5 +1,1 @@
-from . import util
-from . import preprocess
-from . import architecture
-from . import train
-from . import analyse
+from . import analyse, architecture, preprocess, train, util

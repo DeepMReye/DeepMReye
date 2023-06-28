@@ -1,5 +1,5 @@
 
-# TODO consider replacing this makefile with a python equivalent to make it portable on windows 
+# TODO consider replacing this makefile with a python equivalent to make it portable on windows
 
 .PHONY: all clean
 

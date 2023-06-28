@@ -75,7 +75,7 @@ docker run -it --rm \
 
 If you would like decode gaze coordinates in your data using a pretrained model, the easiest way is using our streamlit app.
 
-Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after. 
+Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after.
 Please read the [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using the pretrained models.
 
 ```bash

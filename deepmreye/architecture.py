@@ -1,9 +1,25 @@
-from tensorflow.keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, GaussianNoise, RepeatVector, AveragePooling3D, InputSpec, Input, Reshape, Flatten, Dropout, concatenate, Layer
-from tensorflow.keras import initializers, regularizers, constraints
-from tensorflow.keras.models import Model
-import tensorflow.keras.backend as K
-from tensorflow.keras import optimizers
 import tensorflow as tf
+import tensorflow.keras.backend as K
+from tensorflow.keras import constraints, initializers, optimizers, regularizers
+from tensorflow.keras.layers import (
+    Activation,
+    Add,
+    AveragePooling3D,
+    Conv3D,
+    Dense,
+    Dropout,
+    Flatten,
+    GaussianNoise,
+    Input,
+    InputSpec,
+    Lambda,
+    Layer,
+    RepeatVector,
+    Reshape,
+    UpSampling3D,
+    concatenate,
+)
+from tensorflow.keras.models import Model
 
 
 def create_standard_model(input_shape, opts):
@@ -28,35 +44,54 @@ def create_standard_model(input_shape, opts):
     input_layer_noise = GaussianNoise(opts['gaussian_noise'])(input_layer)
 
     # Initial convolution + dropout
-    x = conv3d_block(input_layer_noise, filters=opts['filters'],
-                     kernel_size=opts['kernel'], strides=1, activation=opts['activation'])
+    x = conv3d_block(input_layer_noise,
+                     filters=opts['filters'],
+                     kernel_size=opts['kernel'],
+                     strides=1,
+                     activation=opts['activation'])
     x = Dropout(opts['dropout_rate'])(x, training=opts['mc_dropout'])
 
     # Downsample to bottleneck layer, but keep skip layers
-    x, skip_layers = downsample_block(x, filters=opts['filters'], depth=opts['depth'],
-                                      multiplier=opts['multiplier'], groups=opts['groups'], activation=opts['activation'])
+    x, skip_layers = downsample_block(x,
+                                      filters=opts['filters'],
+                                      depth=opts['depth'],
+                                      multiplier=opts['multiplier'],
+                                      groups=opts['groups'],
+                                      activation=opts['activation'])
 
     # After this layer we split into segmentation and regression part
     bottleneck_layer = Flatten()(x)
 
     # Regression block
-    out_regression = regression_block(bottleneck_layer, num_dense=opts['num_dense'], num_fc=opts['num_fc'],
-                                      activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
+    out_regression = regression_block(bottleneck_layer,
+                                      num_dense=opts['num_dense'],
+                                      num_fc=opts['num_fc'],
+                                      activation=opts['activation'],
+                                      dropout_rate=opts['dropout_rate'],
+                                      inner_timesteps=opts['inner_timesteps'],
+                                      mc_dropout=opts['mc_dropout'])
 
     # Confidence for regression block
-    out_confidence = confidence_block(
-        bottleneck_layer, num_fc=opts['num_fc'], activation=opts['activation'], dropout_rate=opts['dropout_rate'], inner_timesteps=opts['inner_timesteps'], mc_dropout=opts['mc_dropout'])
+    out_confidence = confidence_block(bottleneck_layer,
+                                      num_fc=opts['num_fc'],
+                                      activation=opts['activation'],
+                                      dropout_rate=opts['dropout_rate'],
+                                      inner_timesteps=opts['inner_timesteps'],
+                                      mc_dropout=opts['mc_dropout'])
 
     # Create model
     real_regression_shape = out_regression.shape.as_list()
     real_regression = Input(real_regression_shape[1::])
-    model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
-    model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
+    model = Model(inputs=[input_layer, real_regression],
+                  outputs=[out_regression])
+    model_inference = Model(inputs=input_layer,
+                            outputs=[out_regression, out_confidence])
 
     # Add losses
-    loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
-    model.add_loss(opts['loss_euclidean']*loss_euclidean)
-    model.add_loss(opts['loss_confidence']*loss_confidence)
+    loss_euclidean, loss_confidence = compute_standard_loss(
+        out_confidence, real_regression, out_regression)
+    model.add_loss(opts['loss_euclidean'] * loss_euclidean)
+    model.add_loss(opts['loss_confidence'] * loss_confidence)
 
     # Compile it
     model.compile(optimizer=optimizers.Adam(opts['lr']))
@@ -67,39 +102,69 @@ def create_standard_model(input_shape, opts):
 
     return model, model_inference
 
+
 # --- adult blocks
 def res_block(input_layer, filters, groups, activation):
-    input_layer_res = conv3d_block(input_layer, filters=filters, kernel_size=1, strides=1, activation=activation)
+    input_layer_res = conv3d_block(input_layer,
+                                   filters=filters,
+                                   kernel_size=1,
+                                   strides=1,
+                                   activation=activation)
 
     x = GroupNormalization(groups=groups, axis=-1)(input_layer)
     x = Activation(activation)(x)
-    x = conv3d_block(x, filters=filters, kernel_size=3, strides=1, activation=activation)
+    x = conv3d_block(x,
+                     filters=filters,
+                     kernel_size=3,
+                     strides=1,
+                     activation=activation)
 
     x = GroupNormalization(groups=groups, axis=-1)(x)
     x = Activation(activation)(x)
-    x = conv3d_block(x, filters=filters, kernel_size=3, strides=1, activation=activation)
+    x = conv3d_block(x,
+                     filters=filters,
+                     kernel_size=3,
+                     strides=1,
+                     activation=activation)
 
     out = Add()([x, input_layer_res])
     return out
 
-def downsample_block(input_layer, filters, depth, multiplier, groups, activation):
+
+def downsample_block(input_layer, filters, depth, multiplier, groups,
+                     activation):
     x = input_layer
     skip_layers = []
     for level_number in range(depth):
         n_level_filters = int(multiplier**level_number) * filters
 
         for level in range(0, level_number):
-            x = res_block(x, filters=n_level_filters, groups=groups, activation=activation)
+            x = res_block(x,
+                          filters=n_level_filters,
+                          groups=groups,
+                          activation=activation)
         # For segmentation save layer after res_blocks
         skip_layers.append(x)
         if level_number < (depth - 1):
-            x = conv3d_block(x, filters=n_level_filters, kernel_size=3, strides=2, activation=activation)
+            x = conv3d_block(x,
+                             filters=n_level_filters,
+                             kernel_size=3,
+                             strides=2,
+                             activation=activation)
     x = GroupNormalization(groups=groups, axis=-1)(x)
     x = Activation(activation)(x)
 
     return x, skip_layers
 
-def regression_block(input_layer, num_dense, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout, dense_out=2):
+
+def regression_block(input_layer,
+                     num_dense,
+                     num_fc,
+                     activation,
+                     dropout_rate,
+                     inner_timesteps,
+                     mc_dropout,
+                     dense_out=2):
     x = RepeatVector(inner_timesteps)(input_layer)
     # Split timesteps so each gets its own weight
     all_xs = list()
@@ -115,26 +180,37 @@ def regression_block(input_layer, num_dense, num_fc, activation, dropout_rate, i
     out = concatenate(all_xs, axis=1)
     return out
 
-def confidence_block(input_layer, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout):
+
+def confidence_block(input_layer, num_fc, activation, dropout_rate,
+                     inner_timesteps, mc_dropout):
     out_conf = Dense(num_fc, activation=activation)(input_layer)
     out_conf = Dropout(dropout_rate)(out_conf, training=mc_dropout)
     out_conf = Dense(inner_timesteps, activation=activation)(out_conf)
     return out_conf
 
+
 # --- baby blocks
 def conv3d_block(input_layer, filters, kernel_size, strides, activation):
     if strides > 1:
-        x = Conv3D(filters=filters, kernel_size=(kernel_size, kernel_size, kernel_size),
-                   strides=(1, 1, 1), padding='same', activation=activation)(input_layer)
+        x = Conv3D(filters=filters,
+                   kernel_size=(kernel_size, kernel_size, kernel_size),
+                   strides=(1, 1, 1),
+                   padding='same',
+                   activation=activation)(input_layer)
         x = AveragePooling3D()(x)
     else:
-        x = Conv3D(filters=filters, kernel_size=(kernel_size, kernel_size, kernel_size),
-                   strides=strides, padding='same', activation=activation)(input_layer)
+        x = Conv3D(filters=filters,
+                   kernel_size=(kernel_size, kernel_size, kernel_size),
+                   strides=strides,
+                   padding='same',
+                   activation=activation)(input_layer)
     return x
+
 
 def upsampling_block(input_layer, size=2):
     x = UpSampling3D(size=size)(input_layer)
     return x
+
 
 # --- loss blocks
 def compute_standard_loss(out_confidence, real_reg, pred_reg):
@@ -143,11 +219,14 @@ def compute_standard_loss(out_confidence, real_reg, pred_reg):
 
     return K.mean(loss_euclidean), K.mean(loss_confidence)
 
+
 def euclidean_distance(y_true, y_pred):
     return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
 
+
 def mean_squared_error(y_true, y_pred):
     return K.square(y_true - y_pred)
+
 
 # --- Custom Layers
 # Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py
@@ -229,18 +308,20 @@ class GroupNormalization(Layer):
                              str(input_shape) + '.')
 
         if dim < self.groups:
-            raise ValueError('Number of groups (' + str(self.groups) + ') cannot be '
-                             'more than the number of channels (' +
-                             str(dim) + ').')
+            raise ValueError('Number of groups (' + str(self.groups) +
+                             ') cannot be '
+                             'more than the number of channels (' + str(dim) +
+                             ').')
 
         if dim % self.groups != 0:
-            raise ValueError('Number of groups (' + str(self.groups) + ') must be a '
+            raise ValueError('Number of groups (' + str(self.groups) +
+                             ') must be a '
                              'multiple of the number of channels (' +
                              str(dim) + ').')
 
         self.input_spec = InputSpec(ndim=len(input_shape),
                                     axes={self.axis: dim})
-        shape = (dim,)
+        shape = (dim, )
 
         if self.scale:
             self.gamma = self.add_weight(shape=shape,
@@ -314,9 +395,11 @@ class GroupNormalization(Layer):
             'center': self.center,
             'scale': self.scale,
             'beta_initializer': initializers.serialize(self.beta_initializer),
-            'gamma_initializer': initializers.serialize(self.gamma_initializer),
+            'gamma_initializer':
+            initializers.serialize(self.gamma_initializer),
             'beta_regularizer': regularizers.serialize(self.beta_regularizer),
-            'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
+            'gamma_regularizer':
+            regularizers.serialize(self.gamma_regularizer),
             'beta_constraint': constraints.serialize(self.beta_constraint),
             'gamma_constraint': constraints.serialize(self.gamma_constraint)
         }
