@@ -42,21 +42,6 @@ def main():
         ),
     )
 
-    # Show the uploaded file
-    if uploaded_file:
-        # Create folders
-        create_folders()
-        # Download weights
-        if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")):
-            with st.spinner("Downloading model weights {}...".format(model_str)):
-                download_model_weights(model_str)
-
-        with st.spinner("Preprocess file..."):
-            path_to_nifti = save_uploaded_file(uploaded_file)
-        run_participant(path_to_nifti, model_str)
-        # Clean folders
-        clean_folders()
-
     st.markdown(
         f"""
         
@@ -72,6 +57,21 @@ def main():
         * datasets_1to5: Datasets 1-5 (recommended)  
     """
     )
+
+    # Show the uploaded file
+    if uploaded_file:
+        # Create folders
+        create_folders()
+        # Download weights
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")):
+            with st.spinner("Downloading model weights {}...".format(model_str)):
+                download_model_weights(model_str)
+
+        with st.spinner("Preprocess file..."):
+            path_to_nifti = save_uploaded_file(uploaded_file)
+        run_participant(path_to_nifti, model_str)
+        # Clean folders
+        clean_folders()
 
 def run_participant(path_to_nifti, model_str):
     participant_string = os.path.splitext(os.path.basename(path_to_nifti))[0]
