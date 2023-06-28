@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=5000']
+      - id: check-executables-have-shebangs
+      - id: check-toml
+  - repo: https://github.com/google/yapf
+    rev: v0.33.0
+    hooks:
+      - id: yapf
+        additional_dependencies:
+          - pyproject.toml
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=88, --lines-between-types=0]
+        additional_dependencies:
+          - pyproject.toml
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.7.0
+    hooks:
+      - id: nbqa-yapf
+      - id: nbqa-isort
+        args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=88, --lines-between-types=0]
+      #- id: nbqa-flake8
+  # - repo: https://github.com/PyCQA/flake8
+  #   rev: 3.9.2
+  #   hooks:
+  #     - id: flake8
+  #       args: [--max-line-length=120, --extend-ignore=E203, --extend-ignore=E501, --extend-ignore=E722, --extend-ignore=W503]
