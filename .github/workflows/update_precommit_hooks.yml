@@ -1,5 +1,5 @@
 ---
-name: Update precommit hooks
+name: Update precommi and run
 
 
 on:
@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update_precommit_hooks:
+  update_precommit:
 
     # only run on upstream repo
     if: github.repository_owner == 'DeepMReye'
