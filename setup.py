@@ -9,7 +9,6 @@ import sys
 
 from setuptools import setup
 
-
 SETUP_REQUIRES = ['setuptools >= 30.3.0']
 SETUP_REQUIRES += ['wheel'] if 'bdist_wheel' in sys.argv else []
 

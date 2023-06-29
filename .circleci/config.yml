@@ -81,7 +81,7 @@ workflows:
     - build
     - deploy:
         context:
-        - default    
+        - default
         requires:
         - build
         filters:
