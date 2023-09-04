@@ -28,7 +28,7 @@ jobs:
     steps:
 
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Get data from OSF
         run: cd notebooks && make all
