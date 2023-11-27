@@ -22,7 +22,7 @@ repos:
         additional_dependencies:
           - pyproject.toml
   - repo: https://github.com/nbQA-dev/nbQA
-    rev: 1.7.0
+    rev: 1.7.1
     hooks:
       - id: nbqa-yapf
       - id: nbqa-isort
