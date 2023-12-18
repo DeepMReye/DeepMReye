@@ -15,7 +15,7 @@ repos:
         additional_dependencies:
           - pyproject.toml
   - repo: https://github.com/PyCQA/isort
-    rev: 5.13.0
+    rev: 5.13.2
     hooks:
       - id: isort
         args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=88, --lines-between-types=0]
