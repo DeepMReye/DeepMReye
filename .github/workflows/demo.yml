@@ -45,7 +45,7 @@ jobs:
         -   name: Install dependencies
             run: |
                 python -m pip install --upgrade pip setuptools
-                pip install pytest nbmake
+                pip install pytest nbmake ipywidgets>=7.0.0
 
         -   name: Display Python version and packages
             run: |
