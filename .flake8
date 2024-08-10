@@ -1,0 +1,13 @@
+[flake8]
+count = True
+show-source = True
+statistics = True
+exclude=
+    *build/
+    media
+    tests
+select = E9,F63,F7,F82
+max-complexity = 10
+max-line-length = 127
+per-file-ignores =
+    */__init__.py:F401

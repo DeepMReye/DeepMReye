@@ -10,7 +10,7 @@ This [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) provides a st
 
 This [Data Repository](https://osf.io/mrhk9/) includes exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
 
-If you have other questions, please reach out to us. 
+If you have other questions, please reach out to us.
 
 <!--  Moreover, here are additional [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) as well as a [Frequently-Asked-Questions (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t) page. -->
 
