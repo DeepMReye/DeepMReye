@@ -183,9 +183,9 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
                 print(df_scores)
             else:
                 print(
-                    f"Default: r={df_scores[("Pearson", "Mean")]["Default"]:.3f}, "
-                    f"subTR: r={df_scores[("Pearson", "Mean")]["Default subTR"]:.3f}, "
-                    f"Euclidean Error: {df_scores[("Eucl. Error", "Mean")]["Default"]:.3f}°"
+                    f"Default: r={df_scores[('Pearson', 'Mean')]['Default']:.3f}, "
+                    f"subTR: r={df_scores[('Pearson', 'Mean')]['Default subTR']:.3f}, "
+                    f"Euclidean Error: {df_scores[('Eucl. Error', 'Mean')]['Default']:.3f}°"
                 )
             print("\n")
 
