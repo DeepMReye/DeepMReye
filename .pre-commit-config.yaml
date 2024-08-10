@@ -33,8 +33,7 @@ repos:
     rev: v0.40.2
     hooks:
     -   id: yapf
-        additional_dependencies:
-        -   pyproject.toml
+        args: [--style, pep8]
 
 # Sorts Python imports alphabetically and by section with `isort`.
 -   repo: https://github.com/PyCQA/isort
@@ -48,7 +47,7 @@ repos:
     hooks:
     -   id: nbqa-yapf
     -   id: nbqa-isort
-        args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=88, --lines-between-types=0]
+        args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=120, --lines-between-types=0]
 
 # Checks for spelling errors
 -   repo: https://github.com/codespell-project/codespell

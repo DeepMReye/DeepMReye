@@ -1,4 +1,8 @@
-""" Additional methods which did not earn its own space in the main methods. Maybe because they are more general and made for higher purposes. """
+"""Additional methods which did not earn its own space in the main methods.
+
+Maybe because they are more general and made for higher purposes.
+"""
+
 import warnings
 from math import atan2
 
@@ -31,19 +35,20 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
             zheight = int(np.round(factor * height))
             zwidth = int(np.round(factor * width))
             ztiefe = int(np.round(factor * tiefe))
-            zdepth = depth
 
             if factor < 1.0:
                 newimg = np.zeros_like(image)
                 row = (height - zheight) // 2
                 col = (width - zwidth) // 2
                 layer = (tiefe - ztiefe) // 2
-                newimg[row:row + zheight, col:col + zwidth,
-                       layer:layer + ztiefe, :] = ndimage.zoom(
+                newimg[row:row + zheight,
+                       col:col + zwidth,
+                       layer:layer + ztiefe,
+                       :] = ndimage.zoom(
                            image,
                            (float(factor), float(factor), float(factor), 1.0),
                            order=0,
-                           mode='constant',
+                           mode="constant",
                            cval=0,
                            prefilter=False)[0:zheight, 0:zwidth, 0:ztiefe, :]
 
@@ -55,11 +60,13 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
                 layer = (tiefe - ztiefe) // 2
 
                 newimg = ndimage.zoom(
-                    image, (float(factor), float(factor), float(factor), 1.0),
+                    image,
+                    (float(factor), float(factor), float(factor), 1.0),
                     order=0,
-                    mode='constant',
+                    mode="constant",
                     cval=0,
-                    prefilter=False)
+                    prefilter=False,
+                )
 
                 extrah = (newimg.shape[0] - height) // 2
                 extraw = (newimg.shape[1] - width) // 2
@@ -78,7 +85,7 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
             angle = np.random.uniform(-max_angle[0], max_angle[0])
             image1 = ndimage.rotate(image1,
                                     angle,
-                                    mode='constant',
+                                    mode="constant",
                                     cval=0,
                                     axes=(1, 2),
                                     reshape=False,
@@ -90,7 +97,7 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
             angle = np.random.uniform(-max_angle[1], max_angle[1])
             image1 = ndimage.rotate(image1,
                                     angle,
-                                    mode='constant',
+                                    mode="constant",
                                     cval=0,
                                     axes=(0, 2),
                                     reshape=False,
@@ -102,7 +109,7 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
             angle = np.random.uniform(-max_angle[2], max_angle[2])
             image1 = ndimage.rotate(image1,
                                     angle,
-                                    mode='constant',
+                                    mode="constant",
                                     cval=0,
                                     axes=(0, 1),
                                     reshape=False,
@@ -115,14 +122,19 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
 
     # Then shift
     X = np.array([
-        ndimage.shift(x,
-                      shift=(np.random.randint(-shift, shift),
-                             np.random.randint(-shift, shift),
-                             np.random.randint(-shift, shift), 0),
-                      order=0,
-                      mode='constant',
-                      cval=0,
-                      prefilter=False) for x in X
+        ndimage.shift(
+            x,
+            shift=(
+                np.random.randint(-shift, shift),
+                np.random.randint(-shift, shift),
+                np.random.randint(-shift, shift),
+                0,
+            ),
+            order=0,
+            mode="constant",
+            cval=0,
+            prefilter=False,
+        ) for x in X
     ])
     # Then zoom
     X = np.array(
@@ -166,17 +178,27 @@ def get_model_scores(real_y, pred_y, euc_pred, **args):
                                                   **args)
     except ValueError:
         # Participant has only NaNs or no data, return empty dataframes
-        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = np.random.rand(
-            9) * np.NaN, np.random.rand(9) * np.NaN, np.random.rand(
-                9) * np.NaN, np.random.rand(9) * np.NaN  # 9 return parameters
+        agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = (
+            np.random.rand(9) * np.NaN,
+            np.random.rand(9) * np.NaN,
+            np.random.rand(9) * np.NaN,
+            np.random.rand(9) * np.NaN,
+        )  # 9 return parameters
     df_scores = pd.DataFrame(
         [agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct],
-        index=['Default', 'Default subTR', 'Refined', 'Refined subTR'])
-    df_scores.columns = pd.MultiIndex.from_tuples(
-        (('Pearson', 'X'), ('Pearson', 'Y'), ('Pearson', 'Mean'),
-         ('R^2-Score', 'X'), ('R^2-Score', 'Y'), ('R^2-Score', 'Mean'),
-         ('Eucl. Error', 'Mean'), ('Eucl. Error', 'Median'), ('Eucl. Error',
-                                                              'Std')))
+        index=["Default", "Default subTR", "Refined", "Refined subTR"],
+    )
+    df_scores.columns = pd.MultiIndex.from_tuples((
+        ("Pearson", "X"),
+        ("Pearson", "Y"),
+        ("Pearson", "Mean"),
+        ("R^2-Score", "X"),
+        ("R^2-Score", "Y"),
+        ("R^2-Score", "Mean"),
+        ("Eucl. Error", "Mean"),
+        ("Eucl. Error", "Median"),
+        ("Eucl. Error", "Std"),
+    ))
     return df_scores
 
 
@@ -193,7 +215,7 @@ def quantify_predictions(y_true,
 
     if y_true.size < 1:
         raise ValueError(
-            'Participant has no ground truth data, nothing to quantify')
+            "Participant has no ground truth data, nothing to quantify")
 
     # Aggregate across subTR values
     y_true_agg = subtr_functor(y_true, axis=1)
@@ -257,7 +279,7 @@ def smooth_signal(signal, N):
     # Preprocess edges
     signal = np.concatenate([signal[0:N], signal, signal[-N:]])
     # Convolve
-    signal = np.convolve(signal, np.ones((N, )) / N, mode='same')
+    signal = np.convolve(signal, np.ones((N, )) / N, mode="same")
     # Postprocess edges
     signal = signal[N:-N]
 
@@ -266,16 +288,16 @@ def smooth_signal(signal, N):
 
 class color:
     # From https://stackoverflow.com/questions/8924173/how-do-i-print-bold-text-in-python
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    DARKCYAN = '\033[36m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
+    PURPLE = "\033[95m"
+    CYAN = "\033[96m"
+    DARKCYAN = "\033[36m"
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+    END = "\033[0m"
 
 
 # --------------------------------------------------------------------------------
@@ -291,29 +313,31 @@ class Arg:
 CLI_OPTIONS = {
     "verbosity":
     Arg(
-        '-v',
-        '--verbose',
-        help='Verbosity level',
+        "-v",
+        "--verbose",
+        help="Verbosity level",
         default=0,
     ),
     "gpu_id":
-    Arg('--gpu_id',
+    Arg("--gpu_id",
         help="Which GPU to use for training",
-        metavar='gpu_id',
-        default=''),
+        metavar="gpu_id",
+        default=""),
     "dataset_path":
-    Arg('--dataset_path',
+    Arg(
+        "--dataset_path",
         help="Path to dataset. Base folder is also dataset name.",
-        metavar='dataset_path',
-        default='./'),
+        metavar="dataset_path",
+        default="./",
+    ),
     "weights_path":
-    Arg('--weights_path',
+    Arg("--weights_path",
         help="Path to where weights should be stored.",
-        metavar='weights_path',
-        default='./weights/'),
+        metavar="weights_path",
+        default="./weights/"),
     "datasets":
-    Arg('--datasets',
+    Arg("--datasets",
         help="If given only train subset of all datasets.",
-        metavar='datasets',
-        default=None)
+        metavar="datasets",
+        default=None),
 }

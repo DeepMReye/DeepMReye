@@ -8,7 +8,7 @@ exclude=
     tests
 select = B,D,E,F,W,C90,CFQ
 max-complexity = 10
-max-line-length = 127
+max-line-length = 120
 per-file-ignores =
     */__init__.py:F401
 extend-ignore =
@@ -24,20 +24,6 @@ extend-ignore =
     D102,
     D103,
     D104,
-    D105,
     D107,
-    D200,
-    D205,
-    D210,
-    E126,
-    E203,
-    E265
-    E402,
-    E501,
     E722,
-    F541,
-    F841,
     FS002,
-    W503,
-    W504,
-    W605

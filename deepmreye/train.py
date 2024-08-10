@@ -9,17 +9,19 @@ from deepmreye import architecture
 from deepmreye.util import data_generator, util
 
 
-def train_model(dataset,
-                generators,
-                opts,
-                clear_graph=True,
-                save=False,
-                model_path='./',
-                workers=4,
-                use_multiprocessing=True,
-                models=None,
-                return_untrained=False,
-                verbose=0):
+def train_model(
+    dataset,
+    generators,
+    opts,
+    clear_graph=True,
+    save=False,
+    model_path="./",
+    workers=4,
+    use_multiprocessing=True,
+    models=None,
+    return_untrained=False,
+    verbose=0,
+):
     """Train the model given a cross validation, \
        hold out or leave one out generator, given model options.
 
@@ -64,21 +66,28 @@ def train_model(dataset,
         workers = 1
 
     # Unpack generators
-    (training_generator, testing_generator, single_testing_generators,
-     single_testing_names, single_training_generators, single_training_names,
-     full_testing_list, full_training_list) = generators
+    (
+        training_generator,
+        testing_generator,
+        single_testing_generators,
+        single_testing_names,
+        single_training_generators,
+        single_training_names,
+        full_testing_list,
+        full_training_list,
+    ) = generators
 
     # Test datagenerator and get representative X and y
     ((X, y), _) = next(training_generator)
     if verbose > 0:
-        print('Input shape {}, Output shape {}'.format(X.shape, y.shape))
-        print('Subjects in training set: {}, Subjects in test set: {}'.format(
+        print("Input shape {}, Output shape {}".format(X.shape, y.shape))
+        print("Subjects in training set: {}, Subjects in test set: {}".format(
             len(single_training_generators), len(single_testing_generators)))
 
     # Learning rate scheduler
-    lr_sched = util.step_decay_schedule(initial_lr=opts['lr'],
+    lr_sched = util.step_decay_schedule(initial_lr=opts["lr"],
                                         decay_factor=0.9,
-                                        num_epochs=opts['epochs'])
+                                        num_epochs=opts["epochs"])
 
     # Get model
     if models is None:
@@ -93,19 +102,21 @@ def train_model(dataset,
     # Train model
     if verbose > 1:
         print(model.summary(line_length=200))
-    model.fit(training_generator,
-              steps_per_epoch=opts['steps_per_epoch'],
-              epochs=opts['epochs'],
-              validation_data=testing_generator,
-              validation_steps=opts['validation_steps'],
-              callbacks=[lr_sched],
-              use_multiprocessing=use_multiprocessing,
-              workers=workers)
+    model.fit(
+        training_generator,
+        steps_per_epoch=opts["steps_per_epoch"],
+        epochs=opts["epochs"],
+        validation_data=testing_generator,
+        validation_steps=opts["validation_steps"],
+        callbacks=[lr_sched],
+        use_multiprocessing=use_multiprocessing,
+        workers=workers,
+    )
 
     # Save model weights
     if save:
         model_inference.save_weights(
-            join(model_path, f'modelinference_{dataset}.h5'))
+            join(model_path, f"modelinference_{dataset}.h5"))
     if use_multiprocessing:
         tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
@@ -116,8 +127,8 @@ def evaluate_model(dataset,
                    model,
                    generators,
                    save=False,
-                   model_path='./',
-                   model_description='',
+                   model_path="./",
+                   model_description="",
                    verbose=0,
                    **args):
     """Evaluate model performance given model and generators \
@@ -149,9 +160,16 @@ def evaluate_model(dataset,
     scores: pandas DataFrame
         Evaluation metrics for gaze coordinates (Pearson, R2-Score, Euclidean Error)
     """
-    (training_generator, testing_generator, single_testing_generators,
-     single_testing_names, single_training_generators, single_training_names,
-     full_testing_list, full_training_list) = generators
+    (
+        training_generator,
+        testing_generator,
+        single_testing_generators,
+        single_testing_names,
+        single_training_generators,
+        single_training_names,
+        full_testing_list,
+        full_training_list,
+    ) = generators
     evaluation, scores = dict(), dict()
     for idx, subj in enumerate(full_testing_list):
         X, real_y = data_generator.get_all_subject_data(subj)
@@ -159,9 +177,9 @@ def evaluate_model(dataset,
                                            verbose=verbose - 2,
                                            batch_size=16)
         evaluation[subj] = {
-            'real_y': real_y,
-            'pred_y': pred_y,
-            'euc_pred': euc_pred
+            "real_y": real_y,
+            "pred_y": pred_y,
+            "euc_pred": euc_pred
         }
 
         # Quantify predictions
@@ -170,25 +188,25 @@ def evaluate_model(dataset,
 
         # Print evaluation
         if verbose > 0:
-            print(util.color.BOLD +
-                  '{} / {} - Model Performance for {}'.format(
-                      idx + 1, len(single_testing_names), subj) +
-                  util.color.END)
+            print(f"{util.color.BOLD}{idx + 1} / {len(single_testing_names)} - "
+                  f"Model Performance for {subj}{util.color.END}")
             if verbose > 1:
-                pd.set_option('display.width', 120)
-                pd.options.display.float_format = '{:.3f}'.format
+                pd.set_option("display.width", 120)
+                pd.options.display.float_format = "{:.3f}".format
                 print(df_scores)
             else:
                 print(
-                    'Default: r={:.3f}, subTR: r={:.3f}, Euclidean Error: {:.3f}°'
-                    .format(df_scores[('Pearson', 'Mean')]['Default'],
-                            df_scores[('Pearson', 'Mean')]['Default subTR'],
-                            df_scores[('Eucl. Error', 'Mean')]['Default']))
-            print('\n')
+                    "Default: r={:.3f}, subTR: r={:.3f}, Euclidean Error: {:.3f}°"
+                    .format(
+                        df_scores[("Pearson", "Mean")]["Default"],
+                        df_scores[("Pearson", "Mean")]["Default subTR"],
+                        df_scores[("Eucl. Error", "Mean")]["Default"],
+                    ))
+            print("\n")
 
     # Save dict
     if save:
-        np.save(join(model_path, f'results{model_description}_{dataset}.npy'),
+        np.save(join(model_path, f"results{model_description}_{dataset}.npy"),
                 evaluation)
 
     return (evaluation, scores)

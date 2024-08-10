@@ -5,7 +5,7 @@ skip = "*.html"
 
 [tool.isort]
 combine_as_imports = true
-line_length = 79
+line_length = 120
 profile = "black"
 skip_gitignore = true
 

@@ -1,6 +1,3 @@
-import streamlit as st
-
-st.set_page_config(layout="wide")
 import os
 import pickle
 
@@ -9,23 +6,32 @@ import pandas as pd
 import requests
 
 import deepmreye
+import streamlit as st
 import streamlit.components.v1 as components
+
+st.set_page_config(layout="wide")
 
 
 def main():
-    st.image(os.path.join(os.getcwd(), 'media/deepmreye_logo_t.png'),
-             caption=None,
-             width=None,
-             use_column_width=None,
-             clamp=False,
-             channels="RGB",
-             output_format="auto")
-    st.markdown(f"""
+    st.image(
+        os.path.join(os.getcwd(), "media/deepmreye_logo_t.png"),
+        caption=None,
+        width=None,
+        use_column_width=None,
+        clamp=False,
+        channels="RGB",
+        output_format="auto",
+    )
+    st.markdown("""
 
-        This app enables reconstructing gaze position from the MR-signal of the eyeballs. Load your fMRI data below, pick one of the pretrained models, and download the decoded gaze coordinates shortly after.
+        This app enables reconstructing gaze position from the MR-signal of the eyeballs.
+        Load your fMRI data below, pick one of the pretrained models,
+        and download the decoded gaze coordinates shortly after.
 
-        Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w) and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using it.
-    """)
+        Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w)
+        and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe)
+        before using it.
+        """)
 
     # Create a file uploader widget
     uploaded_file = st.file_uploader(
@@ -42,11 +48,11 @@ def main():
             "dataset3_pursuit",
             "dataset4_pursuit",
             "dataset5_free_viewing",
-            #"dataset6_openclosed",
+            # "dataset6_openclosed",
         ),
     )
 
-    st.markdown(f"""
+    st.markdown("""
 
         The models have been trained on following datasets:
 
@@ -93,7 +99,8 @@ def run_participant(path_to_nifti, model_str):
             x_edges,
             y_edges,
             z_edges,
-            transforms=['Affine', 'Affine', 'SyNAggro'])
+            transforms=["Affine", "Affine", "SyNAggro"],
+        )
     # Show preprocessed results
     html_results = os.path.join(os.path.dirname(path_to_nifti),
                                 "report_" + participant_string + ".html")
