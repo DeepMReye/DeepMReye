@@ -21,7 +21,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, macOS-latest]
-                python-version: ['3.9']
+                python-version: ['3.11']
                 notebook: [usage_pretrained_weights]
 
         runs-on: ${{ matrix.os }}
@@ -53,4 +53,4 @@ jobs:
                 pip list
 
         -   name: Run notebook ${{ matrix.notebook }}
-            run: pytest -srP -vv --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"
+            run: pytest -sP --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"
