@@ -1,0 +1,93 @@
+---
+version: 2.1
+
+jobs:
+    build:
+        machine:
+      # https://circleci.com/developer/machine/image/ubuntu-2204
+            image: ubuntu-2204:2022.10.2
+        steps:
+        -   checkout
+        -   restore_cache:
+                keys:
+                -   my_cache
+        -   run:
+                name: Build Docker image
+                command: |
+                    # taken from https://raw.githubusercontent.com/bids-apps/maintenance-tools/main/circleci/
+                    # make sure we have a lowercase repo
+                    set -eux -o pipefail
+                    user_name=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')
+                    repo_name=$(echo "${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]')
+
+                    if [[ -e "${HOME}/docker/image.tar" ]]; then
+                        docker load -i "${HOME}/docker/image.tar"
+                    fi
+                    git describe --tags --always > version
+                    docker build -t "${user_name}/${repo_name}" .
+                    mkdir -p "${HOME}/docker"
+                    docker save "${user_name}/${repo_name}" > "${HOME}/docker/image.tar"
+                    docker images
+
+                no_output_timeout: 6h
+        -   save_cache:
+                key: my_cache
+                paths:
+                -   ~/docker
+                -   ~/data
+        -   persist_to_workspace:
+                root: /home/circleci
+                paths:
+                -   docker/image.tar
+
+    deploy:
+
+        machine:
+            image: ubuntu-2204:2022.10.2
+
+        steps:
+        -   attach_workspace:
+                at: /tmp/workspace
+
+        -   run: docker load -i /tmp/workspace/docker/image.tar
+        -   run:
+                name: push to dockerhub
+                command: |
+                    # taken from https://raw.githubusercontent.com/bids-apps/maintenance-tools/main/circleci/
+                    set -ex -o pipefail
+                    if [[ -n "${DOCKER_TOKEN}" ]]; then
+                        # make sure we have a lowercase repo
+                        user_name=deepmreye
+                        repo_name=deepmreye
+                        if [[ -n "${DOCKER_TOKEN}" ]]; then
+                            echo "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USER}" --password-stdin
+                            : "Pushing to DockerHub ${user_name}/${repo_name}:unstable"
+                            docker tag "${user_name}/${repo_name}" "${user_name}/${repo_name}:unstable"
+                            docker push "${user_name}/${repo_name}:unstable"
+                            if [[ -n "${CIRCLE_TAG}" ]]; then
+                                : "Pushing to DockerHub ${user_name}/${repo_name}:${CIRCLE_TAG}"
+                                docker push "${user_name}/${repo_name}:latest"
+                                docker tag "${user_name}/${repo_name}" "bids/${repo_name}:${CIRCLE_TAG}"
+                                docker push "${user_name}/${repo_name}:${CIRCLE_TAG}"
+                            fi
+                        fi
+                    else
+                        : "No DOCKER_TOKEN, skipping push to DockerHub"
+                        exit 1
+                    fi
+workflows:
+    build-test-deploy:
+        jobs:
+        -   build
+        -   deploy:
+                context:
+                -   default
+                requires:
+                -   build
+                filters:
+                    tags:
+                        only: /.*/
+                    branches:
+                        only: main
+
+# VS Code Extension Version: 1.5.1

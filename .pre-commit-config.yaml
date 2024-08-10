@@ -1,0 +1,71 @@
+---
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+    -   id: check-yaml
+    -   id: check-added-large-files
+        args: [--maxkb=5000]
+    -   id: check-toml
+    -   id: check-ast
+    -   id: check-case-conflict
+    -   id: check-json
+    -   id: check-merge-conflict
+    -   id: mixed-line-ending
+
+# Format YAML files
+-   repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+    rev: 0.2.3
+    hooks:
+    -   id: yamlfmt
+        args: [--mapping, '4', --sequence, '4', --offset, '0']
+
+# Format TOML files
+-   repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.14.0
+    hooks:
+    -   id: pretty-format-toml
+        args: [--autofix, --indent, '4']
+
+# Sorts Python imports alphabetically and by section with `isort`.
+-   repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+    -   id: isort
+        args: [--settings-path, pyproject.toml]
+
+-   repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.8.5
+    hooks:
+    -   id: nbqa-yapf
+    -   id: nbqa-isort
+        args: [--multi-line=3, --trailing-comma, --force-grid-wrap=0, --use-parentheses, --line-width=120, --lines-between-types=0]
+
+-   repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 24.4.2
+    hooks:
+    -   id: black
+        args: [--config=pyproject.toml]
+
+# Checks for spelling errors
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+    -   id: codespell
+        args: [--toml=pyproject.toml]
+        additional_dependencies: [tomli]
+
+# Check that Python code complies with PEP8 guidelines
+# flake8 uses pydocstyle to check docstrings: https://flake8.pycqa.org/en/latest/
+# flake8-docstrings: https://pypi.org/project/flake8-docstrings/
+# flake8-use-fstring forces to use fstrings: https://pypi.org/project/flake8-use-fstring/
+# flake8-functions checks functions quality: https://pypi.org/project/flake8-functions/
+# flake8-bugbear detects some common bugs: https://github.com/PyCQA/flake8-bugbear
+-   repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+    -   id: flake8
+        args: [--config, .flake8]
+        additional_dependencies: [flake8-docstrings, flake8-use-fstring, flake8-bugbear]

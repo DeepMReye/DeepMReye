@@ -1,3 +1,0 @@
-include deepmreye/masks/dme_template.nii  
-include deepmreye/masks/eyemask_big.nii  
-include deepmreye/masks/eyemask_small.nii
