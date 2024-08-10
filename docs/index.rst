@@ -10,6 +10,7 @@ Welcome to DeepMReye's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   installation
    modules
 
 Indices and tables

@@ -213,41 +213,69 @@ class GroupNormalization(Layer):
     """Group normalization layer.
 
     Group Normalization divides the channels into groups and computes within each group
-    the mean and variance for normalization. GN's computation is independent of batch sizes,
+    the mean and variance for normalization.
+    GN's computation is independent of batch sizes,
     and its accuracy is stable in a wide range of batch sizes
 
-    # Arguments
-        groups: Integer, the number of groups for Group Normalization.
-        axis: Integer, the axis that should be normalized
-            (typically the features axis).
-            For instance, after a `Conv2D` layer with
-            `data_format="channels_first"`,
-            set `axis=1` in `BatchNormalization`.
-        epsilon: Small float added to variance to avoid dividing by zero.
-        center: If True, add offset of `beta` to normalized tensor.
-            If False, `beta` is ignored.
-        scale: If True, multiply by `gamma`.
-            If False, `gamma` is not used.
-            When the next layer is linear (also e.g. `nn.relu`),
-            this can be disabled since the scaling
-            will be done by the next layer.
-        beta_initializer: Initializer for the beta weight.
-        gamma_initializer: Initializer for the gamma weight.
-        beta_regularizer: Optional regularizer for the beta weight.
-        gamma_regularizer: Optional regularizer for the gamma weight.
-        beta_constraint: Optional constraint for the beta weight.
-        gamma_constraint: Optional constraint for the gamma weight.
+    Parameters
+    ----------
+    groups: Integer
+        The number of groups for Group Normalization.
 
-    # Input shape
-        Arbitrary. Use the keyword argument `input_shape`
-        (tuple of integers, does not include the samples axis)
-        when using this layer as the first layer in a model.
+    axis:   Integer
+        the axis that should be normalized
+        (typically the features axis).
+        For instance, after a ``Conv2D`` layer with
+        ``data_format="channels_first"``,
+        set ``axis=1`` in ``BatchNormalization``.
 
-    # Output shape
-        Same shape as input.
+    epsilon:
+        Small float added to variance to avoid dividing by zero.
 
-    # References
-        - [Group Normalization](https://arxiv.org/abs/1803.08494)
+    center:
+        If True, add offset of ``beta`` to normalized tensor.
+        If False, ``beta`` is ignored.
+
+    scale:
+        If True, multiply by ``gamma``.
+        If False, ``gamma`` is not used.
+        When the next layer is linear (also e.g. ``nn.relu``),
+        this can be disabled since the scaling
+        will be done by the next layer.
+
+    beta_initializer:
+        Initializer for the beta weight.
+
+    gamma_initializer:
+        Initializer for the gamma weight.
+
+    beta_regularizer:
+        Optional regularizer for the beta weight.
+
+    gamma_regularizer:
+        Optional regularizer for the gamma weight.
+
+    beta_constraint:
+        Optional constraint for the beta weight.
+
+    gamma_constraint:
+        Optional constraint for the gamma weight.
+
+
+    Input shape
+    -----------
+    Arbitrary. Use the keyword argument ``input_shape``
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
+
+
+    Output shape
+    ------------
+    Same shape as input.
+
+    References
+    ----------
+    - `Group Normalization <https://arxiv.org/abs/1803.08494>`_
     """
 
     def __init__(

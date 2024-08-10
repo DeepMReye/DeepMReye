@@ -17,14 +17,24 @@ from tensorflow.keras.callbacks import LearningRateScheduler
 def augment_input(X, rotation=0, shift=0, zoom=0):
     """Augment 3D images.
 
-    Inputs:
-    - X : Batch of 3D images
-    - rotation : Rotation in degree
-    - shift : Shift in pixels
-    - zoom : Zoom in factor
+    Parameters
+    ----------
+    X :
+        Batch of 3D images
 
-    Outputs:
-    - X : Augmented batch of 3D images
+    rotation :
+        Rotation in degree
+
+    shift :
+        Shift in pixels
+
+    zoom :
+        Zoom in factor
+
+    Returns
+    -------
+    X :
+        Augmented batch of 3D images
     """
 
     def scaleit(image, factor):
@@ -237,6 +247,7 @@ def smooth_signal(signal, N):
     ----------
     signal : array_like
         Signal to be smoothed
+
     N : int
         smoothing_factor
 

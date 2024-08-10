@@ -29,24 +29,34 @@ def train_model(
     ----------
     dataset : str
         Description of dataset, used for saving dataset to file
+
     generators : generator
         Cross validation, Hold out or Leave one out generator, yielding X,y pairs
+
     opts : dict
         Model options for training
+
     clear_graph : bool, optional
         If computational graph should be reset before each run, by default True
+
     save : bool, optional
         If model weights should be saved to file, by default False
+
     model_path : str, optional
         Filepath to where model weights should be stored, by default './'
+
     workers : int, optional
         Number of workers used when using multiprocessing, by default 4
+
     use_multiprocessing : bool, optional
         If multiprocessing should be used, can speed up training by 10x if data loader is bottleneck, by default True
+
     models : Keras Model instance, optional
         Can be provided if already trained model should be used instead of training a new one, by default None
+
     return_untrained : bool, optional
         If true, returns untrained but compiled model, by default False
+
     verbose : int, optional
         Verbosity level, by default 0
 
@@ -54,6 +64,7 @@ def train_model(
     -------
     model : Keras Model
         Full model instance, used for training uncertainty estimate
+
     model_inference : Keras Model
         Model instance used for inference, provides uncertainty estimate (unsupervised model)
     """
@@ -131,16 +142,22 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
     ----------
     dataset : str
         Description of dataset, used for saving dataset to file
+
     model : Keras Model
         Full model instance, used for training uncertainty estimate
+
     generators : generator
         Cross validation, Hold out or Leave one out generator, yielding X,y pairs
+
     save : bool, optional
         If true, save test set predictions to file, by default False
+
     model_path : str, optional
         Filepath to where model weights should be stored, by default './'
+
     model_description : str, optional
         Description of model used for saving the model evaluations, by default ''
+
     verbose : int, optional
         Verbosity level, by default 0
 
@@ -148,6 +165,7 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
     -------
     evaluation: dict
         Raw gaze coordinates, returned for each participant
+
     scores: pandas DataFrame
         Evaluation metrics for gaze coordinates (Pearson, R2-Score, Euclidean Error)
     """
