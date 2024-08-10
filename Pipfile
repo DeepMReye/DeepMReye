@@ -1,24 +1,24 @@
-[[source]]
-url = "https://pypi.org/simple"
-verify_ssl = true
-name = "pypi"
-
-[packages]
-numpy = "*"
-pandas = "*"
-matplotlib = "*"
-scipy = "*"
-ipython = "*"
-plotly = "*"
-scikit-learn = "*"
-antspyx = "*"
-tensorflow = "*"
-jupyter = "*"
-
 [dev-packages]
 
-[streamlit]
-streamlit = "*"
+[packages]
+antspyx = "*"
+ipython = "*"
+jupyter = "*"
+matplotlib = "*"
+numpy = "*"
+pandas = "*"
+plotly = "*"
+scikit-learn = "*"
+scipy = "*"
+tensorflow = "*"
 
 [requires]
 python_version = "3.8"
+
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[streamlit]
+streamlit = "*"

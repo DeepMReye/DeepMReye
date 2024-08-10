@@ -1,0 +1,22 @@
+[tool.black]
+line-length = 120
+
+[tool.codespell]
+builtin = "clear,rare"
+ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe"
+skip = "*.html"
+
+[tool.isort]
+combine_as_imports = true
+line_length = 120
+profile = "black"
+skip_gitignore = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers --doctest-modules --showlocals -s -vv --durations=0"
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
+junit_family = "xunit2"
+log_cli_level = "INFO"
+minversion = "6.0"
+testpaths = ["tests"]
+xfail_strict = true
