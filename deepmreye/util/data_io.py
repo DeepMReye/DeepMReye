@@ -21,7 +21,8 @@ def get_all_subject_labels(subject_string,
                            num_downsampled=10,
                            use_real=False):
     """
-    For models with multiple outputs we want to estimate the sub-TR XY
+    For models with multiple outputs we want to estimate the sub-TR XY.
+
     Inputs:
         - subject_string : Subject identified
         - mat_data : Data to subject logs in mat format
@@ -68,7 +69,8 @@ def get_all_subject_labels(subject_string,
 
 def get_all_subject_labels_ign(subject_string, num_downsampled=10):
     """
-    For models with multiple outputs we want to estimate the sub-TR XY
+    For models with multiple outputs we want to estimate the sub-TR XY.
+
     Inputs:
         - subject_string : Subject identified
         - mat_data : Data to subject logs in mat format
@@ -111,7 +113,8 @@ def get_all_subject_labels_bmd(subject_string,
                                num_downsampled=10,
                                real_et=False):
     """
-    For models with multiple outputs we want to estimate the sub-TR XY
+    For models with multiple outputs we want to estimate the sub-TR XY.
+
     Inputs:
         - subject_string : Subject identified
         - run_idx : Index for run
@@ -142,7 +145,8 @@ def get_all_subject_labels_bmd(subject_string,
 
 def get_all_subject_labels_mmd(subject_string, run_idx, num_downsampled=10):
     """
-    For models with multiple outputs we want to estimate the sub-TR XY
+    For models with multiple outputs we want to estimate the sub-TR XY.
+
     Inputs:
         - subject_string : Subject identified
         - run_idx : Index for run

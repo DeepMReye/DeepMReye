@@ -20,7 +20,8 @@ def train_model(dataset,
                 models=None,
                 return_untrained=False,
                 verbose=0):
-    """Trains the model given a cross validation, hold out or leave one out generator, given model options
+    """Train the model given a cross validation, \
+       hold out or leave one out generator, given model options.
 
     Parameters
     ----------
@@ -119,7 +120,10 @@ def evaluate_model(dataset,
                    model_description='',
                    verbose=0,
                    **args):
-    """Evaluates model performance given model and generators used for training the model. Evaluates only on test set.
+    """Evaluate model performance given model and generators \
+       used for training the model.
+
+       Evaluate only on test set.
 
     Parameters
     ----------

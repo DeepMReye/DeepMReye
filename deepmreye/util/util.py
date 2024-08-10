@@ -4,7 +4,6 @@ from math import atan2
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import tensorflow.keras.backend as K
 from scipy import ndimage
 from sklearn.metrics import r2_score
@@ -12,7 +11,8 @@ from tensorflow.keras.callbacks import LearningRateScheduler
 
 
 def augment_input(X, rotation=0, shift=0, zoom=0):
-    """ Augments 3D images
+    """Augment 3D images.
+
     Inputs:
     - X : Batch of 3D images
     - rotation : Rotation in degree
@@ -240,7 +240,7 @@ def calculate_scores(y_true, y_pred, euc_pred, percentile_cut=None):
 
 def smooth_signal(signal, N):
     """
-    Simple smoothing by convolving a filter with 1/N.
+    Smooth by convolving a filter with 1/N.
 
     Parameters
     ----------

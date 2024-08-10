@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
-DeepMReye Toolbox
+DeepMReye Toolbox.
+
 © Markus Frey, Matthias Nau
 https://github.com/DeepMReye/DeepMReye
 Licensed under LGPL-3.0 License

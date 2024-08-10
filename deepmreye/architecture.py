@@ -28,7 +28,7 @@ from tensorflow.keras.models import Model
 
 
 def create_standard_model(input_shape, opts):
-    """Creates convolutional model for training and inference
+    """Create convolutional model for training and inference.
 
     Parameters
     ----------
@@ -236,7 +236,7 @@ def mean_squared_error(y_true, y_pred):
 # --- Custom Layers
 # Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py
 class GroupNormalization(Layer):
-    """Group normalization layer
+    """Group normalization layer.
 
     Group Normalization divides the channels into groups and computes within each group
     the mean and variance for normalization. GN's computation is independent of batch sizes,

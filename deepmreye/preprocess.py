@@ -20,7 +20,7 @@ def register_to_eye_masks(dme_template,
                           verbose=1,
                           transforms=None,
                           metric='GC'):
-    """Register functional to DeepMReye template (dme_template) using different sized masks
+    """Register functional to DeepMReye template (dme_template) using different sized masks.
 
     Parameters
     ----------
@@ -93,7 +93,7 @@ def run_participant(fp_func,
                     z_edges,
                     replace_with=0,
                     transforms=None):
-    """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead
+    """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
     Parameters
     ----------
@@ -139,7 +139,7 @@ def run_participant(fp_func,
 # --------------------------MASKING-----------------------------------------------
 # --------------------------------------------------------------------------------
 def get_masks(data_path=''):
-    """Loads masks for whole brain, big eye mask and small eye mask
+    """Load masks for whole brain, big eye mask and small eye mask.
 
     Parameters
     ----------
@@ -183,7 +183,7 @@ def get_masks(data_path=''):
 
 
 def get_mask_edges(mask, split=True):
-    """Gets edges of mask
+    """Get edges of mask.
 
     Parameters
     ----------
@@ -231,7 +231,7 @@ def cut_mask(to_mask,
              save_overview=True,
              fp_func=None,
              verbose=0):
-    """Cut mask into given shape given edges
+    """Cut mask into given shape given edges.
 
     Parameters
     ----------
@@ -299,7 +299,7 @@ def plot_subject_report(fn_subject,
                         mask,
                         color="rgb(0, 150, 175)",
                         bg_color="rgb(14, 17, 23, 0)"):
-    """Plots quality check figure for given subject
+    """Plot quality check figure for given subject.
 
     Parameters
     ----------
@@ -514,7 +514,7 @@ def normalize_img(img_in,
                   mad_time=False,
                   standardize_tr=True,
                   std_cut_after=5):
-    """As part of preprocessing the 4D input is normalized across different dimensions
+    """Normalize the 4D input across different dimensions.
 
     Parameters
     ----------
@@ -616,7 +616,7 @@ def save_data(participant,
               participant_ids,
               processed_data,
               center_labels=False):
-    """Save participant data to npz file for fast (lazy) loading during model training
+    """Save participant data to npz file for fast (lazy) loading during model training.
 
     Parameters
     ----------

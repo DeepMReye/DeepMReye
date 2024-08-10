@@ -163,9 +163,7 @@ def data_generator(file_list,
                    withinsubject_split=None,
                    augment_list=[0, 0, 0],
                    inner_timesteps=None):
-    """
-    Take a random subject, load it and return a batched subset
-    """
+    """Take a random subject, load it and return a batched subset."""
     all_nonan_indices = get_nonan_indices(file_list)
     start_tr, end_tr = get_start_end_tr(withinsubject_split, training)
     if withinsubject_split is None:
