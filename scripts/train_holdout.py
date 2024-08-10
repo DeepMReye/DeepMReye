@@ -18,7 +18,7 @@ for val, item in CLI_OPTIONS.items():
 args = parser.parse_args()
 
 # Set GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "{}".format(args.gpu_id)
+os.environ["CUDA_VISIBLE_DEVICES"] = f"{args.gpu_id}"
 
 # Create data generators from given path
 dataset_name = os.path.basename(os.path.dirname(args.dataset_path))
@@ -27,8 +27,7 @@ generators = data_generator.create_holdout_generators(
     [args.dataset_path],
     train_split=0.90,
     batch_size=opts["batch_size"],
-    augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]),
-                  opts["shift"], opts["zoom"]),
+    augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]), opts["shift"], opts["zoom"]),
     mixed_batches=True,
 )
 

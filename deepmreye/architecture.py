@@ -44,11 +44,9 @@ def create_standard_model(input_shape, opts):
     input_layer_noise = GaussianNoise(opts["gaussian_noise"])(input_layer)
 
     # Initial convolution + dropout
-    x = conv3d_block(input_layer_noise,
-                     filters=opts["filters"],
-                     kernel_size=opts["kernel"],
-                     strides=1,
-                     activation=opts["activation"])
+    x = conv3d_block(
+        input_layer_noise, filters=opts["filters"], kernel_size=opts["kernel"], strides=1, activation=opts["activation"]
+    )
     x = Dropout(opts["dropout_rate"])(x, training=opts["mc_dropout"])
 
     # Downsample to bottleneck layer, but keep skip layers
@@ -88,14 +86,11 @@ def create_standard_model(input_shape, opts):
     # Create model
     real_regression_shape = out_regression.shape.as_list()
     real_regression = Input(real_regression_shape[1::])
-    model = Model(inputs=[input_layer, real_regression],
-                  outputs=[out_regression])
-    model_inference = Model(inputs=input_layer,
-                            outputs=[out_regression, out_confidence])
+    model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
+    model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
 
     # Add losses
-    loss_euclidean, loss_confidence = compute_standard_loss(
-        out_confidence, real_regression, out_regression)
+    loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
     model.add_loss(opts["loss_euclidean"] * loss_euclidean)
     model.add_loss(opts["loss_confidence"] * loss_confidence)
 
@@ -111,72 +106,47 @@ def create_standard_model(input_shape, opts):
 
 # --- adult blocks
 def res_block(input_layer, filters, groups, activation):
-    input_layer_res = conv3d_block(input_layer,
-                                   filters=filters,
-                                   kernel_size=1,
-                                   strides=1,
-                                   activation=activation)
+    input_layer_res = conv3d_block(input_layer, filters=filters, kernel_size=1, strides=1, activation=activation)
 
     x = GroupNormalization(groups=groups, axis=-1)(input_layer)
     x = Activation(activation)(x)
-    x = conv3d_block(x,
-                     filters=filters,
-                     kernel_size=3,
-                     strides=1,
-                     activation=activation)
+    x = conv3d_block(x, filters=filters, kernel_size=3, strides=1, activation=activation)
 
     x = GroupNormalization(groups=groups, axis=-1)(x)
     x = Activation(activation)(x)
-    x = conv3d_block(x,
-                     filters=filters,
-                     kernel_size=3,
-                     strides=1,
-                     activation=activation)
+    x = conv3d_block(x, filters=filters, kernel_size=3, strides=1, activation=activation)
 
     out = Add()([x, input_layer_res])
     return out
 
 
-def downsample_block(input_layer, filters, depth, multiplier, groups,
-                     activation):
+def downsample_block(input_layer, filters, depth, multiplier, groups, activation):
     x = input_layer
     skip_layers = []
     for level_number in range(depth):
         n_level_filters = int(multiplier**level_number) * filters
 
-        for level in range(0, level_number):
-            x = res_block(x,
-                          filters=n_level_filters,
-                          groups=groups,
-                          activation=activation)
+        for _ in range(level_number):
+            x = res_block(x, filters=n_level_filters, groups=groups, activation=activation)
         # For segmentation save layer after res_blocks
         skip_layers.append(x)
         if level_number < (depth - 1):
-            x = conv3d_block(x,
-                             filters=n_level_filters,
-                             kernel_size=3,
-                             strides=2,
-                             activation=activation)
+            x = conv3d_block(x, filters=n_level_filters, kernel_size=3, strides=2, activation=activation)
     x = GroupNormalization(groups=groups, axis=-1)(x)
     x = Activation(activation)(x)
 
     return x, skip_layers
 
 
-def regression_block(input_layer,
-                     num_dense,
-                     num_fc,
-                     activation,
-                     dropout_rate,
-                     inner_timesteps,
-                     mc_dropout,
-                     dense_out=2):
+def regression_block(
+    input_layer, num_dense, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout, dense_out=2
+):
     x = RepeatVector(inner_timesteps)(input_layer)
     # Split timesteps so each gets its own weight
-    all_xs = list()
-    for i in range(0, inner_timesteps):
-        x0 = Lambda(lambda x: x[:, i, :])(x)
-        for d in range(0, num_dense):
+    all_xs = []
+    for i in range(inner_timesteps):
+        x0 = Lambda(lambda x: x[:, i, :])(x)  # noqa
+        for _ in range(num_dense):
             x0 = Dense(num_fc, activation=activation)(x0)
             x0 = Dropout(dropout_rate)(x0, training=mc_dropout)
         x0 = Dense(dense_out, activation="linear")(x0)
@@ -187,8 +157,7 @@ def regression_block(input_layer,
     return out
 
 
-def confidence_block(input_layer, num_fc, activation, dropout_rate,
-                     inner_timesteps, mc_dropout):
+def confidence_block(input_layer, num_fc, activation, dropout_rate, inner_timesteps, mc_dropout):
     out_conf = Dense(num_fc, activation=activation)(input_layer)
     out_conf = Dropout(dropout_rate)(out_conf, training=mc_dropout)
     out_conf = Dense(inner_timesteps, activation=activation)(out_conf)
@@ -281,19 +250,21 @@ class GroupNormalization(Layer):
         - [Group Normalization](https://arxiv.org/abs/1803.08494)
     """
 
-    def __init__(self,
-                 groups=32,
-                 axis=-1,
-                 epsilon=1e-5,
-                 center=True,
-                 scale=True,
-                 beta_initializer="zeros",
-                 gamma_initializer="ones",
-                 beta_regularizer=None,
-                 gamma_regularizer=None,
-                 beta_constraint=None,
-                 gamma_constraint=None,
-                 **kwargs):
+    def __init__(
+        self,
+        groups=32,
+        axis=-1,
+        epsilon=1e-5,
+        center=True,
+        scale=True,
+        beta_initializer="zeros",
+        gamma_initializer="ones",
+        beta_regularizer=None,
+        gamma_regularizer=None,
+        beta_constraint=None,
+        gamma_constraint=None,
+        **kwargs,
+    ):
         super(GroupNormalization, self).__init__(**kwargs)
         self.supports_masking = True
         self.groups = groups
@@ -312,21 +283,24 @@ class GroupNormalization(Layer):
         dim = input_shape[self.axis]
 
         if dim is None:
-            raise ValueError(f"Axis {str(self.axis)} of "
-                             "input tensor should have a defined dimension "
-                             f"but the layer received an input with shape {str(input_shape)} .")
+            raise ValueError(
+                f"Axis {str(self.axis)} of "
+                "input tensor should have a defined dimension "
+                f"but the layer received an input with shape {str(input_shape)} ."
+            )
 
         if dim < self.groups:
-            raise ValueError(f"Number of groups ({str(self.groups)}) cannot be "
-                             f"more than the number of channels ({str(dim)}).")
+            raise ValueError(
+                f"Number of groups ({str(self.groups)}) cannot be " f"more than the number of channels ({str(dim)})."
+            )
 
         if dim % self.groups != 0:
-            raise ValueError(f"Number of groups ({str(self.groups)}) must be a "
-                             f"multiple of the number of channels ({str(dim)}).")
+            raise ValueError(
+                f"Number of groups ({str(self.groups)}) must be a " f"multiple of the number of channels ({str(dim)})."
+            )
 
-        self.input_spec = InputSpec(ndim=len(input_shape),
-                                    axes={self.axis: dim})
-        shape = (dim, )
+        self.input_spec = InputSpec(ndim=len(input_shape), axes={self.axis: dim})
+        shape = (dim,)
 
         if self.scale:
             self.gamma = self.add_weight(
@@ -404,11 +378,9 @@ class GroupNormalization(Layer):
             "center": self.center,
             "scale": self.scale,
             "beta_initializer": initializers.serialize(self.beta_initializer),
-            "gamma_initializer":
-            initializers.serialize(self.gamma_initializer),
+            "gamma_initializer": initializers.serialize(self.gamma_initializer),
             "beta_regularizer": regularizers.serialize(self.beta_regularizer),
-            "gamma_regularizer":
-            regularizers.serialize(self.gamma_regularizer),
+            "gamma_regularizer": regularizers.serialize(self.gamma_regularizer),
             "beta_constraint": constraints.serialize(self.beta_constraint),
             "gamma_constraint": constraints.serialize(self.gamma_constraint),
         }

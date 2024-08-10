@@ -53,4 +53,4 @@ jobs:
                 pip list
 
         -   name: Run notebook ${{ matrix.notebook }}
-            run: pytest -sP --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"
+            run: pytest -s --nbmake --nbmake-timeout=3000 "./notebooks/deepmreye_example_${{ matrix.notebook }}.ipynb"

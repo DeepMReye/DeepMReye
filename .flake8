@@ -7,17 +7,12 @@ exclude=
     media
     tests
 select = B,D,E,F,W,C90,CFQ
-max-complexity = 10
+max-complexity = 11
 max-line-length = 120
 per-file-ignores =
     */__init__.py:F401
 extend-ignore =
     B001,
-    B006,
-    B007,
-    B023,
-    B026,
-    B028,
     CFQ,
     D100,
     D101,
@@ -25,5 +20,5 @@ extend-ignore =
     D103,
     D104,
     D107,
+    E203,
     E722,
-    FS002,

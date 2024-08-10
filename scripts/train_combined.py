@@ -18,7 +18,7 @@ for val, item in CLI_OPTIONS.items():
 args = parser.parse_args()
 
 # Set GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "{}".format(args.gpu_id)
+os.environ["CUDA_VISIBLE_DEVICES"] = f"{args.gpu_id}"
 
 # Create data generators from given path
 parsed_datasets = args.datasets.split(",")
@@ -31,8 +31,7 @@ opts = model_opts.get_opts()
 generators = data_generator.create_leaveoneout_generators(
     datasets,
     batch_size=opts["batch_size"],
-    augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]),
-                  opts["shift"], opts["zoom"]),
+    augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]), opts["shift"], opts["zoom"]),
     mixed_batches=True,
 )
 
