@@ -68,4 +68,4 @@ repos:
     hooks:
     -   id: flake8
         args: [--config, .flake8]
-        additional_dependencies: [flake8-docstrings, flake8-use-fstring, flake8-functions, flake8-bugbear]
+        additional_dependencies: [flake8-docstrings, flake8-use-fstring, flake8-bugbear]
