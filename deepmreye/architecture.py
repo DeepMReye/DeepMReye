@@ -174,7 +174,7 @@ def conv3d_block(input_layer, filters, kernel_size, strides, activation):
             padding="same",
             activation=activation,
         )(input_layer)
-        x = AveragePooling3D()(x)
+        x = AveragePooling3D(pool_size=(2, 2, 2))(x)
     else:
         x = Conv3D(
             filters=filters,
