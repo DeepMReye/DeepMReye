@@ -50,7 +50,7 @@ def create_standard_model(input_shape, opts):
     x = Dropout(opts["dropout_rate"])(x, training=opts["mc_dropout"])
 
     # Downsample to bottleneck layer, but keep skip layers
-    x, skip_layers = downsample_block(
+    x, _ = downsample_block(
         x,
         filters=opts["filters"],
         depth=opts["depth"],
@@ -84,7 +84,7 @@ def create_standard_model(input_shape, opts):
     )
 
     # Create model
-    real_regression_shape = out_regression.shape.as_list()
+    real_regression_shape = list(out_regression.shape)
     real_regression = Input(real_regression_shape[1::])
     model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
     model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
