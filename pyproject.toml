@@ -1,0 +1,77 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling", "hatch-vcs"]
+
+[project]
+authors = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3"
+]
+dependencies = [
+    "plotly",
+    "scikit-learn",
+    "antspyx<0.5",
+    "tensorflow",
+    "keras"
+]
+description = "MR-based eye tracker without eye tracking"
+dynamic = ["version"]
+license = {file = "LICENSE"}
+maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
+name = "deepmreye"
+readme = "README.md"
+requires-python = ">=3.8.0"
+
+[project.optional-dependencies]
+all = ["deepmreye[doc,test,style]"]
+# also stored in docs/requirements.txt
+# to speed up readthedocs build
+doc = [
+    "sphinx >=2.0",
+    "sphinx-argparse",
+    "sphinx_rtd_theme"
+]
+docs = ["deepmreye[doc]"]
+streamlit = ["streamlit"]
+style = ["tox"]
+test = ["pytest>6", "pytest-cov"]
+tests = ["deepmreye[test]"]
+
+[project.urls]
+home = "https://github.com/DeepMReye/DeepMReye"
+
+[tool.black]
+line-length = 120
+
+[tool.codespell]
+builtin = "clear,rare"
+ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe"
+skip = "*.html"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "deepmreye/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["deepmreye"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.isort]
+combine_as_imports = true
+line_length = 120
+profile = "black"
+skip_gitignore = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers --doctest-modules --showlocals -s -vv --durations=0"
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
+junit_family = "xunit2"
+log_cli_level = "INFO"
+minversion = "6.0"
+testpaths = ["tests"]
+xfail_strict = true

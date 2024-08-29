@@ -1,0 +1,23 @@
+[flake8]
+count = True
+show-source = True
+statistics = True
+exclude=
+    *build/
+    media
+    tests
+select = C,B,D,E,F,W
+max-complexity = 11
+max-line-length = 120
+per-file-ignores =
+    */__init__.py:F401
+extend-ignore =
+    B001,
+    D100,
+    D101,
+    D102,
+    D103,
+    D104,
+    D107,
+    E203,
+    E722,
