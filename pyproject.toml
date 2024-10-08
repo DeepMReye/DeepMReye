@@ -24,7 +24,7 @@ license = {file = "LICENSE"}
 maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
 name = "deepmreye"
 readme = "README.md"
-requires-python = ">=3.8.0"
+requires-python = ">=3.9.0"
 
 [project.optional-dependencies]
 all = ["deepmreye[doc,test,style]"]
