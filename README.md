@@ -78,7 +78,7 @@ docker run -it --rm \
 If you would like decode gaze coordinates in your data using a pretrained model, the easiest way is using our streamlit app.
 
 Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after.
-Please read the [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) before using the pretrained models.
+Please read the [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) before using the pretrained models.
 
 ```bash
 git clone https://github.com/DeepMReye/DeepMReye.git
@@ -91,7 +91,7 @@ streamlit run streamlit/streamlit.py
 ### Data formats
 The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. The pipeline then extracts the eyeball voxels automatically and saves them as Python Pickle files, which serve as model input. For model training, you additionally need <u>**training labels**</u>, a numpy array containing 10 gaze coordinates per functional volume. These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target, and many file formats can be easily read (e.g. .npy, .npz, .mat, .csv etc.).
 
-Please see our [FAQ](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t) page for more details on data formats and preprocessing.
+Please see our [FAQ](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) page for more details on data formats and preprocessing.
 
 ## Hardware requirements
 
