@@ -10,9 +10,7 @@ This [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) provides a st
 
 This [Data Repository](https://osf.io/mrhk9/) includes exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
 
-If you have other questions, please reach out to us.
-
-<!--  Moreover, here are additional [User Recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe) as well as a [Frequently-Asked-Questions (FAQ)](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/sargIAQ6t) page. -->
+If you have questions, please check out our [Frequently Asked Questions](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) page. If you cannot find the answer to your question there, reach out to us!
 
 ![deepMReye video](media/deepMReye_video.gif)
 
@@ -78,7 +76,7 @@ docker run -it --rm \
 If you would like decode gaze coordinates in your data using a pretrained model, the easiest way is using our streamlit app.
 
 Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after.
-Please read the [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) before using the pretrained models.
+Please read our [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) before using the pretrained models.
 
 ```bash
 git clone https://github.com/DeepMReye/DeepMReye.git
@@ -90,8 +88,6 @@ streamlit run streamlit/streamlit.py
 
 ### Data formats
 The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. The pipeline then extracts the eyeball voxels automatically and saves them as Python Pickle files, which serve as model input. For model training, you additionally need <u>**training labels**</u>, a numpy array containing 10 gaze coordinates per functional volume. These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target, and many file formats can be easily read (e.g. .npy, .npz, .mat, .csv etc.).
-
-Please see our [FAQ](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) page for more details on data formats and preprocessing.
 
 ## Hardware requirements
 
@@ -114,4 +110,4 @@ Version in parentheses indicate the ones used for testing the framework. Its ext
 If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/).
 
 ## Correspondence
-If you have questions, comments or inquiries, please reach out to us: markus.frey[at]ntnu.no & m.nau@vu.nl
+If you have questions, comments or inquiries, please reach out to us: markus.frey[at]ntnu.no & m.nau[at]vu.nl
