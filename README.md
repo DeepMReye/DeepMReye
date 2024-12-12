@@ -110,4 +110,4 @@ Version in parentheses indicate the ones used for testing the framework. Its ext
 If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/).
 
 ## Correspondence
-If you have questions, comments or inquiries, please reach out to us: markus.frey[at]ntnu.no & m.nau[at]vu.nl
+If you have questions, comments or inquiries, please reach out to us: markus.frey1[at]gmail.com & m.nau[at]vu.nl
