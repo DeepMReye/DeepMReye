@@ -32,7 +32,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest] # MacOS fails to run at all # windows-latest: does not work because antspyx is not available for windows
-                python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+                python-version: ['3.9', '3.10', '3.11', '3.12']
         runs-on: ${{ matrix.os }}
         steps:
         -   uses: actions/checkout@v4
