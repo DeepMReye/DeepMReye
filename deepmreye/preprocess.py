@@ -21,14 +21,19 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
     ----------
     dme_template : ants Image
         Ants image with template file
+
     func : ants Image
         Functional image to register to dme_template
+
     masks : list
         List of Ants image objects containing variable sized masks
+
     verbose : int, optional
         Verbosity level of function, by default 1
+
     transforms : string, optional
         Which transforms should be used to transform image, by default None & set to Similarity
+
     metric : str, optional
         Which metric to quantify fit, by default 'GC'
 
@@ -36,6 +41,7 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
     -------
     func : ants Image
         Functional image registered to dme_template
+
     transformation_stats : array
         Statistics of transformation, used for dataset report
     """
@@ -86,18 +92,25 @@ def run_participant(
     ----------
     fp_func : string
         Filepath to participant functional
+
     dme_template : ants Image
         Preloaded Image to dme_template
+
     eyemask_big : ants Image
         Big eyemask as ants Image
+
     eyemask_small : ants Image
         Small eyemask as ants Image
+
     x_edges : list
         Edges of mask in x-dimension
+
     y_edges : list
         Edges of mask in y-dimension
+
     z_edges : list
         Edges of mask in z-dimension
+
     replace_with : int, optional
         Values outside of mask are set to this, by default 0
     """
@@ -140,16 +153,22 @@ def get_masks(data_path=""):
     -------
     eyemask_small : ants Image
         Eyemask containing voxels within the eye
+
     eyemask_big : ants Image
         Square eye mask centered on both eyes
+
     dme_template : ants Image
         Template brain using centered gaze positions
+
     mask : ants Image
         Mask which is used to cut 3D shape for model (in this case the same as eyemask_small)
+
     x_edges : list
         Edges of mask in x-dimension
+
     y_edges : list
         Edges of mask in y-dimension
+
     z_edges : list
         Edges of mask in z-dimension
     """
@@ -178,6 +197,7 @@ def get_mask_edges(mask, split=True):
     ----------
     fp_mask : filepath, optional
         Filepath to mask
+
     split : bool, optional
         Splits masks into hemispheres, by default True
 
@@ -185,6 +205,7 @@ def get_mask_edges(mask, split=True):
     -------
     mask:
         Array of extracted mask edges
+
     x_edges, y_edges, z_edges:
         Edges in (x,y,z)-dimension
     """
@@ -214,20 +235,28 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     ----------
     to_mask : ants Image
         Image to mask
+
     mask : ants Image
         Mask as numpy array
+
     x_edges : list
         Edges of mask in x-dimension
+
     y_edges : list
         Edges of mask in y-dimension
+
     z_edges : list
         Edges of mask in z-dimension
+
     replace_with : int, optional
         Values outside of mask are set to this, by default 0
+
     save_overview : bool, optional
         Saves report / quality control figure when set to True, by default True
+
     fp_func : str, optional
         Filepath to new functional, by default None
+
     verbose : int, optional
         Verbosity level of this function, by default 0
 
@@ -235,8 +264,10 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     -------
     original_input : ants Image
         Returns to_mask
+
     masked_eye : ants Image
         masked_eye as numpy array
+
     mask : ants Image
         Return mask
     """
@@ -274,14 +305,19 @@ def plot_subject_report(
     ----------
     fn_subject : string
         Filepath to subject
+
     original_input : ants Image
         Filepath to functional image of subject
+
     masked_eye : array
         Numpy array of masked eye
+
     mask : ants Image
         ants mask
+
     color : str, optional
         Boxplot color, by default "rgb(0, 150, 175)"
+
     bg_color : str, optional
         Background color, by default "rgb(0,0,0)"
     """
@@ -454,10 +490,13 @@ def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
     ----------
     img_in : ants Image
         Image to normalize
+
     mad_time : bool, optional
         Determines if median absolute deviation should be used across time dimension, by default False
+
     standardize_tr : bool, optional
         Determines if each image should be normalized across spatial dimensions, by default True
+
     std_cut_after : int, optional
         Gets rid of outliers after normalization, by default 5
 
@@ -512,6 +551,7 @@ def load_label(label_path, label_type="calibration_run"):
     ----------
     label_path : str
         Path to file with labels
+
     label_type : str, optional
         Which type of labels are used in the experiment, by default 'calibration_run'
 
@@ -550,14 +590,19 @@ def save_data(participant, participant_data, participant_labels, participant_ids
     ----------
     participant : str
         Participant label
+
     participant_data : list
         4D (X,Y,Z,t) data for participant across runs
+
     participant_labels : list
         3D (t,X,Y) data, with corresponding labels to participant data
+
     participant_ids : str
         Participant identifier with run id
+
     processed_data : str
         Filepath to where processed data should be stored
+
     center_labels : bool, optional
         Centers labels to (0,0) which can improve performance of model, by default False
     """
