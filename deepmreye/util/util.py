@@ -159,10 +159,10 @@ def get_model_scores(real_y, pred_y, euc_pred, **args):
     except ValueError:
         # Participant has only NaNs or no data, return empty dataframes
         agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = (
-            np.random.rand(9) * np.NaN,
-            np.random.rand(9) * np.NaN,
-            np.random.rand(9) * np.NaN,
-            np.random.rand(9) * np.NaN,
+            np.random.rand(9) * np.nan,
+            np.random.rand(9) * np.nan,
+            np.random.rand(9) * np.nan,
+            np.random.rand(9) * np.nan,
         )  # 9 return parameters
     df_scores = pd.DataFrame(
         [agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct],

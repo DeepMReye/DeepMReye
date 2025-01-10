@@ -469,7 +469,7 @@ def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
     # Transpose so time comes first
     img_in = np.transpose(img_in, axes=(3, 0, 1, 2))
     zero_indices = img_in == 0
-    img_in[zero_indices] = np.NaN
+    img_in[zero_indices] = np.nan
 
     # Median absolute deviation (MAD)
     if mad_time:
