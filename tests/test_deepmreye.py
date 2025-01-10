@@ -116,7 +116,7 @@ def test_model_evaluation():
     util.get_model_scores(real_y, pred_y, euc_pred)
 
     # For all NaN participant
-    real_y = np.random.rand(num_points, 10, 2) * np.NaN
-    pred_y = np.random.rand(num_points, 10, 2) * np.NaN
-    euc_pred = np.random.rand(num_points, 10, 1) * np.NaN
+    real_y = np.random.rand(num_points, 10, 2) * np.nan
+    pred_y = np.random.rand(num_points, 10, 2) * np.nan
+    euc_pred = np.random.rand(num_points, 10, 1) * np.nan
     util.get_model_scores(real_y, pred_y, euc_pred)
