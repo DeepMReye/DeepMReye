@@ -49,7 +49,7 @@ line-length = 120
 
 [tool.codespell]
 builtin = "clear,rare"
-ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe"
+ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe,joO"
 skip = "*.html"
 
 [tool.hatch.build.hooks.vcs]

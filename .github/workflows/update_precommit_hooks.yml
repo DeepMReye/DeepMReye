@@ -1,5 +1,5 @@
 ---
-name: Update precommi and run
+name: Update pre-commit and run
 
 
 on:
@@ -42,8 +42,6 @@ jobs:
         -   name: Update pre-commit hooks and run them
             run: |
                 pre-commit autoupdate
-                pre-commit install
-                pre-commit run --all-files
         -   name: Create Pull Request
             uses: peter-evans/create-pull-request@v7
             with:
