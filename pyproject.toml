@@ -16,7 +16,7 @@ dependencies = [
     "scikit-learn",
     "antspyx<0.5",
     "tensorflow",
-    "keras<3.0.0"
+    "keras"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
