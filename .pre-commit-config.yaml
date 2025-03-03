@@ -31,7 +31,7 @@ repos:
 
 # Sorts Python imports alphabetically and by section with `isort`.
 -   repo: https://github.com/PyCQA/isort
-    rev: 6.0.0
+    rev: 6.0.1
     hooks:
     -   id: isort
         args: [--settings-path, pyproject.toml]
