@@ -84,18 +84,17 @@ def create_standard_model(input_shape, opts):
     )
 
     # Create model
-    real_regression_shape = out_regression.shape.as_list()
+    real_regression_shape = list(out_regression.shape)
     real_regression = Input(real_regression_shape[1::])
     model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
     model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
 
     # Add losses
     loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
-    model.add_loss(opts["loss_euclidean"] * loss_euclidean)
-    model.add_loss(opts["loss_confidence"] * loss_confidence)
+    combined_loss = opts["loss_euclidean"] * loss_euclidean + opts["loss_confidence"] * loss_confidence
 
-    # Compile it
-    model.compile(optimizer=optimizers.Adam(opts["lr"]))
+    #  Compile it
+    model.compile(optimizer=optimizers.Adam(opts["lr"]), loss=combined_loss)
     model.metrics.append(loss_euclidean)
     model.metrics_names.append("Euclidean loss")
     model.metrics.append(loss_confidence)
@@ -192,20 +191,46 @@ def upsampling_block(input_layer, size=2):
 
 
 # --- loss blocks
+class EuclideanDistanceLayer(Layer):
+    def __init__(self, **kwargs):
+        super(EuclideanDistanceLayer, self).__init__(**kwargs)
+    
+    def call(self, inputs):
+        y_true, y_pred = inputs
+        return K.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
+
+class MeanSquaredErrorLayer(Layer):
+    def __init__(self, **kwargs):
+        super(MeanSquaredErrorLayer, self).__init__(**kwargs)
+    
+    def call(self, inputs):
+        y_true, y_pred = inputs
+        return K.square(y_true - y_pred)
+
+class MeanLayer(Layer):
+    def __init__(self, **kwargs):
+        super(MeanLayer, self).__init__(**kwargs)
+    
+    def call(self, x):
+        return tf.reduce_mean(x)
+
 def compute_standard_loss(out_confidence, real_reg, pred_reg):
-    loss_euclidean = euclidean_distance(real_reg, pred_reg)
-    loss_confidence = mean_squared_error(loss_euclidean, out_confidence)
-
-    return K.mean(loss_euclidean), K.mean(loss_confidence)
-
-
-def euclidean_distance(y_true, y_pred):
-    return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
-
-
-def mean_squared_error(y_true, y_pred):
-    return K.square(y_true - y_pred)
-
+    # Calculate Euclidean distance
+    euclidean_layer = EuclideanDistanceLayer()
+    loss_euclidean = euclidean_layer([real_reg, pred_reg])
+    
+    # Calculate confidence loss
+    mse_layer = MeanSquaredErrorLayer()
+    loss_confidence = mse_layer([loss_euclidean, out_confidence])
+    
+    # Calculate means using custom layers
+    mean_layer1 = MeanLayer()
+    mean_layer2 = MeanLayer()
+    
+    mean_loss_euclidean = mean_layer1(loss_euclidean)
+    mean_loss_confidence = mean_layer2(loss_confidence)
+    
+    return mean_loss_euclidean, mean_loss_confidence
 
 # --- Custom Layers
 # Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py

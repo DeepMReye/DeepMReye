@@ -44,7 +44,6 @@ opts["epochs"] = 100
     dataset="_".join(parsed_datasets),
     generators=generators[0],
     opts=opts,
-    use_multiprocessing=True,
     return_untrained=False,
     verbose=1,
     save=True,

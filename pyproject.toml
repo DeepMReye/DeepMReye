@@ -14,9 +14,9 @@ classifiers = [
 dependencies = [
     "plotly",
     "scikit-learn",
-    "antspyx<0.5",
+    "antspyx",
     "tensorflow",
-    "keras<3.0.0"
+    "keras"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]

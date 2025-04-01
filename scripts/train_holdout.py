@@ -40,7 +40,6 @@ generators = data_generator.create_holdout_generators(
     dataset=dataset_name,
     generators=generators,
     opts=opts,
-    use_multiprocessing=True,
     return_untrained=False,
     verbose=1,
     save=True,
