@@ -48,8 +48,6 @@ def train_model(
     -------
     model : Keras Model
         Full model instance, used for training uncertainty estimate
-    model_inference : Keras Model
-        Model instance used for inference, provides uncertainty estimate (unsupervised model)
     """
     # Clear session if needed
     if clear_graph:
@@ -68,7 +66,7 @@ def train_model(
     ) = generators
 
     # Test datagenerator and get representative X and y
-    ((X, y), _) = next(training_generator)
+    X, (y, _) = next(training_generator)
     if verbose > 0:
         print(f"Input shape {X.shape}, Output shape {y.shape}")
         print(
@@ -81,11 +79,11 @@ def train_model(
 
     # Get model
     if models is None:
-        model, model_inference = architecture.create_standard_model(X.shape[1::], opts)
+        model = architecture.create_standard_model(X.shape[1::], opts)
     else:
-        model, model_inference = models
+        model = models
     if return_untrained:
-        return (model, model_inference)
+        return model
 
     # Train model
     if verbose > 1:
@@ -102,9 +100,9 @@ def train_model(
 
     # Save model weights
     if save:
-        model_inference.save_weights(join(model_path, f"modelinference_{dataset}.h5"))
+        model.save_weights(join(model_path, f"model_{dataset}.h5"))
 
-    return (model, model_inference)
+    return model
 
 
 def evaluate_model(dataset, model, generators, save=False, model_path="./", model_description="", verbose=0, **args):
