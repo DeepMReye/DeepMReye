@@ -251,8 +251,7 @@ def data_generator(
         # Augmentation
         if training and any(augment_list):
             X = util.augment_input(X, rotation=augment_list[0], shift=augment_list[1], zoom=augment_list[2])
-
-        yield X, (y, [])
+        yield X, (y, y[...,0] * 0)
 
 
 def get_subject_data(fn_subject, batch_size=None, sample_index=None, start_tr=None, end_tr=None, nonan_indices=None):

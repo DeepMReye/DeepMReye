@@ -20,6 +20,8 @@ from tensorflow.keras.layers import (
     concatenate,
 )
 from tensorflow.keras.models import Model
+from keras import ops
+import keras.losses as losses
 
 
 def create_standard_model(input_shape, opts):
@@ -86,15 +88,29 @@ def create_standard_model(input_shape, opts):
     model = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel")
     # model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel_Inference")
 
+    # def my_loss_fn(y_true, y_pred):
+    #     #squared_difference = ops.square(y_true[0] - y_pred[0])
+    #     #squared_difference2 = ops.square(y_pred[1])
+
+    #     loss_euclidean_per_sample = euclidean_distance(y_true[0], y_pred[0])
+    #     print(loss_euclidean_per_sample.shape)
+
+    #     loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, y_pred[1][...,0])
+
+    #     #mean_loss_euclidean = ops.mean(loss_euclidean_per_sample)
+    #     #mean_loss_confidence = ops.mean(loss_confidence_per_sample)
+
+    #     return ops.mean(loss_euclidean_per_sample+loss_confidence_per_sample)
+
     # Create the loss function instance using the options
     loss_function = custom_combined_loss(opts)
     model.compile(
         optimizer=optimizers.Adam(learning_rate=opts["lr"]), # Use learning_rate
         loss=loss_function,  # Pass the custom loss function
-        metrics={
-             "euclidean_loss": euclidean_loss_metric, # Custom name mapping
-             "confidence_loss": confidence_loss_metric # Custom name mapping
-        }
+        # metrics={
+        #      "euclidean_loss": euclidean_loss_metric,
+        #      "confidence_loss": confidence_loss_metric
+        # }
     )
     return model
 
@@ -188,22 +204,22 @@ def upsampling_block(input_layer, size=2):
 
 # --- loss blocks
 def euclidean_distance(y_true, y_pred):
-    return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
+    return ops.sqrt(ops.sum(ops.square(y_true - y_pred), axis=-1))
 
 def mean_squared_error(y_true, y_pred):
-    return K.square(y_true - y_pred)
+    return ops.square(y_true - y_pred)
 
 # --- New Custom Loss Function ---
 def custom_combined_loss(opts):
     def loss(y_true, y_pred):
         pred_reg, out_confidence = y_pred[0], y_pred[1] # Unpack predictions
 
-        loss_euclidean_per_sample = euclidean_distance(y_true, pred_reg)
+        loss_euclidean_per_sample = euclidean_distance(y_true[0], pred_reg)
 
-        loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, out_confidence)
+        loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, out_confidence[...,0])
 
-        mean_loss_euclidean = K.mean(loss_euclidean_per_sample)
-        mean_loss_confidence = K.mean(loss_confidence_per_sample)
+        mean_loss_euclidean = ops.mean(loss_euclidean_per_sample)
+        mean_loss_confidence = ops.mean(loss_confidence_per_sample)
 
         total_loss = (opts["loss_euclidean"] * mean_loss_euclidean +
                       opts["loss_confidence"] * mean_loss_confidence)

@@ -84,7 +84,7 @@ def test_model_training(path_to_testdata):
     )
 
     # Train model
-    (_, model_inference) = train.train_model(
+    model_inference = train.train_model(
         dataset="example_data",
         generators=generators[0],
         opts=opts,
