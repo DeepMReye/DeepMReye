@@ -14,9 +14,8 @@ classifiers = [
 dependencies = [
     "plotly",
     "scikit-learn",
-    "antspyx<0.5",
-    "tensorflow",
-    "keras<3.0.0"
+    "antspyx",
+    "tensorflow==2.15.0"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
@@ -24,7 +23,7 @@ license = {file = "LICENSE"}
 maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
 name = "deepmreye"
 readme = "README.md"
-requires-python = ">=3.9.0"
+requires-python = ">=3.9.0,<3.12"
 
 [project.optional-dependencies]
 all = ["deepmreye[doc,test,style]"]
