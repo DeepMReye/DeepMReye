@@ -248,6 +248,8 @@ def data_generator(
         if inner_timesteps is not None:
             y = [y_tmp[np.linspace(0, y[0].shape[0] - 1, inner_timesteps, dtype=int), :] for y_tmp in y]
         X, y = np.array(X)[..., np.newaxis], np.array(y)
+
+        print(f'DataGen: y: {y.shape}')
         # Augmentation
         if training and any(augment_list):
             X = util.augment_input(X, rotation=augment_list[0], shift=augment_list[1], zoom=augment_list[2])

@@ -88,25 +88,12 @@ def create_standard_model(input_shape, opts):
     model = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel")
     # model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel_Inference")
 
-    # def my_loss_fn(y_true, y_pred):
-    #     #squared_difference = ops.square(y_true[0] - y_pred[0])
-    #     #squared_difference2 = ops.square(y_pred[1])
-
-    #     loss_euclidean_per_sample = euclidean_distance(y_true[0], y_pred[0])
-    #     print(loss_euclidean_per_sample.shape)
-
-    #     loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, y_pred[1][...,0])
-
-    #     #mean_loss_euclidean = ops.mean(loss_euclidean_per_sample)
-    #     #mean_loss_confidence = ops.mean(loss_confidence_per_sample)
-
-    #     return ops.mean(loss_euclidean_per_sample+loss_confidence_per_sample)
-
     # Create the loss function instance using the options
     loss_function = custom_combined_loss(opts)
     model.compile(
         optimizer=optimizers.Adam(learning_rate=opts["lr"]), # Use learning_rate
-        loss=loss_function,  # Pass the custom loss function
+        loss=loss_function,  # Pass the custom loss function,
+        run_eagerly=True,
         # metrics={
         #      "euclidean_loss": euclidean_loss_metric,
         #      "confidence_loss": confidence_loss_metric
@@ -212,6 +199,15 @@ def mean_squared_error(y_true, y_pred):
 # --- New Custom Loss Function ---
 def custom_combined_loss(opts):
     def loss(y_true, y_pred):
+        y_true_reg, y_true_conf = y_true[0].numpy(), y_true[1].numpy() # Unpack true values if needed
+        pred_reg, pred_conf = y_pred[0].numpy(), y_pred[1].numpy()     # Unpack predictions
+
+        print("Shape of Regression Real (y_true[0]):", ops.shape(y_true_reg)) # Should be (batch, 10, 2)
+        print("Shape of Confidence Real (y_true[1]):", ops.shape(y_true_conf)) # Should be (batch, 10)
+
+        print("Shape of Regression Prediction (y_pred[0]):", ops.shape(pred_reg)) # Should be (batch, 10, 2)
+        print("Shape of Confidence Prediction (y_pred[1]):", ops.shape(pred_conf)) # Should be (batch, 10)
+
         pred_reg, out_confidence = y_pred[0], y_pred[1] # Unpack predictions
 
         loss_euclidean_per_sample = euclidean_distance(y_true[0], pred_reg)
