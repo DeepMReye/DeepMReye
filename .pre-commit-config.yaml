@@ -4,9 +4,9 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: end-of-file-fixer
-        exclude: '\.html$'
+        exclude: \.html$
     -   id: trailing-whitespace
-        exclude: '\.html$'
+        exclude: \.html$
     -   id: check-yaml
     -   id: check-added-large-files
         args: [--maxkb=5000]
@@ -16,7 +16,7 @@ repos:
     -   id: check-json
     -   id: check-merge-conflict
     -   id: mixed-line-ending
-        exclude: '\.html$'
+        exclude: \.html$
 
 # Format YAML files
 -   repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
@@ -59,7 +59,7 @@ repos:
     -   id: codespell
         args: [--toml=pyproject.toml]
         additional_dependencies: [tomli]
-        exclude: '\.html$'
+        exclude: \.html$
 
 # Check that Python code complies with PEP8 guidelines
 -   repo: https://github.com/pycqa/flake8

@@ -15,7 +15,7 @@ dependencies = [
     "plotly",
     "scikit-learn",
     "antspyx",
-    "tensorflow==2.15.0", 
+    "tensorflow==2.15.0"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
