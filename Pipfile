@@ -11,6 +11,8 @@ plotly = "*"
 scikit-learn = "*"
 scipy = "*"
 tensorflow = "==2.15.0"
+anywidget = "*"
+nbformat = "*"
 
 [[source]]
 name = "pypi"
