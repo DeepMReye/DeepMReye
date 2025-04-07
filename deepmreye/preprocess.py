@@ -47,7 +47,7 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
             type_of_transform = transforms[idx]
         register_to_nau = ants.registration(
             fixed=dme_template,
-            moving=func.get_average_of_timeseries(),
+            moving=ants.get_average_of_timeseries(func),
             aff_random_sampling_rate=1,
             type_of_transform=type_of_transform,
             mask=mask,
@@ -241,7 +241,8 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
         Return mask
     """
     # Mask image to set out of mask values
-    original_input = to_mask.copy()
+    original_input = to_mask.clone()
+    to_mask = to_mask.numpy()
     to_mask[mask < 1, ...] = replace_with
     # Slice for mask
     masked_eye_left = to_mask[x_edges[1] : x_edges[0], y_edges[1] : y_edges[0], z_edges[1] : z_edges[0], ...]
@@ -286,7 +287,7 @@ def plot_subject_report(
         Background color, by default "rgb(0,0,0)"
     """
     # Prepare data
-    whole_brain_mask = original_input.get_average_of_timeseries()
+    whole_brain_mask = ants.get_average_of_timeseries(original_input).numpy()
     eye_mask = np.mean(masked_eye, axis=3)
     eye_mask_flat = eye_mask.flatten()
     # Also remove zero for histogram
