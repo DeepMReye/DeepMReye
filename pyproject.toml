@@ -16,6 +16,10 @@ dependencies = [
     "scikit-learn",
     "antspyx",
     "tensorflow==2.15.0"
+    "pytest"
+    "nbmake"
+    "ipywidgets>=7.0.0" 
+    "anywidget"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
