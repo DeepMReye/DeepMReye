@@ -14,9 +14,8 @@ classifiers = [
 dependencies = [
     "plotly",
     "scikit-learn",
-    "antspyx<0.5",
-    "tensorflow",
-    "keras"
+    "antspyx",
+    "tensorflow==2.15.0"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
@@ -49,7 +48,7 @@ line-length = 120
 
 [tool.codespell]
 builtin = "clear,rare"
-ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe"
+ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe,joO"
 skip = "*.html"
 
 [tool.hatch.build.hooks.vcs]
