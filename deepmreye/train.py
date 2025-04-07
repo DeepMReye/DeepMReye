@@ -16,6 +16,8 @@ def train_model(
     clear_graph=True,
     save=False,
     model_path="./",
+    workers=4,
+    use_multiprocessing=True,
     models=None,
     return_untrained=False,
     verbose=0,
@@ -37,6 +39,10 @@ def train_model(
         If model weights should be saved to file, by default False
     model_path : str, optional
         Filepath to where model weights should be stored, by default './'
+    workers : int, optional
+        Number of workers used when using multiprocessing, by default 4
+    use_multiprocessing : bool, optional
+        If multiprocessing should be used, can speed up training by 10x if data loader is bottleneck, by default True
     models : Keras Model instance, optional
         Can be provided if already trained model should be used instead of training a new one, by default None
     return_untrained : bool, optional
@@ -48,10 +54,16 @@ def train_model(
     -------
     model : Keras Model
         Full model instance, used for training uncertainty estimate
+    model_inference : Keras Model
+        Model instance used for inference, provides uncertainty estimate (unsupervised model)
     """
     # Clear session if needed
     if clear_graph:
         K.clear_session()
+    if use_multiprocessing:
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+    else:
+        workers = 1
 
     # Unpack generators
     (
@@ -66,7 +78,7 @@ def train_model(
     ) = generators
 
     # Test datagenerator and get representative X and y
-    X, (y, _) = next(training_generator)
+    ((X, y), _) = next(training_generator)
     if verbose > 0:
         print(f"Input shape {X.shape}, Output shape {y.shape}")
         print(
@@ -79,16 +91,16 @@ def train_model(
 
     # Get model
     if models is None:
-        model = architecture.create_standard_model(X.shape[1::], opts)
+        model, model_inference = architecture.create_standard_model(X.shape[1::], opts)
     else:
-        model = models
+        model, model_inference = models
     if return_untrained:
-        return model
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+        return (model, model_inference)
 
     # Train model
     if verbose > 1:
         print(model.summary(line_length=200))
-
     model.fit(
         training_generator,
         steps_per_epoch=opts["steps_per_epoch"],
@@ -96,13 +108,17 @@ def train_model(
         validation_data=testing_generator,
         validation_steps=opts["validation_steps"],
         callbacks=[lr_sched],
+        use_multiprocessing=use_multiprocessing,
+        workers=workers,
     )
 
     # Save model weights
     if save:
-        model.save_weights(join(model_path, f"model_{dataset}.h5"))
+        model_inference.save_weights(join(model_path, f"modelinference_{dataset}.h5"))
+    if use_multiprocessing:
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
-    return model
+    return (model, model_inference)
 
 
 def evaluate_model(dataset, model, generators, save=False, model_path="./", model_description="", verbose=0, **args):

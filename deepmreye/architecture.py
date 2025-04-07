@@ -20,8 +20,6 @@ from tensorflow.keras.layers import (
     concatenate,
 )
 from tensorflow.keras.models import Model
-from keras import ops
-import keras.losses as losses
 
 
 def create_standard_model(input_shape, opts):
@@ -85,21 +83,25 @@ def create_standard_model(input_shape, opts):
         mc_dropout=opts["mc_dropout"],
     )
 
-    model = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel")
-    # model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence], name="StandardModel_Inference")
+    # Create model
+    real_regression_shape = out_regression.shape.as_list()
+    real_regression = Input(real_regression_shape[1::])
+    model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
+    model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
 
-    # Create the loss function instance using the options
-    loss_function = custom_combined_loss(opts)
-    model.compile(
-        optimizer=optimizers.Adam(learning_rate=opts["lr"]), # Use learning_rate
-        loss=loss_function,  # Pass the custom loss function,
-        run_eagerly=True,
-        # metrics={
-        #      "euclidean_loss": euclidean_loss_metric,
-        #      "confidence_loss": confidence_loss_metric
-        # }
-    )
-    return model
+    # Add losses
+    loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
+    model.add_loss(opts["loss_euclidean"] * loss_euclidean)
+    model.add_loss(opts["loss_confidence"] * loss_confidence)
+
+    # Compile it
+    model.compile(optimizer=optimizers.Adam(opts["lr"]))
+    model.metrics.append(loss_euclidean)
+    model.metrics_names.append("Euclidean loss")
+    model.metrics.append(loss_confidence)
+    model.metrics_names.append("Confidence loss")
+
+    return model, model_inference
 
 
 # --- adult blocks
@@ -190,53 +192,20 @@ def upsampling_block(input_layer, size=2):
 
 
 # --- loss blocks
+def compute_standard_loss(out_confidence, real_reg, pred_reg):
+    loss_euclidean = euclidean_distance(real_reg, pred_reg)
+    loss_confidence = mean_squared_error(loss_euclidean, out_confidence)
+
+    return K.mean(loss_euclidean), K.mean(loss_confidence)
+
+
 def euclidean_distance(y_true, y_pred):
-    return ops.sqrt(ops.sum(ops.square(y_true - y_pred), axis=-1))
+    return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
+
 
 def mean_squared_error(y_true, y_pred):
-    return ops.square(y_true - y_pred)
+    return K.square(y_true - y_pred)
 
-# --- New Custom Loss Function ---
-def custom_combined_loss(opts):
-    def loss(y_true, y_pred):
-        y_true_reg, y_true_conf = y_true[0].numpy(), y_true[1].numpy() # Unpack true values if needed
-        pred_reg, pred_conf = y_pred[0].numpy(), y_pred[1].numpy()     # Unpack predictions
-
-        print("Shape of Regression Real (y_true[0]):", ops.shape(y_true_reg)) # Should be (batch, 10, 2)
-        print("Shape of Confidence Real (y_true[1]):", ops.shape(y_true_conf)) # Should be (batch, 10)
-
-        print("Shape of Regression Prediction (y_pred[0]):", ops.shape(pred_reg)) # Should be (batch, 10, 2)
-        print("Shape of Confidence Prediction (y_pred[1]):", ops.shape(pred_conf)) # Should be (batch, 10)
-
-        pred_reg, out_confidence = y_pred[0], y_pred[1] # Unpack predictions
-
-        loss_euclidean_per_sample = euclidean_distance(y_true[0], pred_reg)
-
-        loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, out_confidence[...,0])
-
-        mean_loss_euclidean = ops.mean(loss_euclidean_per_sample)
-        mean_loss_confidence = ops.mean(loss_confidence_per_sample)
-
-        total_loss = (opts["loss_euclidean"] * mean_loss_euclidean +
-                      opts["loss_confidence"] * mean_loss_confidence)
-
-        return total_loss
-    return loss
-
-
-# --- New Custom Metric Functions ---
-def euclidean_loss_metric(y_true, y_pred):
-    """Metric for average Euclidean distance."""
-    pred_reg, _ = y_pred[0], y_pred[1] # Unpack predictions, ignore confidence
-    loss_euclidean_per_sample = euclidean_distance(y_true, pred_reg)
-    return K.mean(loss_euclidean_per_sample)
-
-def confidence_loss_metric(y_true, y_pred):
-    """Metric for average Confidence loss."""
-    pred_reg, out_confidence = y_pred[0], y_pred[1] # Unpack predictions
-    loss_euclidean_per_sample = euclidean_distance(y_true, pred_reg)
-    loss_confidence_per_sample = mean_squared_error(loss_euclidean_per_sample, out_confidence)
-    return K.mean(loss_confidence_per_sample)
 
 # --- Custom Layers
 # Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py

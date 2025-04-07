@@ -10,13 +10,13 @@ from deepmreye.util import data_generator, model_opts, util
 # --------------------------------------------------------------------------------
 # --------------------------PREPROCESSING-----------------------------------------
 # --------------------------------------------------------------------------------
-# def test_download(path_to_masks):
-#     # To only test this command python -m pytest -k 'download', all commands python -m pytest
-#     # Delete files if already in folder to see if download works
-#     for m in ["eyemask_small.nii", "eyemask_big.nii", "dme_template.nii"]:
-#         if (path_to_masks / m).exists():
-#             (path_to_masks / m).unlink()
-#     test_masks(str(path_to_masks))
+def test_download(path_to_masks):
+    # To only test this command python -m pytest -k 'download', all commands python -m pytest
+    # Delete files if already in folder to see if download works
+    for m in ["eyemask_small.nii", "eyemask_big.nii", "dme_template.nii"]:
+        if (path_to_masks / m).exists():
+            (path_to_masks / m).unlink()
+    test_masks(str(path_to_masks))
 
 
 def test_masks(path_to_masks):
@@ -84,10 +84,11 @@ def test_model_training(path_to_testdata):
     )
 
     # Train model
-    model_inference = train.train_model(
+    (_, model_inference) = train.train_model(
         dataset="example_data",
         generators=generators[0],
         opts=opts,
+        use_multiprocessing=True,
         return_untrained=False,
         verbose=1,
         save=False,
@@ -115,7 +116,7 @@ def test_model_evaluation():
     util.get_model_scores(real_y, pred_y, euc_pred)
 
     # For all NaN participant
-    real_y = np.random.rand(num_points, 10, 2) * np.nan
-    pred_y = np.random.rand(num_points, 10, 2) * np.nan
-    euc_pred = np.random.rand(num_points, 10, 1) * np.nan
+    real_y = np.random.rand(num_points, 10, 2) * np.NaN
+    pred_y = np.random.rand(num_points, 10, 2) * np.NaN
+    euc_pred = np.random.rand(num_points, 10, 1) * np.NaN
     util.get_model_scores(real_y, pred_y, euc_pred)

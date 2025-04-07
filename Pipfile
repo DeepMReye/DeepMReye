@@ -10,7 +10,7 @@ pandas = "*"
 plotly = "*"
 scikit-learn = "*"
 scipy = "*"
-tensorflow = "*"
+tensorflow = "==2.15.0"
 
 [[source]]
 name = "pypi"
