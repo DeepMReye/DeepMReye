@@ -267,7 +267,7 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
 
 
 def plot_subject_report(
-    fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(14, 17, 23, 0)"
+    fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0, 0, 0)"
 ):
     """Plot quality check figure for given subject.
 
