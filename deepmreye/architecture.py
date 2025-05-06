@@ -1,6 +1,8 @@
+import platform
+
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from tensorflow.keras import constraints, initializers, optimizers, regularizers
+from tensorflow.keras import constraints, initializers, regularizers
 from tensorflow.keras.layers import (
     Activation,
     Add,
@@ -95,13 +97,28 @@ def create_standard_model(input_shape, opts):
     model.add_loss(opts["loss_confidence"] * loss_confidence)
 
     # Compile it
-    model.compile(optimizer=optimizers.Adam(opts["lr"]))
+    optimizer = get_adam_optimizer(opts["lr"])
+    model.compile(optimizer=optimizer)
     model.metrics.append(loss_euclidean)
     model.metrics_names.append("Euclidean loss")
     model.metrics.append(loss_confidence)
     model.metrics_names.append("Confidence loss")
 
     return model, model_inference
+
+
+def get_adam_optimizer(learning_rate):
+    is_mac = platform.system() == "Darwin"
+    is_arm = platform.machine() in ["arm64", "aarch64"]
+
+    if is_mac and is_arm:
+        # Apple Silicon detected
+        from keras.optimizers.legacy import Adam
+
+        print("Apple Silicon detected - using legacy Adam optimizer.")
+    else:
+        from keras.optimizers import Adam
+    return Adam(learning_rate=learning_rate)
 
 
 # --- adult blocks

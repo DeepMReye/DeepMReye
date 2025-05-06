@@ -2,9 +2,11 @@
 
 [packages]
 antspyx = "*"
+anywidget = "*"
 ipython = "*"
 jupyter = "*"
 matplotlib = "*"
+nbformat = "*"
 numpy = "*"
 pandas = "*"
 plotly = "*"
