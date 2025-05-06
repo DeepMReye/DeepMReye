@@ -1,6 +1,5 @@
-from os.path import join
-
 import platform
+from os.path import join
 
 import numpy as np
 import pandas as pd
