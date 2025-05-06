@@ -1,5 +1,7 @@
 from os.path import join
 
+import platform
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -57,6 +59,14 @@ def train_model(
     model_inference : Keras Model
         Model instance used for inference, provides uncertainty estimate (unsupervised model)
     """
+    # Disable multiprocessing on MacOS
+    is_mac = platform.system() == "Darwin"
+    is_arm = platform.machine() in ["arm64", "aarch64"]
+    if is_mac and is_arm:
+        if use_multiprocessing:
+            print("Apple Silicon detected - Multiprocessing is not supported. Disabling it.")
+        use_multiprocessing = False
+
     # Clear session if needed
     if clear_graph:
         K.clear_session()
