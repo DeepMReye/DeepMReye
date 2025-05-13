@@ -34,9 +34,10 @@ all = ["deepmreye[doc,test,style]"]
 # also stored in docs/requirements.txt
 # to speed up readthedocs build
 doc = [
-    "sphinx >=2.0",
-    "sphinx-argparse",
-    "sphinx_rtd_theme"
+    "myst-parser",
+    "pydata-sphinx-theme",
+    "sphinx>=5.0",
+    "sphinx-argparse"
 ]
 docs = ["deepmreye[doc]"]
 streamlit = ["streamlit"]
