@@ -27,7 +27,7 @@ repos:
 
 # Format TOML files
 -   repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.14.0
+    rev: v2.15.0
     hooks:
     -   id: pretty-format-toml
         args: [--autofix, --indent, '4']
@@ -63,7 +63,7 @@ repos:
 
 # Check that Python code complies with PEP8 guidelines
 -   repo: https://github.com/pycqa/flake8
-    rev: 7.2.0
+    rev: 7.3.0
     hooks:
     -   id: flake8
         args: [--config, .flake8]
