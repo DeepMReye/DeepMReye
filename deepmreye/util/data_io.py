@@ -62,10 +62,16 @@ def get_all_subject_labels_ign(subject_string, num_downsampled=10):
     """
     For models with multiple outputs we want to estimate the sub-TR XY.
 
-    Inputs:
-        - subject_string : Subject identified
-        - mat_data : Data to subject logs in mat format
-        - num_downsampled : How many sub-TR XY are left in the output
+    Parameters
+    ----------
+    subject_string :
+        Subject identified
+
+    mat_data :
+        Data to subject logs in mat format
+
+    num_downsampled :
+        How many sub-TR XY are left in the output
     """
     subj_data = np.load(subject_string)
     np.testing.assert_(np.unique(np.diff(np.where(subj_data[:, 0] == 1)[0]))[0] == 510)
@@ -98,10 +104,16 @@ def get_all_subject_labels_bmd(subject_string, run_idx, num_downsampled=10, real
     """
     For models with multiple outputs we want to estimate the sub-TR XY.
 
-    Inputs:
-        - subject_string : Subject identified
-        - run_idx : Index for run
-        - num_downsampled : How many sub-TR XY are left in the output
+    Parameters
+    ----------
+    subject_string :
+        Subject identified
+
+    run_idx :
+        Index for run
+
+    num_downsampled :
+        How many sub-TR XY are left in the output
     """
     mat_data = loadmat(subject_string, mat_dtype=True)
     if real_et:
@@ -135,10 +147,16 @@ def get_all_subject_labels_mmd(subject_string, run_idx, num_downsampled=10):
     """
     For models with multiple outputs we want to estimate the sub-TR XY.
 
-    Inputs:
-        - subject_string : Subject identified
-        - run_idx : Index for run
-        - num_downsampled : How many sub-TR XY are left in the output
+    Parameters
+    ----------
+    subject_string :
+        Subject identified
+
+    run_idx :
+        Index for run
+
+    num_downsampled :
+        How many sub-TR XY are left in the output
     """
     mat_data = loadmat(subject_string, mat_dtype=True)
     mat_data = mat_data["XY"]["samples_ET"][0, 0]
