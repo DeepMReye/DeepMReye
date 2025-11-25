@@ -277,8 +277,14 @@ def cut_mask(
     masked_eye = np.concatenate((masked_eye_right, masked_eye_left))
     if verbose > 0:
         print(f"Voxels > 0 / Mean of voxels: {np.sum(np.mean(masked_eye, axis=3) > 0)} / {np.mean(masked_eye)}")
+
     # Save back masked func to .nii and masked eye to .p
-    participant_basename = Path(fp_func).stem
+    participant_basename = Path(fp_func)
+    # Possible to have both .nii or .nii.gz but might have '.' in name
+    for _ in participant_basename.suffixes:
+        participant_basename = participant_basename.with_suffix("")
+    participant_basename = participant_basename.name
+
     save_dir = Path(fp_func).parent if save_path is None else save_path
     if save_overview:
         fn_full_mask_path = save_dir / f"report_{participant_basename}.html"
