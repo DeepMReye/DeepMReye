@@ -1,9 +1,8 @@
-import os
 import pickle
-from os.path import join
 
 import ants
 import numpy as np
+from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.io import loadmat
@@ -78,7 +77,17 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
 
 
 def run_participant(
-    fp_func, dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges, replace_with=0, transforms=None
+        fp_func,
+        dme_template,
+        eyemask_big,
+        eyemask_small,
+        x_edges,
+        y_edges,
+        z_edges,
+        replace_with=0,
+        transforms=None,
+        save_path=None,
+        as_pickle=True,
 ):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
@@ -120,6 +129,8 @@ def run_participant(
         replace_with=replace_with,
         save_overview=True,
         fp_func=fp_func,
+        save_path=save_path,
+        as_pickle=as_pickle,
     )
 
     return (masked_eye, transformation_statistics)
@@ -155,18 +166,18 @@ def get_masks(data_path=""):
     """
 
     def load_from_path(fn_mask):
-        if os.path.exists(fn_mask):
-            return ants.image_read(fn_mask)
+        if Path(fn_mask).exists():
+            return ants.image_read(str(fn_mask))
         print(f"Downloading mask: {fn_mask}")
         download_mask(fn_mask)
         return ants.image_read(fn_mask)
 
     if data_path == "":
-        data_path = os.path.abspath(join(__file__, "..", "masks"))
+        data_path = Path(__file__).resolve().parent / "masks"
 
-    eyemask_small = load_from_path(join(data_path, "eyemask_small.nii"))
-    eyemask_big = load_from_path(join(data_path, "eyemask_big.nii"))
-    dme_template = load_from_path(join(data_path, "dme_template.nii"))
+    eyemask_small = load_from_path(Path(data_path) / "eyemask_small.nii")
+    eyemask_big = load_from_path(Path(data_path) / "eyemask_big.nii")
+    dme_template = load_from_path(Path(data_path) / "dme_template.nii")
     (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
@@ -207,7 +218,19 @@ def get_mask_edges(mask, split=True):
     return (mask.numpy(), x_edges, y_edges, z_edges)
 
 
-def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_overview=True, fp_func=None, verbose=0):
+def cut_mask(
+        to_mask,
+        mask,
+        x_edges,
+        y_edges,
+        z_edges,
+        replace_with=0,
+        save_overview=True,
+        fp_func=None,
+        verbose=0,
+        save_path=None,
+        as_pickle=True,
+):
     """Cut mask into given shape given edges.
 
     Parameters
@@ -230,6 +253,10 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
         Filepath to new functional, by default None
     verbose : int, optional
         Verbosity level of this function, by default 0
+    save_path: Path, optional
+        Path of directory to save outputs to, by default None
+    as_pickle: Path, optional
+        Whether to save as pickle or Nifti, by default True
 
     Returns
     -------
@@ -250,13 +277,32 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
     masked_eye = np.concatenate((masked_eye_right, masked_eye_left))
     if verbose > 0:
         print(f"Voxels > 0 / Mean of voxels: {np.sum(np.mean(masked_eye, axis=3) > 0)} / {np.mean(masked_eye)}")
+
     # Save back masked func to .nii and masked eye to .p
-    participant_basename = os.path.basename(fp_func).split(".")[0]
+    participant_basename = Path(fp_func)
+    # Possible to have both .nii or .nii.gz but might have '.' in name
+    for _ in participant_basename.suffixes:
+        participant_basename = participant_basename.with_suffix("")
+    participant_basename = participant_basename.name
+
+    save_dir = Path(fp_func).parent if save_path is None else save_path
     if save_overview:
-        fn_full_mask = join(os.path.dirname(fp_func), f"report_{participant_basename}")
-        plot_subject_report(fn_full_mask, original_input, masked_eye, mask)
-    fn_masked_eye = join(os.path.dirname(fp_func), f"mask_{participant_basename}.p")
-    pickle.dump(masked_eye, open(fn_masked_eye, "wb"))
+        fn_full_mask_path = save_dir / f"report_{participant_basename}.html"
+        plot_subject_report(fn_full_mask_path, original_input, masked_eye, mask)
+
+    if as_pickle:
+        fn_masked_eye_path = save_dir / f"mask_{participant_basename}.p"
+        pickle.dump(masked_eye, open(fn_masked_eye_path, "wb"))
+    else:
+        # keep same geometry as the original input
+        masked_eye_img = ants.from_numpy(
+            masked_eye,
+            origin=original_input.origin,
+            spacing=original_input.spacing,
+            direction=original_input.direction,
+        )
+        fn_masked_eye_path = save_dir / f"mask_{participant_basename}.nii.gz"
+        ants.image_write(masked_eye_img, str(fn_masked_eye_path))
 
     return (original_input, masked_eye, mask)
 
@@ -267,14 +313,14 @@ def cut_mask(to_mask, mask, x_edges, y_edges, z_edges, replace_with=0, save_over
 
 
 def plot_subject_report(
-    fn_subject, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0, 0, 0)"
+    fn_subject_path, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0, 0, 0)"
 ):
     """Plot quality check figure for given subject.
 
     Parameters
     ----------
-    fn_subject : string
-        Filepath to subject
+    fn_subject : Path
+        html filepath to subject
     original_input : ants Image
         Filepath to functional image of subject
     masked_eye : array
@@ -440,7 +486,7 @@ def plot_subject_report(
         x=np.median(eye_mask_flat), annotation=dict(text="Median"), line=dict(color="rgb(255, 255, 255)"), row=1, col=4
     )
 
-    fig.write_html(fn_subject + ".html")
+    fig.write_html(fn_subject_path)
 
 
 # --------------------------------------------------------------------------------
@@ -523,7 +569,7 @@ def load_label(label_path, label_type="calibration_run"):
     """
     if label_type == "calibration_run":
         # Load labels from file
-        fn_labels = join(label_path, "stim_vals.csv")
+        fn_labels = Path(label_path) / "stim_vals.csv"
         labels = np.genfromtxt(fn_labels, delimiter=",")
         labels = labels[1:]
         labels = np.repeat(labels, 5, axis=0)
@@ -581,7 +627,7 @@ def save_data(participant, participant_data, participant_labels, participant_ids
         data_dict[f"identifier_{idx}"] = identifier
 
     # Save each subject in separate .npz files (fast to load)
-    subject_file_path = join(processed_data, participant)
+    subject_file_path = Path(processed_data) / participant
     print(
         f"Saving eye data {participant_data.shape} "
         f"and targets {participant_labels.shape} "
