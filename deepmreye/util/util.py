@@ -8,10 +8,8 @@ from math import atan2
 
 import numpy as np
 import pandas as pd
-import tensorflow.keras.backend as K
 from scipy import ndimage
 from sklearn.metrics import r2_score
-from tensorflow.keras.callbacks import LearningRateScheduler
 
 
 def augment_input(X, rotation=0, shift=0, zoom=0):
@@ -101,43 +99,47 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
         return image1
 
     # Rotate
-    X = np.array([rotate_img(x, rotation, axis=[0, 1, 2]) for x in X])
+    if any(rotation) if isinstance(rotation, (list, tuple, np.ndarray)) else rotation > 0:
+        X = np.array([rotate_img(x, rotation, axis=[0, 1, 2]) for x in X])
 
     # Then shift
-    X = np.array(
-        [
-            ndimage.shift(
-                x,
-                shift=(
-                    np.random.randint(-shift, shift),
-                    np.random.randint(-shift, shift),
-                    np.random.randint(-shift, shift),
-                    0,
-                ),
-                order=0,
-                mode="constant",
-                cval=0,
-                prefilter=False,
-            )
-            for x in X
-        ]
-    )
+    if shift > 0:
+        X = np.array(
+            [
+                ndimage.shift(
+                    x,
+                    shift=(
+                        np.random.randint(-shift, shift),
+                        np.random.randint(-shift, shift),
+                        np.random.randint(-shift, shift),
+                        0,
+                    ),
+                    order=0,
+                    mode="constant",
+                    cval=0,
+                    prefilter=False,
+                )
+                for x in X
+            ]
+        )
     # Then zoom
-    X = np.array([scaleit(x, np.random.uniform(1 - zoom, 1 + zoom)) for x in X])
+    if zoom > 0:
+        X = np.array([scaleit(x, np.random.uniform(1 - zoom, 1 + zoom)) for x in X])
 
     return X
 
 
 def mish(x):
-    return x * K.tanh(K.softplus(x))
+    # PyTorch implementation exists in architecture.py for tensors
+    # This numpy one is provided just in case it's used elsewhere
+    return x * np.tanh(np.log(1 + np.exp(x)))
 
 
 def step_decay_schedule(initial_lr=1e-4, decay_factor=0.9, num_epochs=50):
-
-    def schedule(epoch):
-        return initial_lr * (1 - epoch / num_epochs) ** decay_factor
-
-    return LearningRateScheduler(schedule)
+    # This was a Keras callback generator. The PyTorch setup in DeepMReye 
+    # handles the LR schedule natively via optim.lr_scheduler.
+    # We leave a placeholder or simply return the decay factors if needed.
+    pass
 
 
 def euclidean_distance(y_true, y_pred):

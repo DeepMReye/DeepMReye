@@ -4,7 +4,8 @@ from argparse import ArgumentParser
 
 # DeepMReye imports
 from deepmreye import train
-from deepmreye.util import data_generator, model_opts
+from deepmreye.util import data_generator
+from deepmreye.config import DeepMReyeConfig
 from deepmreye.util.util import CLI_OPTIONS
 
 # --------------------------------------------------------------------------------
@@ -27,8 +28,8 @@ if "jbj" in parsed_datasets:
 else:
     parsed_datasets = parsed_datasets[0] + parsed_datasets
 datasets = [args.dataset_path + ds + os.path.sep for ds in parsed_datasets]
-opts = model_opts.get_opts()
-generators = data_generator.create_leaveoneout_generators(
+opts = DeepMReyeConfig().model_dump()
+generators = data_generator.create_leaveoneout_dataloaders(
     datasets,
     batch_size=opts["batch_size"],
     augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]), opts["shift"], opts["zoom"]),

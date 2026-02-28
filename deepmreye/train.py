@@ -1,14 +1,156 @@
-import platform
+import os
 from os.path import join
-
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow.keras.backend as K
+from tqdm import tqdm
 
 from deepmreye import architecture
 from deepmreye.util import data_generator, util
+from deepmreye.config import DeepMReyeConfig
 
+
+class DeepMReye:
+    """Unified API for DeepMReye Model Training and Inference."""
+    
+    def __init__(self, config=None, device=None):
+        if config is None:
+            config = DeepMReyeConfig()
+        elif isinstance(config, dict):
+            config = DeepMReyeConfig(**config)
+            
+        self.config = config
+        self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+        self.model = None
+        self.optimizer = None
+        self.scheduler = None
+
+    def build(self, input_shape):
+        """Initializes the PyTorch model architecture."""
+        self.model = architecture.DeepMReyeModel(input_shape, self.config)
+        self.model.to(self.device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr)
+        
+        # Step decay scheduler: decay by factor 0.9 every (epochs // 10) epochs roughly? 
+        # The original used a custom decay. Let's approximate it with StepLR
+        step_size = max(1, self.config.epochs // 10) 
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=0.9)
+
+    def fit(self, training_generator, testing_generator=None, verbose=1):
+        """Trains the model."""
+        if self.model is None:
+            # Try to infer input shape from the first batch
+            sample_batch = next(iter(training_generator))
+            X_sample, _ = sample_batch
+            # Shape is (Batch, Channels, X, Y, Z) - we need (X, Y, Z)
+            input_shape = X_sample.shape[2:]
+            self.build(input_shape)
+            
+        for epoch in range(self.config.epochs):
+            self.model.train()
+            train_loss = 0
+            train_steps = 0
+            
+            # Use tqdm if verbose
+            pbar = tqdm(training_generator, desc=f"Epoch {epoch+1}/{self.config.epochs}", disable=(verbose==0))
+            
+            for X, y in pbar:
+                if train_steps >= self.config.steps_per_epoch:
+                    break
+                    
+                X, y = X.to(self.device), y.to(self.device)
+                
+                self.optimizer.zero_grad()
+                out_regression, out_confidence = self.model(X)
+                
+                loss_euclidean, loss_confidence = architecture.compute_standard_loss(out_confidence, y, out_regression)
+                
+                total_loss = (self.config.loss_euclidean * loss_euclidean) + (self.config.loss_confidence * loss_confidence)
+                
+                total_loss.backward()
+                self.optimizer.step()
+                
+                train_loss += total_loss.item()
+                train_steps += 1
+                
+                pbar.set_postfix({"loss": total_loss.item()})
+                
+            self.scheduler.step()
+            
+            if testing_generator and self.config.validation_steps > 0:
+                val_loss = self.evaluate(testing_generator, steps=self.config.validation_steps)
+                if verbose > 0:
+                    print(f"Epoch {epoch+1} - Train Loss: {train_loss/train_steps:.4f} - Val Loss: {val_loss:.4f}")
+
+    def evaluate(self, generator, steps=None):
+        """Evaluates the model and returns total loss."""
+        self.model.eval()
+        val_loss = 0
+        val_steps = 0
+        
+        with torch.no_grad():
+            for X, y in generator:
+                if steps and val_steps >= steps:
+                    break
+                    
+                X, y = X.to(self.device), y.to(self.device)
+                out_regression, out_confidence = self.model(X)
+                
+                loss_euclidean, loss_confidence = architecture.compute_standard_loss(out_confidence, y, out_regression)
+                total_loss = (self.config.loss_euclidean * loss_euclidean) + (self.config.loss_confidence * loss_confidence)
+                
+                val_loss += total_loss.item()
+                val_steps += 1
+                
+        return val_loss / val_steps if val_steps > 0 else 0
+
+    def predict(self, X, batch_size=16, verbose=0):
+        """Runs inference on the provided data."""
+        self.model.eval()
+        
+        # If X is a numpy array
+        if isinstance(X, np.ndarray):
+             X = torch.from_numpy(X).float()
+             
+        # Make sure X has right dims. It might be (Batch, X, Y, Z, Channels) from legacy
+        if X.dim() == 5 and X.shape[-1] == 1:
+            X = X.permute(0, 4, 1, 2, 3)
+            
+        dataset = torch.utils.data.TensorDataset(X)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        
+        all_preds = []
+        all_confs = []
+        
+        with torch.no_grad():
+            for batch in loader:
+                batch_X = batch[0].to(self.device)
+                pred_reg, pred_conf = self.model(batch_X)
+                all_preds.append(pred_reg.cpu().numpy())
+                all_confs.append(pred_conf.cpu().numpy())
+                
+        return np.concatenate(all_preds, axis=0), np.concatenate(all_confs, axis=0)
+
+    def save_weights(self, filepath):
+        """Saves PyTorch model weights."""
+        if self.model:
+            torch.save(self.model.state_dict(), filepath)
+
+    def load_weights(self, filepath):
+        """Loads PyTorch model weights."""
+        # Need to know input shape to build model if not built. 
+        # Usually user should build first or we load state dict directly if built.
+        if self.model:
+            self.model.load_state_dict(torch.load(filepath, map_location=self.device))
+        else:
+            raise RuntimeError("Model must be built before loading weights. Call build(input_shape) first.")
+
+
+# =========================================================================================
+# Legacy Helper Functions (Maintained for backward compatibility with scripts)
+# =========================================================================================
 
 def train_model(
     dataset,
@@ -23,58 +165,6 @@ def train_model(
     return_untrained=False,
     verbose=0,
 ):
-    """Train the model given a cross validation, \
-       hold out or leave one out generator, given model options.
-
-    Parameters
-    ----------
-    dataset : str
-        Description of dataset, used for saving dataset to file
-    generators : generator
-        Cross validation, Hold out or Leave one out generator, yielding X,y pairs
-    opts : dict
-        Model options for training
-    clear_graph : bool, optional
-        If computational graph should be reset before each run, by default True
-    save : bool, optional
-        If model weights should be saved to file, by default False
-    model_path : str, optional
-        Filepath to where model weights should be stored, by default './'
-    workers : int, optional
-        Number of workers used when using multiprocessing, by default 4
-    use_multiprocessing : bool, optional
-        If multiprocessing should be used, can speed up training by 10x if data loader is bottleneck, by default True
-    models : Keras Model instance, optional
-        Can be provided if already trained model should be used instead of training a new one, by default None
-    return_untrained : bool, optional
-        If true, returns untrained but compiled model, by default False
-    verbose : int, optional
-        Verbosity level, by default 0
-
-    Returns
-    -------
-    model : Keras Model
-        Full model instance, used for training uncertainty estimate
-    model_inference : Keras Model
-        Model instance used for inference, provides uncertainty estimate (unsupervised model)
-    """
-    # Disable multiprocessing on MacOS
-    is_mac = platform.system() == "Darwin"
-    is_arm = platform.machine() in ["arm64", "aarch64"]
-    if is_mac and is_arm:
-        if use_multiprocessing:
-            print("Apple Silicon detected - Multiprocessing is not supported. Disabling it.")
-        use_multiprocessing = False
-
-    # Clear session if needed
-    if clear_graph:
-        K.clear_session()
-    if use_multiprocessing:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    else:
-        workers = 1
-
-    # Unpack generators
     (
         training_generator,
         testing_generator,
@@ -86,80 +176,32 @@ def train_model(
         full_training_list,
     ) = generators
 
-    # Test datagenerator and get representative X and y
-    ((X, y), _) = next(training_generator)
-    if verbose > 0:
-        print(f"Input shape {X.shape}, Output shape {y.shape}")
-        print(
-            f"Subjects in training set: {len(single_training_generators)}, "
-            f"Subjects in test set: {len(single_testing_generators)}"
-        )
-
-    # Learning rate scheduler
-    lr_sched = util.step_decay_schedule(initial_lr=opts["lr"], decay_factor=0.9, num_epochs=opts["epochs"])
-
-    # Get model
-    if models is None:
-        model, model_inference = architecture.create_standard_model(X.shape[1::], opts)
+    runner = DeepMReye(config=opts)
+    
+    if models is not None:
+        runner.model = models[0] # assume models is (model, model) tuple
     else:
-        model, model_inference = models
+        # Infer input shape from generator
+        X_sample, _ = next(iter(training_generator))
+        input_shape = X_sample.shape[2:]
+        runner.build(input_shape)
+        
     if return_untrained:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
-        return (model, model_inference)
+        return (runner.model, runner.model)
 
-    # Train model
-    if verbose > 1:
-        print(model.summary(line_length=200))
-    model.fit(
-        training_generator,
-        steps_per_epoch=opts["steps_per_epoch"],
-        epochs=opts["epochs"],
-        validation_data=testing_generator,
-        validation_steps=opts["validation_steps"],
-        callbacks=[lr_sched],
-        use_multiprocessing=use_multiprocessing,
-        workers=workers,
-    )
-
-    # Save model weights
+    if verbose > 0:
+        print(f"Subjects in training set: {len(single_training_generators)}, "
+              f"Subjects in test set: {len(single_testing_generators)}")
+              
+    runner.fit(training_generator, testing_generator, verbose=verbose)
+    
     if save:
-        model_inference.save_weights(join(model_path, f"modelinference_{dataset}.h5"))
-    if use_multiprocessing:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
-
-    return (model, model_inference)
+        runner.save_weights(join(model_path, f"modelinference_{dataset}.pt"))
+        
+    return (runner.model, runner.model)
 
 
 def evaluate_model(dataset, model, generators, save=False, model_path="./", model_description="", verbose=0, **args):
-    """Evaluate model performance given model and generators \
-       used for training the model.
-
-       Evaluate only on test set.
-
-    Parameters
-    ----------
-    dataset : str
-        Description of dataset, used for saving dataset to file
-    model : Keras Model
-        Full model instance, used for training uncertainty estimate
-    generators : generator
-        Cross validation, Hold out or Leave one out generator, yielding X,y pairs
-    save : bool, optional
-        If true, save test set predictions to file, by default False
-    model_path : str, optional
-        Filepath to where model weights should be stored, by default './'
-    model_description : str, optional
-        Description of model used for saving the model evaluations, by default ''
-    verbose : int, optional
-        Verbosity level, by default 0
-
-    Returns
-    -------
-    evaluation: dict
-        Raw gaze coordinates, returned for each participant
-    scores: pandas DataFrame
-        Evaluation metrics for gaze coordinates (Pearson, R2-Score, Euclidean Error)
-    """
     (
         training_generator,
         testing_generator,
@@ -170,25 +212,33 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
         full_testing_list,
         full_training_list,
     ) = generators
+    
     evaluation, scores = dict(), dict()
+    
+    # Needs a config, we'll just instantiate a runner with default and the existing model
+    runner = DeepMReye()
+    runner.model = model
+    
     for idx, subj in enumerate(full_testing_list):
+        # We need the PyTorch-compatible get_all_subject_data
         X, real_y = data_generator.get_all_subject_data(subj)
-        (pred_y, euc_pred) = model.predict(X, verbose=verbose - 2, batch_size=16)
-        evaluation[subj] = {"real_y": real_y, "pred_y": pred_y, "euc_pred": euc_pred}
+        
+        pred_y, euc_pred = runner.predict(X, verbose=verbose - 2, batch_size=16)
+        
+        # evaluation dict stores real target and predictions
+        evaluation[subj] = {"real_y": real_y.numpy() if isinstance(real_y, torch.Tensor) else real_y, 
+                            "pred_y": pred_y, 
+                            "euc_pred": euc_pred}
 
         # Quantify predictions
-        df_scores = util.get_model_scores(real_y, pred_y, euc_pred, **args)
+        df_scores = util.get_model_scores(evaluation[subj]["real_y"], pred_y, euc_pred, **args)
         scores[subj] = df_scores
 
-        # Print evaluation
         if verbose > 0:
-            print(
-                f"{util.color.BOLD}{idx + 1} / {len(single_testing_names)} - "
-                f"Model Performance for {subj}{util.color.END}"
-            )
+            print(f"{util.color.BOLD}{idx + 1} / {len(single_testing_names)} - Model Performance for {subj}{util.color.END}")
             if verbose > 1:
                 pd.set_option("display.width", 120)
-                pd.options.display.float_format = "{:.3f}".format  # noqa
+                pd.options.display.float_format = "{:.3f}".format
                 print(df_scores)
             else:
                 print(
@@ -198,7 +248,6 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
                 )
             print("\n")
 
-    # Save dict
     if save:
         np.save(join(model_path, f"results{model_description}_{dataset}.npy"), evaluation)
 

@@ -7,12 +7,15 @@
 *.npy
 *.npz
 *.h5
-
-*.csv
+*.p
 *.html
+*.csv
 .vscode/
 
 /tests/data/**
+
+# uv lock
+uv.lock
 
 # demo
 notebooks/functional_data

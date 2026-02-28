@@ -74,8 +74,8 @@ def main():
         # Create folders
         create_folders()
         # Download weights
-        if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")):
-            with st.spinner(f"Downloading model weights {model_str}..."):
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "weights", model_str + ".pt")):
+            with st.spinner(f"Downloading model weights {model_str} (Note: you must convert .h5 to .pt first)..."):
                 download_model_weights(model_str)
 
         with st.spinner("Preprocess file..."):
@@ -134,6 +134,8 @@ def run_participant(path_to_nifti, model_str):
             verbose=0,
             percentile_cut=80,
         )
+        # Adapt evaluation expects the dict structure returned by train.evaluate_model
+        # DeepMReye predict() returns arrays, but evaluate_model returns the dict.
         df_pred_median, df_pred_subtr = adapt_evaluation(evaluation[list(evaluation.keys())[0]])
 
     st.success(f"Inference done for {participant_string}")
@@ -235,21 +237,36 @@ def download_model_weights(model_str):
     r = requests.get(url, allow_redirects=True)
     with open(weights_folder, "wb") as f:
         f.write(r.content)
+        
+    st.warning("Downloaded .h5 TensorFlow weights. Please run the conversion script 'scripts/convert_weights.py' to generate the .pt file.")
 
 
 # @st.cache
 def load_model(fn_participant, model_str):
-    opts = deepmreye.util.model_opts.get_opts()
+    import deepmreye.config
+    opts = deepmreye.config.DeepMReyeConfig().model_dump()
     test_participants = [fn_participant]
-    generators = deepmreye.util.data_generator.create_generators(test_participants, test_participants)
+    generators = deepmreye.util.data_generator.create_dataloaders(test_participants, test_participants)
     generators = (*generators, test_participants, test_participants)  # Add participant list
-    (model, model_inference) = deepmreye.train.train_model(
-        dataset="example_data", generators=generators, opts=opts, return_untrained=True
-    )
-    model_weights = os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")
-    model.load_weights(model_weights)
+    
+    # We use the DeepMReye unified runner
+    runner = deepmreye.train.DeepMReye(config=opts)
+    
+    # Needs to be built before loading weights. 
+    # Extract sample shape from generator
+    X_sample, _ = next(iter(generators[1]))  # generators[1] is testing_generator
+    input_shape = X_sample.shape[2:]
+    runner.build(input_shape)
+    
+    model_weights = os.path.join(os.path.dirname(__file__), "weights", model_str + ".pt")
+    
+    try:
+        runner.load_weights(model_weights)
+    except FileNotFoundError:
+        st.error(f"PyTorch weights not found at {model_weights}. Please ensure you've converted the downloaded .h5 weights using the provided script.")
+        st.stop()
 
-    return model_inference, generators
+    return runner.model, generators
 
 
 def show_html(html_file):

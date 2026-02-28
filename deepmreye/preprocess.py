@@ -166,11 +166,12 @@ def get_masks(data_path=""):
     """
 
     def load_from_path(fn_mask):
-        if Path(fn_mask).exists():
-            return ants.image_read(str(fn_mask))
-        print(f"Downloading mask: {fn_mask}")
-        download_mask(fn_mask)
-        return ants.image_read(fn_mask)
+        fn_mask_str = str(fn_mask)
+        if Path(fn_mask_str).exists():
+            return ants.image_read(fn_mask_str)
+        print(f"Downloading mask: {fn_mask_str}")
+        download_mask(fn_mask_str)
+        return ants.image_read(fn_mask_str)
 
     if data_path == "":
         data_path = Path(__file__).resolve().parent / "masks"

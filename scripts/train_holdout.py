@@ -4,7 +4,8 @@ from argparse import ArgumentParser
 
 # DeepMReye imports
 from deepmreye import train
-from deepmreye.util import data_generator, model_opts
+from deepmreye.util import data_generator
+from deepmreye.config import DeepMReyeConfig
 from deepmreye.util.util import CLI_OPTIONS
 
 # --------------------------------------------------------------------------------
@@ -22,8 +23,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = f"{args.gpu_id}"
 
 # Create data generators from given path
 dataset_name = os.path.basename(os.path.dirname(args.dataset_path))
-opts = model_opts.get_opts()
-generators = data_generator.create_holdout_generators(
+opts = DeepMReyeConfig().model_dump()
+generators = data_generator.create_holdout_dataloaders(
     [args.dataset_path],
     train_split=0.90,
     batch_size=opts["batch_size"],

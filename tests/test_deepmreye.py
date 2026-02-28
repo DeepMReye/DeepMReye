@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from deepmreye import preprocess, train
-from deepmreye.util import data_generator, model_opts, util
+from deepmreye.util import data_generator, util
+from deepmreye.config import DeepMReyeConfig
 
 
 # --------------------------------------------------------------------------------
@@ -70,13 +71,13 @@ def test_model_training(path_to_testdata):
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
     # Define test options. Use small values to speed up CI
-    opts = model_opts.get_opts()
-    opts["epochs"] = 2
-    opts["steps_per_epoch"] = 1
-    opts["validation_steps"] = 1
+    # We must construct a config directly since Pydantic model_dump 
+    # returns a dict but we want to manipulate properties or pass the dict back 
+    # to DeepMReyeConfig if updating. Actually, DeepMReye supports both.
+    opts = {"epochs": 2, "steps_per_epoch": 1, "validation_steps": 1, "batch_size": 2, "rotation_x": 0, "rotation_y": 0, "rotation_z": 0, "shift": 0, "zoom": 0}
 
     # For test method use same participant in training and testset
-    generators = data_generator.create_leaveoneout_generators(
+    generators = data_generator.create_leaveoneout_dataloaders(
         [str(path_to_testdata / "processed") + "/", str(path_to_testdata / "processed") + "/"],
         batch_size=opts["batch_size"],
         augment_list=((opts["rotation_x"], opts["rotation_y"], opts["rotation_z"]), opts["shift"], opts["zoom"]),
@@ -88,7 +89,7 @@ def test_model_training(path_to_testdata):
         dataset="example_data",
         generators=generators[0],
         opts=opts,
-        use_multiprocessing=True,
+        use_multiprocessing=False, # PyTorch multiprocessing requires care, sticking to False or 0 workers
         return_untrained=False,
         verbose=1,
         save=False,
@@ -116,7 +117,7 @@ def test_model_evaluation():
     util.get_model_scores(real_y, pred_y, euc_pred)
 
     # For all NaN participant
-    real_y = np.random.rand(num_points, 10, 2) * np.NaN
-    pred_y = np.random.rand(num_points, 10, 2) * np.NaN
-    euc_pred = np.random.rand(num_points, 10, 1) * np.NaN
+    real_y = np.random.rand(num_points, 10, 2) * np.nan
+    pred_y = np.random.rand(num_points, 10, 2) * np.nan
+    euc_pred = np.random.rand(num_points, 10, 1) * np.nan
     util.get_model_scores(real_y, pred_y, euc_pred)

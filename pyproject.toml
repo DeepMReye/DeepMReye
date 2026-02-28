@@ -13,10 +13,12 @@ classifiers = [
 ]
 dependencies = [
     "plotly",
-    "scikit-learn",
-    "antspyx",
-    "tensorflow==2.15.0",
-    "pytest",
+    "statsmodels",
+    "scipy",
+    "torch",
+    "torchvision",
+    "pydantic",
+    "tqdm",
     "nbmake",
     "ipywidgets>=7.0.0",
     "anywidget"
