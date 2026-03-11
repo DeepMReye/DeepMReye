@@ -3,12 +3,12 @@ import pickle
 import ants
 import numpy as np
 from pathlib import Path
+from scipy.io import loadmat
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy.io import loadmat
-
-from deepmreye.util.data_io import download_mask
-
+import os
+import urllib.request
+import urllib.error
 
 # --------------------------------------------------------------------------------
 # --------------------------ANTS TRANSFORMS---------------------------------------
@@ -67,7 +67,7 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
                 f"Std {np.std(registered_fwd):.3f}, "
                 f"Median {np.median(registered_fwd):.3f}"
             )
-        transformation_stats.append(np.mean(registered_fwd))
+        transformation_stats.append(registered_fwd)
         # Transform
         func = ants.apply_transforms(
             fixed=dme_template, moving=func, transformlist=register_to_nau["fwdtransforms"], imagetype=3
@@ -88,6 +88,8 @@ def run_participant(
         transforms=None,
         save_path=None,
         as_pickle=True,
+        save_overview=True,
+        dataset_name=None,
 ):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
@@ -127,18 +129,28 @@ def run_participant(
         y_edges,
         z_edges,
         replace_with=replace_with,
-        save_overview=True,
+        save_overview=save_overview,
         fp_func=fp_func,
         save_path=save_path,
         as_pickle=as_pickle,
+        dataset_name=dataset_name,
+        transform_stats=transformation_statistics,
     )
 
-    return (masked_eye, transformation_statistics)
+    return (masked_eye, transformation_statistics, original_input)
 
 
 # --------------------------------------------------------------------------------
 # --------------------------MASKING-----------------------------------------------
 # --------------------------------------------------------------------------------
+def download_mask(data_path, remote_path="https://github.com/DeepMReye/DeepMReye/blob/main/deepmreye/masks/"):
+    mask_name = os.path.basename(data_path)
+    mask_remote = f"{remote_path}{mask_name}?raw=true"
+    try:
+        (f, m) = urllib.request.urlretrieve(mask_remote, data_path)
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Failed to download '{mask_remote}'. '{e.reason}'")
+
 def get_masks(data_path=""):
     """Load masks for whole brain, big eye mask and small eye mask.
 
@@ -231,6 +243,8 @@ def cut_mask(
         verbose=0,
         save_path=None,
         as_pickle=True,
+        dataset_name=None,
+        transform_stats=None,
 ):
     """Cut mask into given shape given edges.
 
@@ -286,10 +300,18 @@ def cut_mask(
         participant_basename = participant_basename.with_suffix("")
     participant_basename = participant_basename.name
 
-    save_dir = Path(fp_func).parent if save_path is None else save_path
+    save_dir = Path(fp_func).parent if save_path is None else Path(save_path)
     if save_overview:
         fn_full_mask_path = save_dir / f"report_{participant_basename}.html"
-        plot_subject_report(fn_full_mask_path, original_input, masked_eye, mask)
+        plot_subject_report(
+            fn_full_mask_path, 
+            original_input, 
+            masked_eye, 
+            mask, 
+            subject_id=participant_basename,
+            dataset_name=dataset_name,
+            transform_stats=transform_stats
+        )
 
     if as_pickle:
         fn_masked_eye_path = save_dir / f"mask_{participant_basename}.p"
@@ -314,7 +336,8 @@ def cut_mask(
 
 
 def plot_subject_report(
-    fn_subject_path, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0, 0, 0)"
+    fn_subject_path, original_input, masked_eye, mask, color="rgb(0, 150, 175)", bg_color="rgb(0, 0, 0)",
+    subject_id="Unknown", dataset_name=None, transform_stats=None
 ):
     """Plot quality check figure for given subject.
 
@@ -453,13 +476,19 @@ def plot_subject_report(
             showarrow=False,
         ),
     ]
+    
+    num_voxels = np.sum(eye_mask_flat > 0)
+    transform_str = f"Transform Stats: {np.round(transform_stats, 2)}" if transform_stats is not None else "N/A"
+    dataset_str = f"Dataset: {dataset_name} | " if dataset_name else ""
+    title_text = f"<b>{dataset_str}Subject: {subject_id}</b><br><sup>Extracted Voxels: {num_voxels} | {transform_str}</sup>"
 
     fig.update_layout(
+        title=title_text,
         autosize=False,
         showlegend=False,
         width=1400,
-        height=600,
-        margin=dict(t=70, l=30, b=50, r=30),
+        height=660,
+        margin=dict(t=120, l=30, b=50, r=30),
         plot_bgcolor=bg_color,
         paper_bgcolor=bg_color,
         font={"color": "#FFFFFF", "size": 13},
@@ -548,47 +577,6 @@ def normalize_img(img_in, mad_time=False, standardize_tr=True, std_cut_after=5):
 # --------------------------------------------------------------------------------
 # --------------------------LABEL I/O---------------------------------------------
 # --------------------------------------------------------------------------------
-
-
-def load_label(label_path, label_type="calibration_run"):
-    """Load label for experiment, which should return X,Y coordinates for each timepoint.
-
-    This function can be exchanged for experiment specific loading of labels,
-    or by using different label types.
-
-    Parameters
-    ----------
-    label_path : str
-        Path to file with labels
-    label_type : str, optional
-        Which type of labels are used in the experiment, by default 'calibration_run'
-
-    Returns
-    -------
-    this_label : numpy array
-        X,Y coordinates for each functional describing gaze position during this timepoint.
-    """
-    if label_type == "calibration_run":
-        # Load labels from file
-        fn_labels = Path(label_path) / "stim_vals.csv"
-        labels = np.genfromtxt(fn_labels, delimiter=",")
-        labels = labels[1:]
-        labels = np.repeat(labels, 5, axis=0)
-        this_label = labels[:, np.newaxis, :]
-        this_label = np.repeat(this_label, 10, axis=1)
-
-        # Normalize label
-        this_label = (this_label - -0.95) / (0.95 - -0.95)
-        this_label -= 0.5
-
-        # Y-axis is flipped for this dataset
-        this_label[..., 1] *= -1
-
-        # Convert to visual angles
-        this_label[..., 0] *= 19
-        this_label[..., 1] *= 14.7
-
-    return this_label
 
 
 def save_data(participant, participant_data, participant_labels, participant_ids, processed_data, center_labels=False):

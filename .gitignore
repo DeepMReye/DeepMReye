@@ -11,8 +11,8 @@
 *.html
 *.csv
 .vscode/
-
-/tests/data/**
+labeled_data/
+unlabeled_data/
 
 # uv lock
 uv.lock

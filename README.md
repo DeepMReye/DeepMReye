@@ -1,113 +1,119 @@
+# DeepMReye 2.0: Joint Embedding Predictive Architecture for fMRI Eye Tracking
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
-![py38 status](https://img.shields.io/badge/python3.8-supported-green.svg)
-![Build Status](https://github.com/DeepMReye/DeepMReye/actions/workflows/main.yml/badge.svg)
-[![NatNeuro Paper](https://img.shields.io/badge/DOI-10.1038%2Fs41593--021--00947--w-blue)](https://doi.org/10.1038/s41593-021-00947-w)
-![Docker Pulls](https://img.shields.io/docker/pulls/deepmreye/deepmreye)
+![DeepMReye JEPA](https://img.shields.io/badge/Architecture-JEPA-blue.svg)
+
+DeepMReye 2.0 upgrades the original supervised eye-tracking regression models into a **Joint Embedding Predictive Architecture (JEPA)**. By training exclusively on unsupervised fMRI datasets extracted from OpenNeuro, the network maps spatial/temporal neuro-imaging matrices into scalable representational embeddings securely before deploying a lightweight Linear Probe for gaze coordinate decoding.
+
 ![Logo](media/deepmreye_logo.png)
 
-# DeepMReye: magnetic resonance-based eye tracking using deep neural networks
-This [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) provides a step-by-step walkthrough of the code. It includes eyeball coregistration, voxel extraction, model training and test as well as basic performance measures. Alternatively, here is a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing) that runs in the browser. DeepMReye also includes a user-friendly streamlit app (installation option 4): Drag and drop your fMRI data into the interface and download your gaze coordinates shortly after.
+---
 
-This [Data Repository](https://osf.io/mrhk9/) includes exemplary data for model training and test, source data of all paper figures as well as pre-trained model weights.
+## 🚀 Installation & Environment
 
-If you have questions, please check out our [Frequently Asked Questions](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) page. If you cannot find the answer to your question there, reach out to us!
+DeepMReye 2.0 requires extensive dependencies for managing heavy 4D Matrix transformations (`torch`, `h5py`, `numpy`, `wandb`). We highly recommend using `uv` or standard Python `venv` environments to securely sandbox the dependencies.
 
-![deepMReye video](media/deepMReye_video.gif)
+### Environment Setup
+1. **Initialize the Virtual Environment**:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   # OR using UV for lightning-fast resolution
+   uv pip install -r requirements.txt
+   ```
+3. **Verify PyTorch Backend**: 
+   The matrices require deep accelerated computation. Ensure your environment has CUDA (NVIDIA) or MPS (Apple Silicon) enabled properly via `torch.backends`.
 
-## Installation
+---
 
-### Option 1: Pip install
+## 🧠 Architecture Overview
 
-#### Pip installation
-Install DeepMReye with a CPU/GPU version of [TensorFlow](https://www.tensorflow.org/install/) using the following command.
-```
-pip install deepmreye
-```
+The repository is modularized cleanly into scalable blocks separating Data Extraction, PyTorch Dataloading, and ViT Model topographies. 
 
-#### Anaconda / Miniconda installation
+### `/scripts` (Execution Pipelines)
+- **`compile_openneuro.py`**: Queries the OpenNeuro GraphQL API, mining available fMRI modalities and building the `data/datasets.h5` core registry.
+- **`download_and_preprocess.py`**: Executes massive multi-threaded parallelization downloading S3 buckets. Utilizes `deepmreye/preprocess.py` voxel coregistration dynamically bounding 4D spatial grids, and writes the output `.h5` objects natively.
+- **`convert_labeled_to_h5.py`**: Synthesizes the provided supervised ground-truth `.npz` records directly into the standardized HDF5 architecture format `[X, Y, Z, T]`.
+- **`train_jepa.py`**: The main execution loop processing the heavy Continuous Spatial-Temporal Masking Curriculums.
 
-To encapsulate DeepMReye in a virtual environment install with the following commands:
-```
-conda create --name deepmreye python=3.9
-conda activate deepmreye
-pip install deepmreye
-```
-For GPU support, follow tensorflow [install](https://www.tensorflow.org/install/pip) instruction, e.g.:
-```
-conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0
-```
-If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
-```
-git clone https://github.com/ANTsX/ANTsPy
-cd ANTsPy
-pip install CMake
-python3 setup.py install
-```
+### `/deepmreye` (PyTorch Core Blocks)
+- **`models/jepa.py`**: The Vision Transformer (ViT) implementation spanning Context Encoders, EMA Target Encoders, dual $1D/3D$ positional embeddings, and the Mask Predictor topologies.
+- **`models/patcher.py`**: Spatially unfolds `[B, X, Y, Z, T]` datasets into grid tokens (e.g., $8\times8\times8$ cubes) and computes the exact `spatial_ratio` and `temporal_ratio` missing masks seamlessly.
+- **`data/jepa_dataset.py` & `probe_dataset.py`**: Dynamic arrays reading native subsets of sequence windows straight from chunked `.h5` matrices off disk to prevent RAM cascading.
+- **`evaluate/probe.py`**: The validation modules stripping arbitrary invalid `NaN` label coordinates natively matching the original 1.0 specifications exactly.
 
-### Option 2: Colab
+---
 
-We provide a [Colab Notebook](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing) showcasing model training and evaluation on a GPU provided by Google Colab. To use your own data, preprocess your data locally and upload only the extracted eyeball voxels. This saves space and avoids data privacy issues. See the [Jupyter Notebook](./notebooks/deepmreye_example_usage.ipynb) for the preprocessing and eyeball-extraction code.
+## 🏃 Execution Instructions & BIDS Datasets
 
-[![Model Training & Evaluation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kYVyierbKdNZ3RY4_pbACtdWEw7PKQuz?usp=sharing)
+The entire pipeline natively downloads directly from the OpenNeuro AWS S3 buckets. Instead of hard-coding datasets, the process dynamically pulls any resting-state fMRI dataset mapped over GraphQL.
 
-![Colab Walkthrough](media/colab_walkthrough.gif)
+1. **Mine OpenNeuro Metadata**: 
+   ```bash
+   python scripts/compile_openneuro.py
+   ```
+2. **Select & QA BIDS Datasets**:
+   Run the Streamlit Labeling GUI to manually approve datasets (this ensures raw fMRI acquisitions contain valid eye boundaries). The GUI permanently tags records in `data/datasets.h5` with `approved=1`.
+   ```bash
+   streamlit run scripts/label_datasets.py
+   ```
+3. **Extract 4D Sequences**:
+   Downloads all `approved=1` BIDS bold records, corespatially masks the eyeballs, and serializes the 4D geometries natively.
+   ```bash
+   python scripts/download_and_preprocess.py
+   ```
+4. **Train Unsupervised Masking Representations**:
+   ```bash
+   HDF5_USE_FILE_LOCKING=FALSE python scripts/train_jepa.py \
+       --epochs 100 \
+       --batch-size 32 \
+       --lr 1e-4 \
+       --wandb-project "deepmreye-jepa"
+   ```
 
-### Option 3: Docker
+---
 
-Pull the image from docker hub.
+## ⚙️ Hyperparameter Configuration
 
+DeepMReye 2.0 splits configurations dynamically into two tiers:
+1. **Global Paths & Augmentations**: The `deepmreye/config.py` Python class controls universal states like base `data_dir` mappings, $train/test$ split proportions, and volumetric data augmentation limits ($rotation/shift/zoom$).
+2. **JEPA CLI Parameters**: Local hyperparameters unique to the deep learning architecture are passed explicitly into `scripts/train_jepa.py` preventing hardcoded structural bounds. Key parameters include:
+   - `--batch-size`: Scales the heavily intensive 4D tensors per GPU mapping.
+   - `--s-ratio-start` & `--t-ratio-start`: The Curriculum spatial/temporal masking drop probability rates linearly annealing into the `--*-end` arrays limits dynamically forcing ViT predictions.
+
+---
+
+## 🧪 Testing and Validation
+
+Comprehensive unit tests cover the integrity of the patchification, target EMA gradients, dimensional grid projections, and Euclidean metrics.
+
+To validate your machine topologies locally before launching large batching workloads:
 ```bash
-docker pull deepmreye/deepmreye
+pytest deepmreye/tests/test_jepa.py -v
+```
+This executes isolated geometric `[B, X, Y, Z, T]` continuous blocks mocking real neuro-images sequentially verifying the `fMRIPatcher` scaling architectures and ViT output vectors exactly.
+
+---
+
+## 📁 Data Formats
+
+Unlike the earlier version, DeepMReye 2.0 drops Pickles in favor of native PyTorch-optimized HDF5 datalakes (`.h5`). 
+Each dataset structure internally possesses the following sequence:
+```
+dataset_name.h5
+ └── /sub-01
+     ├── /eye_block (Matrix: [X, Y, Z, T], Int16, gzip)
+     └── /attrs (ML Classification Probabilities)
 ```
 
-Use deepMReye in a docker container via jupyterlab:
+## 🚀 Future Improvements Roadmap
 
-```bash
-mkdir -p $PWD/notebooks
-docker run -it --rm \
-    --publish 8888:8888 \
-    --volume $PWD/notebooks:/home/neuro/notebooks \
-    deepmreye/deepmreye:latest \
-        jupyter-lab --no-browser --ip 0.0.0.0
-```
-
-### Option 4: Streamlit app
-
-If you would like decode gaze coordinates in your data using a pretrained model, the easiest way is using our streamlit app.
-
-Running the following commands will open a browser window that allows you to upload your data (.nii or .nii.gz) and then download the corresponding gaze coordinates shortly after.
-Please read our [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye-%E2%80%90-FAQ) before using the pretrained models.
-
-```bash
-git clone https://github.com/DeepMReye/DeepMReye.git
-cd DeepMReye
-pip install .
-pip install streamlit
-streamlit run streamlit/streamlit.py
-```
-
-### Data formats
-The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containing the realigned 3D images acquired over time. The pipeline then extracts the eyeball voxels automatically and saves them as Python Pickle files, which serve as model input. For model training, you additionally need <u>**training labels**</u>, a numpy array containing 10 gaze coordinates per functional volume. These gaze coordinates can either be camera-based eye-tracking labels or the coordinates of a fixation target, and many file formats can be easily read (e.g. .npy, .npz, .mat, .csv etc.).
-
-## Hardware requirements
-
-The GPU version of DeepMReye requires a NVIDIA GPU.
-
-## Software requirements
-The following python dependencies are being automatically installed when installing DeepMReye (specified in setup.cfg):
-```
-tensorflow-gpu (2.2.0)
-numpy (1.19.1)
-pandas (1.0.5)
-matplotlib (3.2.2)
-scipy (1.5.0)
-ipython (7.13.0)
-plotly (4.14.3)
-```
-Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.8 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda).
-
-## BIDS app
-If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/).
+DeepMReye 2.0 provides an enormous architectural leap, but several components can be scaled further:
+- **K-Fold Linear Ensembles**: The current supervised linear probe (`evaluate/probe.py`) utilizes a rigid test-split. Moving evaluations toward $k$-fold cross-dataset validations will tighten convergence precision.
 
 ## Correspondence
-If you have questions, comments or inquiries, please reach out to us: markus.frey1[at]gmail.com & m.nau[at]vu.nl
+If you have questions regarding the implementation algorithms, mathematical continuous mapping drops, or PyTorch cluster optimizations, contact the primary developers: [EMAIL_ADDRESS] & [EMAIL_ADDRESS]
