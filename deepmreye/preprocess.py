@@ -114,10 +114,8 @@ def run_participant(
     # but should also work with other formats which can be read with AntsPy
     func = ants.image_read(fp_func)
     # Register to deepmreye template (dme_template).
-    # If registration fails quality check, try below line
-    # with additional parameter "transforms=['Affine', 'Affine', 'SyNAggro']"
     transform_to_dme, transformation_statistics = register_to_eye_masks(
-        dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=transforms
+        dme_template, func, masks=[None, eyemask_big, eyemask_small], transforms=['Affine', 'Affine', 'SyNAggro']
     )
     # Cut mask and save to subject folder with subject report / quality control plots
     (original_input, masked_eye, mask) = cut_mask(
