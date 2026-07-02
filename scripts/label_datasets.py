@@ -9,6 +9,7 @@ import sys
 # Add deepmreye to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import deepmreye.config as cfg
+from deepmreye.labels import append_label_events
 
 app = Flask(__name__)
 config = cfg.DeepMReyeConfig()
@@ -159,31 +160,50 @@ def submit_label():
     action = request.form.get('action')
     
     if dataset_name:
+        events = []  # (dataset, scope, subject, label) mirrored to the CSV backup
         try:
             with h5py.File(H5_PATH, 'a') as f:
                 if dataset_name in f:
                     if action == 'skip':
                         f[dataset_name].attrs['approved'] = -99
+                        events.append((dataset_name, 'dataset', '', -99))
                     else:
                         for sub in f[dataset_name].keys():
                             if 'report_html_path' in f[dataset_name][sub].attrs:
                                 lbl = request.form.get(f'label_{sub}')
                                 if lbl is not None:
                                     f[dataset_name][sub].attrs['approved'] = int(lbl)
+                                    events.append((dataset_name, 'subject', sub, int(lbl)))
         except Exception as e:
             print(f"Failed to update HDF5: {e}")
-            
+
+        if events:
+            try:
+                append_label_events(Path(H5_PATH).parent / "labels.csv", events)
+            except Exception as e:
+                print(f"Failed to write label backup CSV: {e}")
+
     return redirect(url_for('index'))
+
+def run_labeler(h5_path=None, data_dir=None, port=5050):
+    """Launch the Flask labeling UI against the given registry."""
+    global H5_PATH
+    if h5_path is not None:
+        H5_PATH = str(h5_path)
+    elif data_dir is not None:
+        H5_PATH = str(Path(data_dir).resolve() / "datasets.h5")
+
+    print("Starting Flask server for dataset labeling...")
+    print(f"Target HDF5: {H5_PATH}")
+    print(f"Open http://127.0.0.1:{port} in your browser to begin.")
+    app.run(host='0.0.0.0', port=port, threaded=True)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Dataset Labeling UI")
-    parser.add_argument("--h5", type=str, default=H5_PATH, help="Path to HDF5 Datastore")
+    parser.add_argument("--h5", type=str, default=None, help="Path to HDF5 Datastore")
+    parser.add_argument("--data-dir", type=str, default=None, help="Central data directory (uses <data-dir>/datasets.h5)")
     parser.add_argument("--port", type=int, default=5050, help="Port to run the app on")
     args = parser.parse_args()
-    
-    H5_PATH = args.h5
-    
-    print("Starting Flask server for dataset labeling...")
-    print(f"Target HDF5: {H5_PATH}")
-    print(f"Open http://127.0.0.1:{args.port} in your browser to begin.")
-    app.run(host='0.0.0.0', port=args.port, threaded=True)
+
+    run_labeler(h5_path=args.h5, data_dir=args.data_dir, port=args.port)

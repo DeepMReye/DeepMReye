@@ -11,7 +11,7 @@ class ProbeDataset(Dataset):
     Streams explicit explicit `(X, Y, Z, T)` windows off the standardized unified `.h5` 
     HDF5 arrays inside `labeled_data/`. 
     """
-    def __init__(self, labeled_data_dir, split="train", split_ratio=0.8, window_size=10, transforms=None):
+    def __init__(self, labeled_data_dir, split="train", split_ratio=0.8, window_size=100, transforms=None):
         self.labeled_data_dir = Path(labeled_data_dir).resolve()
         self.split = split
         self.split_ratio = split_ratio

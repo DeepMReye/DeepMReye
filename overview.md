@@ -2,11 +2,28 @@
 
 This document provides a comprehensive, highly-detailed breakdown of the end-to-end DeepMReye 2.0 Joint Embedding Predictive Architecture (JEPA) pipeline. It explains the mechanics of data extraction, tensor shapes, data loading, architectural patchification, 2D continuous masking, and supervised probing without relying on reading source code.
 
+## 0. Running the Pipeline
+
+There is a single entry point. Every stage runs through it:
+
+```bash
+python -m deepmreye compile --data-dir data --limit 5   # 1. sample subjects for QA
+python -m deepmreye qa --data-dir data                  # 2. browser labeling UI (eyes / no eyes)
+python -m deepmreye preprocess --data-dir data          # 3. extract all subjects of approved datasets
+python -m deepmreye train --data-dir data -- --epochs 50 # 4. train JEPA (extra args after `--` go to train_jepa)
+python -m deepmreye all --data-dir data                 # run 1-4, pausing for QA
+```
+
+`--data-dir` goes *after* the command. `run_pipeline.sh <command>` is a thin
+`.venv` wrapper around these same calls. Manual QA labels are stored as
+`approved` attributes in `data/datasets.h5` and are preserved across reruns of
+any stage — re-running `compile` or `preprocess` never deletes them.
+
 ## 1. Data Ingestion & Preprocessing
 
 DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken into metadata compilation and BOLD sequence extraction.
 
-### Metadata Compilation (`compile_openneuro.py`)
+### Metadata Compilation (`scripts/compile_openneuro.py`)
 - The pipeline queries the OpenNeuro GraphQL API for a list of all available datasets.
 - A centralized HDF5 registry (`data/datasets.h5`) is created. Each dataset becomes a root group (e.g., `/ds000001`), and each subject becomes a subgroup.
 - **Manual QA**: Through a Streamlit app (`scripts/label_datasets.py`), researchers manually review dataset samples and flag them by adding an `approved=1` attribute to the dataset group in the `.h5` registry.
@@ -14,6 +31,7 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 ### Extraction & Coregistration (`download_and_preprocess.py`)
 - The script iterates through the `approved=1` datasets and downloads the raw `_bold.nii.gz` sequences natively bypassing heavy local storage by unpacking on-the-fly.
 - **Coregistration**: For every subject, the sequence is registered to a standard space (MTI) using `ANTsPy` (specifically `Affine` and `SyNAggro` transforms).
+- **Metadata Validation**: Prior to registration, the raw sequence is strictly validated using `deepmreye.validation`. The Repetition Time (TR) is extracted from the raw NIfTI header. If the TR is missing or invalid (<= 0), the dataset is skipped entirely to preserve temporal dynamics. Valid TRs are written to the `datasets.h5` registry.
 - **Voxel Extraction**: A binary eye-mask is applied to the registered BOLD sequence. The pipeline crops out the bounding box containing the eyes. All voxels outside the precise eyeball mask are explicitly zeroed out (`replace_with=0`).
 - **Quality Assurance via ML**: During registration, an affine transformation matrix is produced. A pre-trained machine learning model (`DecisionTreeClassifier` or Random Forest) evaluates the flattened affine statistics to predict how successful the spatial alignment was. This outputs a float between 0.0 and 1.0 and is saved as the `transform_probability` attribute.
 - **Serialization**: The extracted 4D bounding box is saved tightly as a contiguous matrix of shape `[X, Y, Z, T]` using `gzip` compression directly inside dataset-specific `.h5` files (e.g., `data/ds000001/ds000001.h5`).

@@ -133,8 +133,7 @@ def train_jepa():
     parser.add_argument("--num-heads", type=int, default=8)
     
     # Data pipeline
-    parser.add_argument("--window-size", type=int, default=25, help="TR sequences per patch window")
-    parser.add_argument("--prob-threshold", type=float, default=0.7, help="Minimum transform prob")
+    parser.add_argument("--window-size", type=int, default=100, help="TR sequences per patch window")
     # Curriculum Masking (Linear Annealing Ratios)
     parser.add_argument("--s-ratio-start", type=float, default=0.1)
     parser.add_argument("--s-ratio-end", type=float, default=0.5)
@@ -155,7 +154,7 @@ def train_jepa():
         wandb.init(project=args.wandb_project, config=args)
     
     print("[*] Loading Unsupervised Dataset...")
-    dataset = JEPADataset(data_dir=args.data_dir, window_size=args.window_size, prob_threshold=args.prob_threshold)
+    dataset = JEPADataset(data_dir=args.data_dir, window_size=args.window_size)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     
     print("[*] Loading Supervised Probe Datasets...")
@@ -212,7 +211,6 @@ def train_jepa():
     print(" [Data Extraction Pipeline]")
     print(f"   ► Evaluated Datasets : {dataset.total_datasets}")
     print(f"   ► Scanned Subjects   : {dataset.total_subjects}")
-    print(f"   ► Quality Threshold  : >= {args.prob_threshold}")
     print(f"   ► Approved Subjects  : {dataset.valid_subjects} ({dataset.valid_subjects/max(1, dataset.total_subjects)*100:.1f}%)")
     print(f"   ► Time Window Size   : {args.window_size} TRs")
     print(f"   ► Sequence Batches   : {dataset.total_windows:,} Extracted Windows")

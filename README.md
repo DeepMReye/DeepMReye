@@ -52,28 +52,34 @@ The repository is modularized cleanly into scalable blocks separating Data Extra
 
 The entire pipeline natively downloads directly from the OpenNeuro AWS S3 buckets. Instead of hard-coding datasets, the process dynamically pulls any resting-state fMRI dataset mapped over GraphQL.
 
+We provide a central orchestrator script, `run_pipeline.sh`, to run the end-to-end pipeline. You can run all steps sequentially (with a pause for manual QA), or run individual steps.
+
+```bash
+# Run the entire pipeline from start to finish
+./run_pipeline.sh all
+```
+
+Or run individual steps manually:
+
 1. **Mine OpenNeuro Metadata**: 
    ```bash
-   python scripts/compile_openneuro.py
+   ./run_pipeline.sh compile
    ```
 2. **Select & QA BIDS Datasets**:
    Run the Streamlit Labeling GUI to manually approve datasets (this ensures raw fMRI acquisitions contain valid eye boundaries). The GUI permanently tags records in `data/datasets.h5` with `approved=1`.
    ```bash
-   streamlit run scripts/label_datasets.py
+   ./run_pipeline.sh qa
    ```
 3. **Extract 4D Sequences**:
    Downloads all `approved=1` BIDS bold records, corespatially masks the eyeballs, and serializes the 4D geometries natively.
    ```bash
-   python scripts/download_and_preprocess.py
+   ./run_pipeline.sh preprocess
    ```
 4. **Train Unsupervised Masking Representations**:
    ```bash
-   HDF5_USE_FILE_LOCKING=FALSE python scripts/train_jepa.py \
-       --epochs 100 \
-       --batch-size 32 \
-       --lr 1e-4 \
-       --wandb-project "deepmreye-jepa"
+   ./run_pipeline.sh train
    ```
+   *(Note: Advanced hyperparameter configuration should be passed directly to `scripts/train_jepa.py` instead of the orchestrator).*
 
 ---
 
