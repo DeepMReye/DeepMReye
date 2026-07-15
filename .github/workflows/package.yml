@@ -18,6 +18,11 @@ jobs:
 
     # Build packages and upload
         runs-on: ${{ matrix.os }}
+
+        permissions:
+            contents: read
+            id-token: write
+
         strategy:
             matrix:
                 include:
@@ -55,6 +60,3 @@ jobs:
 
         -   name: Upload to PyPI (on tags)
             uses: pypa/gh-action-pypi-publish@release/v1
-            with:
-                user: __token__
-                password: ${{ secrets.PYPI_API_TOKEN }}
