@@ -1,125 +1,106 @@
-# DeepMReye 2.0: Joint Embedding Predictive Architecture for fMRI Eye Tracking
+# DeepMReye 2.0: JEPA for fMRI Eye Tracking
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
-![DeepMReye JEPA](https://img.shields.io/badge/Architecture-JEPA-blue.svg)
+![Architecture: JEPA](https://img.shields.io/badge/Architecture-JEPA-blue.svg)
 
-DeepMReye 2.0 upgrades the original supervised eye-tracking regression models into a **Joint Embedding Predictive Architecture (JEPA)**. By training exclusively on unsupervised fMRI datasets extracted from OpenNeuro, the network maps spatial/temporal neuro-imaging matrices into scalable representational embeddings securely before deploying a lightweight Linear Probe for gaze coordinate decoding.
+Decode eye gaze from fMRI without an eye tracker. The BOLD signal around the
+eyeballs carries gaze position; DeepMReye 1.0 decoded it with a supervised model.
+DeepMReye 2.0 pretrains a representation on **unlabeled** eye-region fMRI from
+OpenNeuro using a Joint Embedding Predictive Architecture (JEPA), then fits a
+lightweight linear probe to gaze coordinates. The motivation: unlabeled fMRI is
+abundant, simultaneous eye-tracking labels are scarce.
 
 ![Logo](media/deepmreye_logo.png)
 
----
+## Installation
 
-## 🚀 Installation & Environment
-
-DeepMReye 2.0 requires extensive dependencies for managing heavy 4D Matrix transformations (`torch`, `h5py`, `numpy`, `wandb`). We highly recommend using `uv` or standard Python `venv` environments to securely sandbox the dependencies.
-
-### Environment Setup
-1. **Initialize the Virtual Environment**:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-2. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   # OR using UV for lightning-fast resolution
-   uv pip install -r requirements.txt
-   ```
-3. **Verify PyTorch Backend**: 
-   The matrices require deep accelerated computation. Ensure your environment has CUDA (NVIDIA) or MPS (Apple Silicon) enabled properly via `torch.backends`.
-
----
-
-## 🧠 Architecture Overview
-
-The repository is modularized cleanly into scalable blocks separating Data Extraction, PyTorch Dataloading, and ViT Model topographies. 
-
-### `/scripts` (Execution Pipelines)
-- **`compile_openneuro.py`**: Queries the OpenNeuro GraphQL API, mining available fMRI modalities and building the `data/datasets.h5` core registry.
-- **`download_and_preprocess.py`**: Executes massive multi-threaded parallelization downloading S3 buckets. Utilizes `deepmreye/preprocess.py` voxel coregistration dynamically bounding 4D spatial grids, and writes the output `.h5` objects natively.
-- **`convert_labeled_to_h5.py`**: Synthesizes the provided supervised ground-truth `.npz` records directly into the standardized HDF5 architecture format `[X, Y, Z, T]`.
-- **`train_jepa.py`**: The main execution loop processing the heavy Continuous Spatial-Temporal Masking Curriculums.
-
-### `/deepmreye` (PyTorch Core Blocks)
-- **`models/jepa.py`**: The Vision Transformer (ViT) implementation spanning Context Encoders, EMA Target Encoders, dual $1D/3D$ positional embeddings, and the Mask Predictor topologies.
-- **`models/patcher.py`**: Spatially unfolds `[B, X, Y, Z, T]` datasets into grid tokens (e.g., $8\times8\times8$ cubes) and computes the exact `spatial_ratio` and `temporal_ratio` missing masks seamlessly.
-- **`data/jepa_dataset.py` & `probe_dataset.py`**: Dynamic arrays reading native subsets of sequence windows straight from chunked `.h5` matrices off disk to prevent RAM cascading.
-- **`evaluate/probe.py`**: The validation modules stripping arbitrary invalid `NaN` label coordinates natively matching the original 1.0 specifications exactly.
-
----
-
-## 🏃 Execution Instructions & BIDS Datasets
-
-The entire pipeline natively downloads directly from the OpenNeuro AWS S3 buckets. Instead of hard-coding datasets, the process dynamically pulls any resting-state fMRI dataset mapped over GraphQL.
-
-We provide a central orchestrator script, `run_pipeline.sh`, to run the end-to-end pipeline. You can run all steps sequentially (with a pause for manual QA), or run individual steps.
+Requires Python 3.9–3.11. Dependencies are managed with `uv` (`pyproject.toml` +
+`uv.lock`).
 
 ```bash
-# Run the entire pipeline from start to finish
-./run_pipeline.sh all
+python -m venv .venv
+source .venv/bin/activate
+uv pip install -e .
 ```
 
-Or run individual steps manually:
+Training uses CUDA (NVIDIA) or MPS (Apple Silicon) if available, otherwise CPU.
 
-1. **Mine OpenNeuro Metadata**: 
-   ```bash
-   ./run_pipeline.sh compile
-   ```
-2. **Select & QA BIDS Datasets**:
-   Run the Streamlit Labeling GUI to manually approve datasets (this ensures raw fMRI acquisitions contain valid eye boundaries). The GUI permanently tags records in `data/datasets.h5` with `approved=1`.
-   ```bash
-   ./run_pipeline.sh qa
-   ```
-3. **Extract 4D Sequences**:
-   Downloads all `approved=1` BIDS bold records, corespatially masks the eyeballs, and serializes the 4D geometries natively.
-   ```bash
-   ./run_pipeline.sh preprocess
-   ```
-4. **Train Unsupervised Masking Representations**:
-   ```bash
-   ./run_pipeline.sh train
-   ```
-   *(Note: Advanced hyperparameter configuration should be passed directly to `scripts/train_jepa.py` instead of the orchestrator).*
+## Running the pipeline
 
----
+Everything runs through a single CLI. `--data-dir` goes after the command.
 
-## ⚙️ Hyperparameter Configuration
-
-DeepMReye 2.0 splits configurations dynamically into two tiers:
-1. **Global Paths & Augmentations**: The `deepmreye/config.py` Python class controls universal states like base `data_dir` mappings, $train/test$ split proportions, and volumetric data augmentation limits ($rotation/shift/zoom$).
-2. **JEPA CLI Parameters**: Local hyperparameters unique to the deep learning architecture are passed explicitly into `scripts/train_jepa.py` preventing hardcoded structural bounds. Key parameters include:
-   - `--batch-size`: Scales the heavily intensive 4D tensors per GPU mapping.
-   - `--s-ratio-start` & `--t-ratio-start`: The Curriculum spatial/temporal masking drop probability rates linearly annealing into the `--*-end` arrays limits dynamically forcing ViT predictions.
-
----
-
-## 🧪 Testing and Validation
-
-Comprehensive unit tests cover the integrity of the patchification, target EMA gradients, dimensional grid projections, and Euclidean metrics.
-
-To validate your machine topologies locally before launching large batching workloads:
 ```bash
-pytest deepmreye/tests/test_jepa.py -v
-```
-This executes isolated geometric `[B, X, Y, Z, T]` continuous blocks mocking real neuro-images sequentially verifying the `fMRIPatcher` scaling architectures and ViT output vectors exactly.
-
----
-
-## 📁 Data Formats
-
-Unlike the earlier version, DeepMReye 2.0 drops Pickles in favor of native PyTorch-optimized HDF5 datalakes (`.h5`). 
-Each dataset structure internally possesses the following sequence:
-```
-dataset_name.h5
- └── /sub-01
-     ├── /eye_block (Matrix: [X, Y, Z, T], Int16, gzip)
-     └── /attrs (ML Classification Probabilities)
+python -m deepmreye compile --data-dir data --limit 5     # 1. sample subjects from OpenNeuro
+python -m deepmreye qa --data-dir data                    # 2. label datasets in the browser
+python -m deepmreye preprocess --data-dir data            # 3. extract all subjects of approved datasets
+python -m deepmreye train --data-dir data -- --epochs 50  # 4. train JEPA + probe
 ```
 
-## 🚀 Future Improvements Roadmap
+Extra training arguments after `--` are forwarded to `scripts/train_jepa.py`.
+`run_pipeline.sh <command>` is a thin `.venv` wrapper around these same calls.
 
-DeepMReye 2.0 provides an enormous architectural leap, but several components can be scaled further:
-- **K-Fold Linear Ensembles**: The current supervised linear probe (`evaluate/probe.py`) utilizes a rigid test-split. Moving evaluations toward $k$-fold cross-dataset validations will tighten convergence precision.
+### The four stages
+
+1. **compile** — Samples a few subjects per OpenNeuro dataset, coregisters them
+   to the eye template, extracts the eye bounding box, and builds the
+   `data/datasets.h5` registry with an HTML QA report per subject.
+2. **qa** — A local Flask web app for manual quality control. For each subject
+   you mark eyes / no-eyes. A dataset is used for training only if all of its
+   labeled subjects show eyes (one bad subject drops the dataset, since scanner
+   or experiment failures tend to be shared across subjects). Labels are stored
+   in `data/datasets.h5` and mirrored to `data/labels.csv`.
+3. **preprocess** — Downloads and extracts every subject of the approved
+   datasets into per-dataset HDF5 files.
+4. **train** — Trains the JEPA model and evaluates a linear gaze probe.
+
+## Label backup
+
+Manual QA labels are the expensive part. Every save in the QA UI is appended to
+`data/labels.csv`, and re-running `compile` or `preprocess` never deletes labels.
+If the registry is ever rebuilt or corrupted:
+
+```bash
+python -m deepmreye export-labels --data-dir data    # snapshot current labels to CSV
+python -m deepmreye restore-labels --data-dir data    # replay CSV back into datasets.h5
+```
+
+Commit `labels.csv` to version your labeling effort.
+
+## Repository layout
+
+- `deepmreye/__main__.py` — the CLI entry point.
+- `deepmreye/pipeline.py` — shared OpenNeuro download / coregistration / extraction.
+- `deepmreye/models/` — the JEPA ViT (`jepa.py`) and patchification + masking (`patcher.py`).
+- `deepmreye/data/` — HDF5 dataloaders for pretraining (`jepa_dataset.py`) and probing (`probe_dataset.py`).
+- `deepmreye/evaluate/probe.py` — gaze probe metrics.
+- `deepmreye/labels.py` — CSV label backup.
+- `scripts/` — stage implementations and `train_jepa.py`.
+- `overview.md` — detailed method reference.
+- `paper/` — ICLR 2026 manuscript draft.
+
+## Data formats
+
+Per-dataset HDF5 files hold the extracted blocks:
+
+```text
+<dataset>.h5
+ └── sub-01
+     ├── eye_block        # [X, Y, Z, T] float, gzip-compressed
+     └── transform_stats  # affine QA statistics (diagnostic)
+```
+
+Manual QA labels live as `approved` attributes in `data/datasets.h5`:
+`1` eyes, `0` / `2` no eyes, `-1` unlabeled, `-99` dataset skipped.
+
+## Testing
+
+```bash
+pytest deepmreye/tests/ -q
+```
+
+Covers patchification and masking geometry, EMA target updates, the label
+backup round-trip, and TR validation.
 
 ## Correspondence
-If you have questions regarding the implementation algorithms, mathematical continuous mapping drops, or PyTorch cluster optimizations, contact the primary developers: [EMAIL_ADDRESS] & [EMAIL_ADDRESS]
+
+Questions about the implementation: contact the primary developers.

@@ -2,6 +2,14 @@
 
 This document provides a comprehensive, highly-detailed breakdown of the end-to-end DeepMReye 2.0 Joint Embedding Predictive Architecture (JEPA) pipeline. It explains the mechanics of data extraction, tensor shapes, data loading, architectural patchification, 2D continuous masking, and supervised probing without relying on reading source code.
 
+For a short orientation (project state, key decisions, layout) see `CLAUDE.md`.
+For install and usage see `README.md`. This file is the deep method reference.
+
+> **Paper sync:** the Method section of the paper (`paper/main.tex`) mirrors the
+> method described here. When the pipeline or model changes substantially,
+> update both. See `paper/README.md` for the build command and the section-to-code
+> mapping.
+
 ## 0. Running the Pipeline
 
 There is a single entry point. Every stage runs through it:
@@ -17,7 +25,7 @@ python -m deepmreye all --data-dir data                 # run 1-4, pausing for Q
 `--data-dir` goes *after* the command. `run_pipeline.sh <command>` is a thin
 `.venv` wrapper around these same calls. Manual QA labels are stored as
 `approved` attributes in `data/datasets.h5` and are preserved across reruns of
-any stage — re-running `compile` or `preprocess` never deletes them.
+any stage; re-running `compile` or `preprocess` never deletes them.
 
 ## 1. Data Ingestion & Preprocessing
 
@@ -26,14 +34,14 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 ### Metadata Compilation (`scripts/compile_openneuro.py`)
 - The pipeline queries the OpenNeuro GraphQL API for a list of all available datasets.
 - A centralized HDF5 registry (`data/datasets.h5`) is created. Each dataset becomes a root group (e.g., `/ds000001`), and each subject becomes a subgroup.
-- **Manual QA**: Through a Streamlit app (`scripts/label_datasets.py`), researchers manually review dataset samples and flag them by adding an `approved=1` attribute to the dataset group in the `.h5` registry.
+- **Manual QA**: Through a Flask app (`scripts/label_datasets.py`), researchers manually review the sampled subjects and label each one eyes / no-eyes. Labels are written as `approved` attributes on the subject subgroups (`1` eyes, `0`/`2` no eyes, `-1` unlabeled) and mirrored to `data/labels.csv`. A dataset is approved for training only if all of its labeled subjects show eyes; a single "no eyes" subject drops the whole dataset (`is_dataset_approved` in `deepmreye/pipeline.py`).
 
-### Extraction & Coregistration (`download_and_preprocess.py`)
-- The script iterates through the `approved=1` datasets and downloads the raw `_bold.nii.gz` sequences natively bypassing heavy local storage by unpacking on-the-fly.
+### Extraction & Coregistration (`scripts/download_and_preprocess.py`)
+- The script iterates through the approved datasets and downloads the raw `_bold.nii.gz` sequences natively bypassing heavy local storage by unpacking on-the-fly.
 - **Coregistration**: For every subject, the sequence is registered to a standard space (MTI) using `ANTsPy` (specifically `Affine` and `SyNAggro` transforms).
 - **Metadata Validation**: Prior to registration, the raw sequence is strictly validated using `deepmreye.validation`. The Repetition Time (TR) is extracted from the raw NIfTI header. If the TR is missing or invalid (<= 0), the dataset is skipped entirely to preserve temporal dynamics. Valid TRs are written to the `datasets.h5` registry.
 - **Voxel Extraction**: A binary eye-mask is applied to the registered BOLD sequence. The pipeline crops out the bounding box containing the eyes. All voxels outside the precise eyeball mask are explicitly zeroed out (`replace_with=0`).
-- **Quality Assurance via ML**: During registration, an affine transformation matrix is produced. A pre-trained machine learning model (`DecisionTreeClassifier` or Random Forest) evaluates the flattened affine statistics to predict how successful the spatial alignment was. This outputs a float between 0.0 and 1.0 and is saved as the `transform_probability` attribute.
+- **Transform statistics**: During registration, an affine transformation matrix is produced. Its flattened statistics are saved as `transform_stats` inside the per-dataset `.h5` file and shown in the subject's HTML QA report. These are diagnostic only; approval is decided by manual labels, not an automatic quality score.
 - **Serialization**: The extracted 4D bounding box is saved tightly as a contiguous matrix of shape `[X, Y, Z, T]` using `gzip` compression directly inside dataset-specific `.h5` files (e.g., `data/ds000001/ds000001.h5`).
 
 ## 2. Pytorch Data Loading & Batching
@@ -41,7 +49,7 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 The PyTorch `Dataset` instances handle the massive 4D arrays securely by leveraging HDF5's native chunking.
 
 ### `JEPADataset` (Unsupervised Training)
-- **Initialization**: Scans all `[ds_name].h5` files. It evaluates the `transform_probability` for each subject. If a subject's coregistration quality score is below the `prob_threshold` (default `0.7`), the subject is dropped from the training pool entirely.
+- **Initialization**: Scans the registry and includes every subject that belongs to a manually approved dataset (`is_dataset_approved`) and has an extracted `eye_block` on disk. There is no automatic quality gate; QA is the manual eyes / no-eyes labeling.
 - **Windowing**: fMRI sequences vary wildly in temporal length ($T$). To standardize batches, the dataset dynamically samples random continuous "windows" of `100` TRs (`window_size=100`). If a sequence is less than 100 TRs, it cannot be used.
 - **Output Shape**: Every item yielded by the dataset is a 4D tensor of shape `[X, Y, Z, 100]` where `X, Y, Z` are the spatial bounding box dimensions covering the eyes. A DataLoader batches these into `[B, X, Y, Z, 100]`.
 
@@ -113,4 +121,4 @@ Because the unsupervised training learns representations, we validate the semant
 - `batch_size`: Defaults around 32, highly sensitive given native 4D voxel block buffers. Set to maximum available GPU VRAM.
 - `max_n_s` and `max_n_t`: Set locally in `Patchify` limits to pad positional embeddings for sequences exceeding normal matrix shapes (e.g. padding to 500 spatial tokens absolute bounds).
 - `EMA Momentum`: Linearly anneals from `0.996` towards `1.0`. A high EMA prevents the Target Encoder from collapsing into providing zero-variance trivial outputs.
-- `prob_threshold`: The minimum strictness metric required before considering a scanned OpenNeuro anatomy structurally sound for sequence inclusion.
+- `window_size`: Number of TRs per training window (default `100`). Sequences shorter than this are skipped.
