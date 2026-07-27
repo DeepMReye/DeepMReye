@@ -61,8 +61,9 @@ indistinguishable in format; `labels` is simply present or absent.
 ## Where it stands
 
 **Labeling is the only thing on the critical path.** Everything upstream is
-done; everything downstream waits on QA labels. 45 of 1779 subjects are
-labeled so far.
+done; everything downstream waits on QA labels. 14 of 1779 subjects are labeled
+so far (11 eyes, 3 no-eyes); the registry covers 1772 of them, the remaining 7
+being the gaze-labeled participants, which need no QA.
 
 1. **Label**, on a laptop — `python -m deepmreye qa`. See *Working across
    machines* in `README.md` for the Hub round trip.
