@@ -27,6 +27,11 @@ python -m deepmreye all --data-dir data                 # run 1-4, pausing for Q
 `approved` attributes in `data/datasets.h5` and are preserved across reruns of
 any stage; re-running `compile` or `preprocess` never deletes them.
 
+On a cluster where compute nodes are offline and login sessions are
+memory-capped, steps 1 and 3 split into a download stage and an extraction
+stage — see "Running on Leonardo" in `CLAUDE.md`. The per-subject work is
+identical either way.
+
 ## 1. Data Ingestion & Preprocessing
 
 DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken into metadata compilation and BOLD sequence extraction.
@@ -40,9 +45,10 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 - The script iterates through the approved datasets and downloads the raw `_bold.nii.gz` sequences natively bypassing heavy local storage by unpacking on-the-fly.
 - **Coregistration**: For every subject, the sequence is registered to a standard space (MTI) using `ANTsPy` (specifically `Affine` and `SyNAggro` transforms).
 - **Metadata Validation**: Prior to registration, the raw sequence is strictly validated using `deepmreye.validation`. The Repetition Time (TR) is extracted from the raw NIfTI header. If the TR is missing or invalid (<= 0), the dataset is skipped entirely to preserve temporal dynamics. Valid TRs are written to the `datasets.h5` registry.
-- **Voxel Extraction**: A binary eye-mask is applied to the registered BOLD sequence. The pipeline crops out the bounding box containing the eyes. All voxels outside the precise eyeball mask are explicitly zeroed out (`replace_with=0`).
-- **Transform statistics**: During registration, an affine transformation matrix is produced. Its flattened statistics are saved as `transform_stats` inside the per-dataset `.h5` file and shown in the subject's HTML QA report. These are diagnostic only; approval is decided by manual labels, not an automatic quality score.
-- **Serialization**: The extracted 4D bounding box is saved tightly as a contiguous matrix of shape `[X, Y, Z, T]` using `gzip` compression directly inside dataset-specific `.h5` files (e.g., `data/ds000001/ds000001.h5`).
+- **Voxel Extraction**: A binary eye-mask is applied to the registered BOLD sequence. The pipeline crops out the bounding box containing the eyes. All voxels outside the precise eyeball mask are explicitly zeroed out (`replace_with=0`). The crop is fixed by the mask, so every eye block is `[47, 29, 18, T]`.
+- **Normalization**: The cropped block is passed through `normalize_img`: each voxel is z-scored across time, each volume is then z-scored across space, and values are clipped at 5 SD. Masked-out voxels stay exactly 0. This runs at extraction so stored data matches the labeled gaze datasets, which were normalized the same way — pretraining on raw BOLD and probing on z-scored data would put two different input distributions through one encoder.
+- **Transform statistics**: During registration, an affine transformation matrix is produced. Its flattened statistics are recorded in the registry and shown in the subject's HTML QA report. These are diagnostic only; approval is decided by manual labels, not an automatic quality score.
+- **Serialization**: Each participant is written to its own gzip-compressed HDF5 file, `data/<dataset>/<subject>.h5`, holding `eye_block` `[X, Y, Z, T]` float32 and — when gaze is known — `labels` `[T, 10, 2]`. Chunks span the full spatial extent against a 50-TR slab, so reading one training window touches a few chunks instead of striding the whole run. One file per participant (rather than one per dataset) is what allows parallel extraction: each worker owns its output file outright.
 
 ## 2. Pytorch Data Loading & Batching
 
@@ -54,9 +60,9 @@ The PyTorch `Dataset` instances handle the massive 4D arrays securely by leverag
 - **Output Shape**: Every item yielded by the dataset is a 4D tensor of shape `[X, Y, Z, 100]` where `X, Y, Z` are the spatial bounding box dimensions covering the eyes. A DataLoader batches these into `[B, X, Y, Z, 100]`.
 
 ### `ProbeDataset` (Supervised Evaluation)
-- Loads from separate, pre-converted labeled HDF5 databases (e.g., `dataset1_guided_fixations.h5`).
-- It applies a strict dataset-wise or subject-wise `train/test` split geometry to ensure validation generalization.
-- Outputs `[B, X, Y, Z, 100]` BOLD blocks alongside `[B, 100, 10, 2]` label arrays (100 TRs, 10 sub-TR sampling points, X & Y coordinates). 
+- Reads the same per-participant layout as `JEPADataset`, restricted to files that carry a `labels` dataset. Labeled and unlabeled participants are byte-format identical, so one code path serves both.
+- Splitting is either subject-wise **within each dataset** (`split_by="subject"`, the default) or whole datasets held out (`split_by="dataset"`, the stricter test of transfer to an unseen scanner and paradigm). Splitting a pooled shuffle across datasets would leak subjects of the same dataset into both sides and inflate the metrics.
+- Outputs `[B, X, Y, Z, 100]` BOLD blocks alongside `[B, 100, 10, 2]` label arrays (100 TRs, 10 sub-TR sampling points, X & Y coordinates) in degrees of visual angle. NaNs are preserved — they mark TRs with no valid gaze sample, and the evaluation masks them; dropping them here would misalign block and gaze in time.
 
 ## 3. Patchification (`fMRIPatcher`)
 

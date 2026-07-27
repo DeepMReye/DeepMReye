@@ -14,6 +14,12 @@
 labeled_data/
 unlabeled_data/
 
+# Corpus and cluster job output. The corpus lives on scratch / HuggingFace,
+# never in the repo; QA labels are versioned on the Hub (scripts/sync_labels.py).
+data/
+staging/
+logs/
+
 # uv lock
 uv.lock
 

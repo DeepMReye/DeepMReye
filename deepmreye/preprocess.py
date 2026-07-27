@@ -90,6 +90,7 @@ def run_participant(
         as_pickle=True,
         save_overview=True,
         dataset_name=None,
+        save_blocks=True,
 ):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
@@ -135,6 +136,7 @@ def run_participant(
         as_pickle=as_pickle,
         dataset_name=dataset_name,
         transform_stats=transformation_statistics,
+        save_blocks=save_blocks,
     )
 
     return (masked_eye, transformation_statistics, original_input)
@@ -245,6 +247,7 @@ def cut_mask(
         as_pickle=True,
         dataset_name=None,
         transform_stats=None,
+        save_blocks=True,
 ):
     """Cut mask into given shape given edges.
 
@@ -313,19 +316,24 @@ def cut_mask(
             transform_stats=transform_stats
         )
 
-    if as_pickle:
-        fn_masked_eye_path = save_dir / f"mask_{participant_basename}.p"
-        pickle.dump(masked_eye, open(fn_masked_eye_path, "wb"))
-    else:
-        # keep same geometry as the original input
-        masked_eye_img = ants.from_numpy(
-            masked_eye,
-            origin=original_input.origin,
-            spacing=original_input.spacing,
-            direction=original_input.direction,
-        )
-        fn_masked_eye_path = save_dir / f"mask_{participant_basename}.nii.gz"
-        ants.image_write(masked_eye_img, str(fn_masked_eye_path))
+    # The block is also returned, and the 2.0 pipeline writes it straight to
+    # HDF5 -- so for that caller this file is a byte-for-byte duplicate. It
+    # cost 27 GB across the QA corpus, as much as the corpus itself. Callers
+    # that persist the array themselves pass save_blocks=False.
+    if save_blocks:
+        if as_pickle:
+            fn_masked_eye_path = save_dir / f"mask_{participant_basename}.p"
+            pickle.dump(masked_eye, open(fn_masked_eye_path, "wb"))
+        else:
+            # keep same geometry as the original input
+            masked_eye_img = ants.from_numpy(
+                masked_eye,
+                origin=original_input.origin,
+                spacing=original_input.spacing,
+                direction=original_input.direction,
+            )
+            fn_masked_eye_path = save_dir / f"mask_{participant_basename}.nii.gz"
+            ants.image_write(masked_eye_img, str(fn_masked_eye_path))
 
     return (original_input, masked_eye, mask)
 

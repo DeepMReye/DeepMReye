@@ -17,7 +17,9 @@ from deepmreye.pipeline import (
 )
 import deepmreye.config as cfg
 
-MAX_SUBJECTS_PER_DATASET = 100
+# Trim large datasets rather than skipping them; see the note in
+# scripts/stage_downloads.py for why the old skip-at-100 was costly.
+MAX_SUBJECTS_PER_DATASET = 200
 
 
 def run_preprocess(data_dir, force=False):
@@ -61,13 +63,15 @@ def run_preprocess(data_dir, force=False):
             print(f"  Found {len(subs_to_process)} subjects to process.")
 
             if len(subs_to_process) > MAX_SUBJECTS_PER_DATASET:
-                print(f"  Skipping {ds_name}: more than {MAX_SUBJECTS_PER_DATASET} subjects.")
-                continue
+                print(f"  {ds_name}: {len(subs_to_process)} subjects, taking first "
+                      f"{MAX_SUBJECTS_PER_DATASET}.")
+                subs_to_process = subs_to_process[:MAX_SUBJECTS_PER_DATASET]
 
             for sub_id in tqdm(subs_to_process, desc=f"Subjects in {ds_name}", leave=False):
-                process_subject(
+                meta = process_subject(
                     s3, grp, ds_name, sub_id, bold_by_sub[sub_id], data_dir, masks, force=force
                 )
+                del meta  # already applied to grp; returned for the parallel path
 
 
 def main():
