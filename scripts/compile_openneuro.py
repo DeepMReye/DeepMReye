@@ -25,6 +25,7 @@ from deepmreye.pipeline import (
     find_bold_by_subject,
     process_subject,
     BUCKET_NAME,
+    DEFAULT_REPORT,
 )
 from deepmreye import registry
 import deepmreye.config as cfg
@@ -66,7 +67,8 @@ def fetch_dataset_description(s3, ds_name):
         return "{}"
 
 
-def _process_one_dataset(ds_name, data_dir, masks, registry_path, force=False):
+def _process_one_dataset(ds_name, data_dir, masks, registry_path, force=False,
+                         report=DEFAULT_REPORT):
     """Sample and extract this dataset's QA subjects. Runs in a worker thread."""
     # Each thread needs its own client: botocore clients are not thread safe.
     s3 = make_s3_client()
@@ -85,7 +87,8 @@ def _process_one_dataset(ds_name, data_dir, masks, registry_path, force=False):
     for sub_id in subs:
         try:
             meta = process_subject(
-                s3, None, ds_name, sub_id, bold_by_sub[sub_id], data_dir, masks, force=force
+                s3, None, ds_name, sub_id, bold_by_sub[sub_id], data_dir, masks,
+                force=force, report=report,
             )
         except Exception as e:
             print(f"  [!] {ds_name}/{sub_id} failed: {e}")
@@ -97,7 +100,7 @@ def _process_one_dataset(ds_name, data_dir, masks, registry_path, force=False):
     return ds_name, n_done, None
 
 
-def run_compile(data_dir, limit=5, workers=4, force=False):
+def run_compile(data_dir, limit=5, workers=4, force=False, report=DEFAULT_REPORT):
     """Sample a few subjects per OpenNeuro dataset into the QA registry."""
     data_dir = Path(data_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -141,7 +144,7 @@ def run_compile(data_dir, limit=5, workers=4, force=False):
     failures = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_process_one_dataset, ds, data_dir, masks, out_path, force): ds
+            pool.submit(_process_one_dataset, ds, data_dir, masks, out_path, force, report): ds
             for ds in todo
         }
         with tqdm(total=len(futures), desc="Datasets") as bar:

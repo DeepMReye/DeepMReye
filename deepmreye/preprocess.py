@@ -91,6 +91,7 @@ def run_participant(
         save_overview=True,
         dataset_name=None,
         save_blocks=True,
+        thumbnail_path=None,
 ):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
@@ -112,6 +113,10 @@ def run_participant(
         Edges of mask in z-dimension
     replace_with : int, optional
         Values outside of mask are set to this, by default 0
+    thumbnail_path : str or Path, optional
+        Where to write the small QA thumbnail PNG. The caller passes it because
+        only the caller knows where the participant's HDF5 lands, and the two
+        are meant to sit side by side.
     """
     # Load subject specific run. File should be Nifti and 4D
     # but should also work with other formats which can be read with AntsPy
@@ -139,7 +144,31 @@ def run_participant(
         save_blocks=save_blocks,
     )
 
+    if thumbnail_path is not None:
+        # Built here, from the raw block, because normalization downstream
+        # z-scores each voxel across time and leaves the temporal mean flat --
+        # the eyeballs are only visible before that.
+        save_thumbnail(thumbnail_path, original_input, mask, masked_eye)
+
     return (masked_eye, transformation_statistics, original_input)
+
+
+def save_thumbnail(path, original_input, mask, masked_eye):
+    """Write the ~20 KB QA thumbnail for one participant.
+
+    Never fatal: a subject whose thumbnail fails to render is still a perfectly
+    good extraction, and losing the block over a rendering error would be a bad
+    trade. The miss shows up as an absent PNG, which the backfill can repair.
+    """
+    from deepmreye import thumbnail as _thumbnail
+
+    try:
+        whole_brain = ants.get_average_of_timeseries(original_input).numpy()
+        image = _thumbnail.from_arrays(whole_brain, mask, masked_eye)
+        return _thumbnail.save(image, path)
+    except Exception as e:
+        print(f"  [!] thumbnail failed for {path}: {e}")
+        return None
 
 
 # --------------------------------------------------------------------------------

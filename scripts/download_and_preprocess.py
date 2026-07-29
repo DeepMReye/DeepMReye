@@ -14,6 +14,7 @@ from deepmreye.pipeline import (
     is_dataset_approved,
     find_bold_by_subject,
     process_subject,
+    DEFAULT_REPORT,
 )
 import deepmreye.config as cfg
 
@@ -22,7 +23,7 @@ import deepmreye.config as cfg
 MAX_SUBJECTS_PER_DATASET = 200
 
 
-def run_preprocess(data_dir, force=False):
+def run_preprocess(data_dir, force=False, report=DEFAULT_REPORT):
     """Download and preprocess every subject of each manually approved dataset."""
     data_dir = Path(data_dir).resolve()
     h5_path = data_dir / "datasets.h5"
@@ -69,7 +70,8 @@ def run_preprocess(data_dir, force=False):
 
             for sub_id in tqdm(subs_to_process, desc=f"Subjects in {ds_name}", leave=False):
                 meta = process_subject(
-                    s3, grp, ds_name, sub_id, bold_by_sub[sub_id], data_dir, masks, force=force
+                    s3, grp, ds_name, sub_id, bold_by_sub[sub_id], data_dir, masks,
+                    force=force, report=report,
                 )
                 del meta  # already applied to grp; returned for the parallel path
 

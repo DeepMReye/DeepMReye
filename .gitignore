@@ -20,6 +20,12 @@ data/
 staging/
 logs/
 
+# Local run artifacts: checkpoints and eval output. Regenerable from
+# scripts/train_jepa.py and scripts/eval_probe.py; the numbers that matter get
+# written back into STATE.md, not committed as raw JSON/checkpoints.
+runs/
+results/
+
 # uv lock
 uv.lock
 

@@ -24,6 +24,64 @@ from deepmreye import qa_classifier as qac
 from deepmreye.storage import iter_subjects, subject_path
 
 
+def train_and_save_classifier(data_dir, registry=None, out_path=None, manual_only=True):
+    """Train the QA triage classifier and save to out_path.
+
+    Returns a dict with status and summary metrics.
+    """
+    data_dir = Path(data_dir).resolve()
+    X, y, keys = qac.build_training_set(data_dir, registry, manual_only=manual_only)
+    if len(X) < 5 and manual_only:
+        X, y, keys = qac.build_training_set(data_dir, registry, manual_only=False)
+
+    if len(X) == 0:
+        return {
+            "success": False,
+            "message": "No labeled subjects with extracted data found. Label some subjects first.",
+            "num_samples": 0
+        }
+
+    unique_classes = set(y)
+    num_datasets = len(set(d for d, _ in keys))
+
+    if len(unique_classes) < 2:
+        return {
+            "success": False,
+            "message": f"Only 1 label class present ({len(X)} subjects). Label subjects of at least 2 different classes before training.",
+            "num_samples": len(X),
+            "num_datasets": num_datasets
+        }
+
+    groups = [ds for ds, _ in keys]
+    model, scores = qac.train(X, y, groups=groups)
+
+    out = Path(out_path) if out_path else data_dir / "qa_model.joblib"
+    import joblib
+    joblib.dump({"model": model, "features": qac.FEATURE_NAMES}, out)
+
+    cv_mean = float(scores.mean()) if scores is not None else None
+    cv_std = float(scores.std()) if scores is not None else None
+
+    msg = f"Retrained on {len(X)} subjects across {num_datasets} datasets."
+    if cv_mean is not None:
+        msg += f" CV Accuracy: {cv_mean*100:.1f}% (±{cv_std*100:.1f}%)."
+
+    return {
+        "success": True,
+        "message": msg,
+        "num_samples": len(X),
+        "num_datasets": num_datasets,
+        "num_classes": len(unique_classes),
+        "cv_mean": cv_mean,
+        "cv_std": cv_std,
+        "out_path": out,
+        "model": model,
+        "X": X,
+        "y": y,
+        "keys": keys
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train the QA triage classifier.")
     parser.add_argument("--data-dir", required=True)
@@ -42,42 +100,23 @@ def main():
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir).resolve()
-
-    print("Collecting labeled subjects...")
-    X, y, keys = qac.build_training_set(data_dir, args.registry)
-    if len(X) == 0:
-        print("No labeled subjects with extracted data yet. Label some in the QA UI first.")
+    print("Collecting labeled subjects & training classifier...")
+    res = train_and_save_classifier(data_dir, registry=args.registry, out_path=args.out)
+    print(res["message"])
+    if not res["success"]:
         return
 
-    import numpy as np
-    print(f"{len(X)} labeled subjects across {len(set(d for d, _ in keys))} datasets:")
-    for lbl, n in sorted(zip(*np.unique(y, return_counts=True))):
-        print(f"    {n:5d}  {qac.LABEL_NAMES.get(int(lbl), lbl)}")
-
-    if len(set(y)) < 2:
-        print("Only one class present so far -- label some of the other kind before training.")
-        return
-
-    groups = [ds for ds, _ in keys]
-    model, scores = qac.train(X, y, groups=groups)
-
-    if scores is not None:
-        print(f"\nGrouped CV accuracy: {scores.mean():.3f} +/- {scores.std():.3f}  "
-              f"(held-out datasets, {len(scores)} folds) -- how often the pre-selected "
-              f"button would be right")
-    else:
-        print("\nToo few labels for cross-validation; accuracy unknown so far.")
+    model = res["model"]
+    keys = res["keys"]
+    scores = res.get("cv_mean")
 
     order = np.argsort(model.feature_importances_)[::-1]
     print("\nFeature importance:")
     for i in order[:6]:
         print(f"  {qac.FEATURE_NAMES[i]:<20} {model.feature_importances_[i]:.3f}")
 
-    out = Path(args.out) if args.out else data_dir / "qa_model.joblib"
-    import joblib
-    joblib.dump({"model": model, "features": qac.FEATURE_NAMES}, out)
-    print(f"\nSaved model to {out}")
-    print("Restart the labeling UI to pick it up; predictions will be pre-selected.")
+    print(f"\nSaved model to {res['out_path']}")
+    print("Restart the labeling UI (or click Retrain in the UI) to pick it up.")
 
     if not (args.rank or args.flag):
         return

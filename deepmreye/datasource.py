@@ -27,13 +27,27 @@ REGISTRY_NAME = "datasets.h5"
 # A few MB, against ~29 GB of blocks and ~8 GB of reports.
 REGISTRY_FILES = ["datasets.h5", "labels.csv", "index.parquet"]
 
+# The gaze-labeled datasets are named `dsL<nn>_<name>` (see
+# `scripts/convert_labeled_to_h5.py`), so this glob selects the labeled half of
+# the corpus without opening a single file. That is the whole reason for the
+# prefix: the probe set is a fraction of the blocks, and fitting a probe should
+# not mean downloading the pretraining corpus.
+LABELED_GLOB = "dsL*/*.h5"
+
+# The QA thumbnail for every participant: ~20 KB each, ~30 MB over the whole QA
+# sample. Small enough to take in one go, which is the point -- the HTML reports
+# it replaces were ~5 MB each and had to be streamed per dataset as labeling
+# reached them, meaning hours before the first label.
+THUMBNAIL_GLOB = "*/*.png"
+
 # What each stage actually needs, so a laptop is not made to download the whole
-# corpus before it can do anything. Labeling reads reports, and those arrive one
-# dataset at a time via `ensure_reports` as you reach them; training reads
-# blocks and no reports at all. Stages absent from here get everything.
+# corpus before it can do anything. Labeling reads thumbnails, which now come
+# down with the registry; training reads blocks and no images at all. Stages
+# absent from here get everything.
 STAGE_PATTERNS = {
-    "qa": REGISTRY_FILES,
+    "qa": REGISTRY_FILES + [THUMBNAIL_GLOB],
     "train": REGISTRY_FILES + ["*/*.h5"],
+    "probe": REGISTRY_FILES + [LABELED_GLOB],
 }
 
 
@@ -89,11 +103,12 @@ def resolve(data_dir=None, repo_id=None, download=True, patterns=None, quiet=Fal
         if not quiet:
             print(f"[data] using cached corpus at {target}")
         # The cache is ours to keep complete, and stages ask for different
-        # slices of it: labeling pulls only the registry, so a later `train`
-        # would otherwise find a "corpus" with no blocks in it. Topping up is
-        # cheap -- already-present files are skipped.
+        # slices of it. BUT never re-download registry files (datasets.h5, labels.csv)
+        # during automatic top-up, because snapshot_download would overwrite local QA labels!
         if download and patterns:
-            fetch(repo_id=repo_id, target=target, patterns=patterns, quiet=True)
+            safe_patterns = [p for p in patterns if p not in REGISTRY_FILES]
+            if safe_patterns:
+                fetch(repo_id=repo_id, target=target, patterns=safe_patterns, quiet=True)
         return target
 
     if not download:
@@ -106,7 +121,7 @@ def resolve(data_dir=None, repo_id=None, download=True, patterns=None, quiet=Fal
     return fetch(repo_id=repo_id, target=target, patterns=patterns, quiet=quiet)
 
 
-def fetch(repo_id=None, target=None, patterns=None, quiet=False):
+def fetch(repo_id=None, target=None, patterns=None, quiet=False, force=False):
     """Download the corpus from HuggingFace into ``target``."""
     try:
         from huggingface_hub import snapshot_download
@@ -120,6 +135,14 @@ def fetch(repo_id=None, target=None, patterns=None, quiet=False):
     repo_id = repo_id or DEFAULT_REPO
     target = Path(target or cache_dir())
     target.mkdir(parents=True, exist_ok=True)
+
+    # Protect local datasets.h5 and labels.csv from being overwritten on subsequent runs
+    if not force and (target / REGISTRY_NAME).exists() and patterns:
+        patterns = [p for p in patterns if p not in REGISTRY_FILES]
+        if not patterns:
+            if not quiet:
+                print(f"[data] registry files already exist at {target}, skipping HF registry download.")
+            return target
 
     if not quiet:
         what = "everything" if not patterns else ", ".join(patterns)

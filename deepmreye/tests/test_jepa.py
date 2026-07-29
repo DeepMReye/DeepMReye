@@ -109,3 +109,64 @@ def test_jepa_forward_engine():
     # Predictoer
     pred_reps = model.forward_predict(context_reps, t_idx, N_S, N_T)
     assert pred_reps.shape == target_reps.shape, f"Predictor must output shape exactly matching target reps. Expected {target_reps.shape}, got {pred_reps.shape}"
+
+
+def test_positional_embeddings_do_not_drown_the_patch_signal():
+    """Position must be a hint on top of the token, not the token itself.
+
+    ``nn.Embedding`` defaults to N(0, 1) while patch tokens come out at
+    std ~0.36, which put the *input* at 6% of token variance and, after six
+    layers, 0.05% of the pooled representation. The measurable consequence was
+    a random encoder that fit gaze on training subjects at r ~ 0.45 and
+    transferred at r ~ 0.00 -- the only thing surviving spatial pooling was the
+    position pattern, identical for every window.
+    """
+    import torch
+
+    from deepmreye.models.jepa import JEPAModel
+
+    torch.manual_seed(0)
+    model = JEPAModel(embed_dim=64, encoder_depth=1, predictor_depth=1, num_heads=2)
+    x = torch.randn(2, 47, 29, 18, 20)
+
+    with torch.no_grad():
+        seq, n_s, n_t = model.patcher(x)
+        idx = torch.arange(n_s * n_t).unsqueeze(0).expand(2, -1)
+        with_pos = model._add_positional_embedding(seq, idx // n_t, idx % n_t)
+
+    signal_share = (seq.var() / with_pos.var()).item()
+    assert signal_share > 0.5, (
+        f"patch signal is only {signal_share:.1%} of token variance; "
+        "positional embeddings are initialised too large")
+
+
+def test_encoder_output_responds_to_its_input():
+    """Two different inputs must give different representations.
+
+    Guards the failure mode above at the level that actually matters: if the
+    pooled representation is dominated by position, it is nearly constant
+    across inputs and no probe can read anything off it.
+    """
+    import torch
+
+    from deepmreye.evaluate.probe import pool_spatial
+    from deepmreye.models.jepa import JEPAModel
+
+    torch.manual_seed(0)
+    model = JEPAModel(embed_dim=64, encoder_depth=2, predictor_depth=1, num_heads=2)
+    model.eval()
+
+    reps = []
+    for seed in (1, 2):
+        torch.manual_seed(seed)
+        x = torch.randn(1, 47, 29, 18, 20)
+        with torch.no_grad():
+            seq, n_s, n_t = model.patcher(x)
+            idx = torch.arange(n_s * n_t).unsqueeze(0)
+            reps.append(pool_spatial(model.forward_context(seq, idx, n_s, n_t), n_s, n_t))
+
+    between = (reps[0] - reps[1]).var().item()
+    within = torch.cat(reps).var().item()
+    assert between / within > 0.05, (
+        f"representations of different inputs differ by only {between / within:.2%} "
+        "of total variance; the encoder is ignoring its input")

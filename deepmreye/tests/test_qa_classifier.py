@@ -105,10 +105,10 @@ def test_train_reports_grouped_cv():
     assert model.predict_proba(np.vstack(X)[:1]).shape == (1, 2)
 
 
-def test_eyes_cut_counts_as_approved():
-    """Label 3 (eyes visible but clipped) must keep its dataset in training:
-    a partial eyeball still carries gaze signal, and excluding it would drop
-    whole datasets under the all-or-nothing rule."""
+def test_eyes_cut_and_faint_count_as_approved():
+    """Labels 3 (cut off) and 4 (faint eyes) must keep dataset in training:
+    eyeballs still carry gaze signal, and excluding them would drop whole
+    datasets under the all-or-nothing rule."""
     import h5py
     import tempfile
     from pathlib import Path
@@ -117,31 +117,33 @@ def test_eyes_cut_counts_as_approved():
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / "reg.h5"
         with h5py.File(path, "w") as f:
-            g = f.create_group("ds_cut")
+            g = f.create_group("ds_approved")
             g.create_group("sub-01").attrs["approved"] = 1   # clean eyes
             g.create_group("sub-02").attrs["approved"] = 3   # eyes, cut off
+            g.create_group("sub-03").attrs["approved"] = 4   # eyes, faint
+            
             g2 = f.create_group("ds_mixed")
-            g2.create_group("sub-01").attrs["approved"] = 3  # eyes, cut off
+            g2.create_group("sub-01").attrs["approved"] = 4  # eyes, faint
             g2.create_group("sub-02").attrs["approved"] = 0  # no eyes -> drops it
 
         with h5py.File(path, "r") as f:
-            assert is_dataset_approved(f["ds_cut"]) is True
+            assert is_dataset_approved(f["ds_approved"]) is True
             assert is_dataset_approved(f["ds_mixed"]) is False
 
 
-def test_training_set_includes_cut_label(tmp_path):
-    """The model predicts the exact label, so class 3 must reach training."""
+def test_training_set_includes_faint_and_cut_labels(tmp_path):
+    """The model predicts the exact label, so class 3 and 4 must reach training."""
     import h5py
     from deepmreye.storage import subject_path, write_subject
 
     with h5py.File(tmp_path / "datasets.h5", "w") as f:
         g = f.create_group("ds1")
-        for sub, lbl in [("sub-01", 1), ("sub-02", 3), ("sub-03", 0)]:
+        for sub, lbl in [("sub-01", 1), ("sub-02", 3), ("sub-03", 4), ("sub-04", 0)]:
             g.create_group(sub).attrs["approved"] = lbl
 
-    for sub, lbl in [("sub-01", 1), ("sub-02", 3), ("sub-03", 0)]:
-        block = _eyes_block(t=40) if lbl in (1, 3) else _no_eyes_block(t=40)
+    for sub, lbl in [("sub-01", 1), ("sub-02", 3), ("sub-03", 4), ("sub-04", 0)]:
+        block = _eyes_block(t=40) if lbl in (1, 3, 4) else _no_eyes_block(t=40)
         write_subject(subject_path(tmp_path, "ds1", sub), block)
 
     X, y, keys = qac.build_training_set(tmp_path)
-    assert sorted(y.tolist()) == [0, 1, 3]
+    assert sorted(y.tolist()) == [0, 1, 3, 4]

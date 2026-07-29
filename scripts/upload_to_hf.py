@@ -90,6 +90,81 @@ CC0). Please cite the original datasets alongside this collection.
 """
 
 
+def upload_in_batches(api, data_dir, repo_id, datasets, patterns, ignore,
+                      batch_size=25, retries=4):
+    """Upload a few datasets per commit, retrying each batch on network errors.
+
+    One `upload_folder` over the whole corpus is a single commit: a transient
+    failure anywhere loses the entire run. That happened at 17.8 GB (a
+    ConnectionError from the xet CAS server after 30 minutes, nothing
+    committed), and the corpus is set to grow more than tenfold at full
+    extraction, so an all-or-nothing upload is not usable.
+
+    Batching by dataset makes progress durable -- a completed batch stays
+    committed -- and each retry is cheap because the Hub deduplicates content
+    it already has, so a repeated batch re-sends almost nothing.
+    """
+    import time
+
+    # Whole-repo files (index, registry, card) have no dataset prefix; they go
+    # last, so the registry never advertises subjects that failed to upload.
+    root_patterns = [p for p in patterns if "/" not in p]
+    file_patterns = [p for p in patterns if "/" in p]
+
+    batches = [datasets[i:i + batch_size] for i in range(0, len(datasets), batch_size)]
+    failed = []
+
+    for i, batch in enumerate(batches, 1):
+        allow = [f"{ds}/{p.split('/', 1)[1]}" for ds in batch for p in file_patterns]
+        label = f"batch {i}/{len(batches)} ({len(batch)} datasets)"
+
+        for attempt in range(1, retries + 1):
+            try:
+                api.upload_folder(
+                    folder_path=str(data_dir),
+                    repo_id=repo_id,
+                    repo_type="dataset",
+                    allow_patterns=allow,
+                    ignore_patterns=ignore or None,
+                    commit_message=f"Upload {batch[0]}..{batch[-1]} ({len(batch)} datasets)",
+                )
+                print(f"  [+] {label}")
+                break
+            except Exception as e:
+                wait = 2 ** attempt
+                print(f"  [!] {label} attempt {attempt}/{retries} failed: "
+                      f"{e.__class__.__name__}: {e}")
+                if attempt == retries:
+                    failed.extend(batch)
+                    print(f"  [!] giving up on {label}; rerun to pick it up")
+                else:
+                    print(f"      retrying in {wait}s")
+                    time.sleep(wait)
+
+    if root_patterns:
+        for attempt in range(1, retries + 1):
+            try:
+                api.upload_folder(
+                    folder_path=str(data_dir),
+                    repo_id=repo_id,
+                    repo_type="dataset",
+                    allow_patterns=root_patterns,
+                    commit_message="Upload registry, index and card",
+                )
+                print(f"  [+] root files: {root_patterns}")
+                break
+            except Exception as e:
+                print(f"  [!] root files attempt {attempt}/{retries} failed: {e}")
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+
+    if failed:
+        print(f"\n[!] {len(failed)} datasets did not upload: {', '.join(failed[:10])}"
+              f"{' ...' if len(failed) > 10 else ''}")
+        print("    Re-run the same command; datasets already uploaded are skipped.")
+    return failed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Upload extracted eye blocks to HuggingFace.")
     parser.add_argument("--data-dir", required=True)
@@ -99,11 +174,17 @@ def main():
     parser.add_argument("--deep", action="store_true", help="Full-read validation (slow, thorough).")
     parser.add_argument("--labeled-only", action="store_true", help="Upload only labeled participants.")
     parser.add_argument("--reports", action="store_true",
-                        help="Also upload the QA report HTML (~5 MB/subject, larger in "
-                             "total than the eye blocks). Needed to label off-cluster.")
+                        help="Also upload the full QA report HTML (~5 MB/subject, larger "
+                             "in total than the eye blocks). Not needed to label: the "
+                             "~20 KB thumbnails are uploaded either way.")
     parser.add_argument("--no-registry", action="store_true",
                         help="Skip datasets.h5 / labels.csv. They carry the QA labels, so "
                              "omitting them means a fresh clone cannot label.")
+    parser.add_argument("--batch-size", type=int, default=25,
+                        help="Datasets per commit. Smaller batches make progress more "
+                             "durable against network failures, at the cost of more commits.")
+    parser.add_argument("--retries", type=int, default=4,
+                        help="Attempts per batch before giving up on it and moving on.")
     parser.add_argument("--publish", action="store_true",
                         help="Publication mode: drop subjects QA marked as no-eyes. Off by "
                              "default, because most pushes are a working copy you label "
@@ -162,13 +243,17 @@ def main():
     # Say what to include with a couple of globs and name only the exclusions.
     # Listing every kept subject instead would mean ~3500 patterns at corpus
     # scale, to express "all of them except three".
-    patterns = ["*/*.h5"]
+    # Thumbnails ship by default: they are ~20 KB each and the `qa` stage reads
+    # them, so a copy without them cannot be labeled. The HTML reports are ~5 MB
+    # each and stay opt-in.
+    patterns = ["*/*.h5", "*/*.png"]
     if args.reports:
         patterns.append("*/*/*.html")
 
     excluded = ({f"{r['dataset']}/{r['subject']}" for r in bad}
                 | {f"{r['dataset']}/{r['subject']}" for r in rejected})
     ignore = [f"{k}.h5" for k in sorted(excluded)]
+    ignore += [f"{k}.png" for k in sorted(excluded)]
     if args.reports:
         ignore += [f"{k}/*.html" for k in sorted(excluded)]
 
@@ -181,13 +266,11 @@ def main():
     print(f"\nUploading to {args.repo_id}...")
     print(f"  include: {patterns}")
     print(f"  exclude: {len(excluded)} subjects (failed validation or QA no-eyes)")
-    api.upload_folder(
-        folder_path=str(data_dir),
-        repo_id=args.repo_id,
-        repo_type="dataset",
-        allow_patterns=patterns,
-        ignore_patterns=ignore or None,
-    )
+
+    datasets = sorted({r["dataset"] for r in good})
+    upload_in_batches(api, data_dir, args.repo_id, datasets, patterns, ignore,
+                      batch_size=args.batch_size, retries=args.retries)
+
     print(f"\n[+] https://huggingface.co/datasets/{args.repo_id}")
     print("    Pull it anywhere with:  python -m deepmreye qa")
 

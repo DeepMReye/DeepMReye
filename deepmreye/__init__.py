@@ -1,3 +1,6 @@
+import os
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
 try:
     from ._version import __version__
 except ImportError:

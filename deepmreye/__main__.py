@@ -32,12 +32,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from deepmreye.pipeline import DEFAULT_REPORT, REPORT_MODES
+
 
 def cmd_compile(args):
     from compile_openneuro import run_compile
     limit = None if str(args.limit).lower() == "none" else int(args.limit)
     run_compile(args.data_dir, limit=limit, workers=getattr(args, "workers", 4),
-                force=getattr(args, "force", False))
+                force=getattr(args, "force", False),
+                report=getattr(args, "report", DEFAULT_REPORT))
 
 
 def cmd_merge_registry(args):
@@ -54,7 +57,8 @@ def cmd_qa(args):
 
 def cmd_preprocess(args):
     from download_and_preprocess import run_preprocess
-    run_preprocess(args.data_dir, force=args.force)
+    run_preprocess(args.data_dir, force=args.force,
+                   report=getattr(args, "report", DEFAULT_REPORT))
 
 
 def cmd_train(args):
@@ -131,6 +135,9 @@ def build_parser():
     p_compile.add_argument("--limit", type=str, default="5", help="Datasets to sample. Use 'None' for all.")
     p_compile.add_argument("--workers", type=int, default=4, help="Parallel download/registration workers.")
     p_compile.add_argument("--force", action="store_true", help="Re-extract subjects already on disk.")
+    p_compile.add_argument("--report", choices=REPORT_MODES, default=DEFAULT_REPORT,
+                           help="QA artifact per subject: the ~20 KB thumbnail (png, default), the "
+                             "~5 MB Plotly report (html), or both.")
     p_compile.set_defaults(func=cmd_compile)
 
     p_merge = sub.add_parser("merge-registry", parents=[common],
@@ -143,6 +150,9 @@ def build_parser():
 
     p_pre = sub.add_parser("preprocess", parents=[common], help="Extract all subjects of approved datasets.")
     p_pre.add_argument("--force", action="store_true", help="Reprocess and overwrite existing extractions.")
+    p_pre.add_argument("--report", choices=REPORT_MODES, default=DEFAULT_REPORT,
+                       help="QA artifact per subject: the ~20 KB thumbnail (png, default), the "
+                             "~5 MB Plotly report (html), or both.")
     p_pre.set_defaults(func=cmd_preprocess)
 
     p_train = sub.add_parser("train", parents=[common], help="Train the JEPA model.")

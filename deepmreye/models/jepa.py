@@ -62,10 +62,25 @@ class JEPAModel(nn.Module):
         # Dual Positional Embeddings (Additive Grid)
         self.pos_s = nn.Embedding(max_n_s, embed_dim)
         self.pos_t = nn.Embedding(max_n_t, embed_dim)
-        
+
         # Predictor specialized Mask Token
         self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        
+
+        # Positional embeddings are added to the patch tokens, so their scale
+        # decides how much of a token is "where it is" versus "what is in it".
+        # nn.Embedding defaults to N(0, 1), while patch tokens come out at
+        # std ~0.36 -- measured, that leaves the *input* at 6% of token variance
+        # before the transformer starts, and six layers dilute it to 0.05%. The
+        # consequence is visible in the evaluation: a randomly initialised
+        # encoder fits gaze on training subjects (r ~ 0.45) and transfers at
+        # exactly r ~ 0.00, because the only thing surviving pooling is the
+        # position pattern, which is identical for every window.
+        # std 0.02 is the ViT / MAE / I-JEPA convention and puts position at a
+        # few percent of the patch signal instead of 16x it.
+        nn.init.trunc_normal_(self.pos_s.weight, std=0.02)
+        nn.init.trunc_normal_(self.pos_t.weight, std=0.02)
+        nn.init.trunc_normal_(self.mask_token, std=0.02)
+
         # Core ViTs
         self.context_encoder = ViTEncoder(embed_dim, encoder_depth, num_heads)
         self.target_encoder = copy.deepcopy(self.context_encoder)

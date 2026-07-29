@@ -39,7 +39,7 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 ### Metadata Compilation (`scripts/compile_openneuro.py`)
 - The pipeline queries the OpenNeuro GraphQL API for a list of all available datasets.
 - A centralized HDF5 registry (`data/datasets.h5`) is created. Each dataset becomes a root group (e.g., `/ds000001`), and each subject becomes a subgroup.
-- **Manual QA**: Through a Flask app (`scripts/label_datasets.py`), researchers manually review the sampled subjects and label each one eyes / no-eyes. Labels are written as `approved` attributes on the subject subgroups (`1` eyes, `0`/`2` no eyes, `-1` unlabeled) and mirrored to `data/labels.csv`. A dataset is approved for training only if all of its labeled subjects show eyes; a single "no eyes" subject drops the whole dataset (`is_dataset_approved` in `deepmreye/pipeline.py`).
+- **Manual QA & Rapid Audit**: Through a Flask app (`scripts/label_datasets.py`), researchers manually review the sampled subjects using detailed report views or the high-speed **Rapid Visual Audit tab (`/rapid`)** displaying side-by-side $z=-30$ axial slice images of Subject 1 & Subject 2. Those images are the per-subject QA thumbnails (`deepmreye/thumbnail.py`), served as files rather than re-derived per request. Labels are written as `approved` attributes on the subject subgroups (`1` eyes, `4` eyes faint, `3` eyes cut off, `0`/`2` no eyes, `-1` unlabeled) and mirrored to `data/labels.csv`. A 21-feature Random Forest triage classifier (`deepmreye/qa_classifier.py`, evaluating inner block features, 3-stage ANTs registration transform statistics, and TR/n_trs metadata with 78.5% CV accuracy) pre-selects predictions and ranks subjects by uncertainty. A dataset is approved for training only if all of its labeled subjects show eyes (`1`, `3`, `4`); a single "no eyes" subject drops the whole dataset (`is_dataset_approved` in `deepmreye/pipeline.py`).
 
 ### Extraction & Coregistration (`scripts/download_and_preprocess.py`)
 - The script iterates through the approved datasets and downloads the raw `_bold.nii.gz` sequences natively bypassing heavy local storage by unpacking on-the-fly.
@@ -47,8 +47,9 @@ DeepMReye trains on raw fMRI data sourced from OpenNeuro. The process is broken 
 - **Metadata Validation**: Prior to registration, the raw sequence is strictly validated using `deepmreye.validation`. The Repetition Time (TR) is extracted from the raw NIfTI header. If the TR is missing or invalid (<= 0), the dataset is skipped entirely to preserve temporal dynamics. Valid TRs are written to the `datasets.h5` registry.
 - **Voxel Extraction**: A binary eye-mask is applied to the registered BOLD sequence. The pipeline crops out the bounding box containing the eyes. All voxels outside the precise eyeball mask are explicitly zeroed out (`replace_with=0`). The crop is fixed by the mask, so every eye block is `[47, 29, 18, T]`.
 - **Normalization**: The cropped block is passed through `normalize_img`: each voxel is z-scored across time, each volume is then z-scored across space, and values are clipped at 5 SD. Masked-out voxels stay exactly 0. This runs at extraction so stored data matches the labeled gaze datasets, which were normalized the same way — pretraining on raw BOLD and probing on z-scored data would put two different input distributions through one encoder.
+- **QA artifact**: Each subject gets a ~20 KB thumbnail, `data/<dataset>/<subject>.png`: the registered brain at $z=-30$ with the eye mask overlaid in red, then the extracted eye block collapsed along two axes. It is rendered from the *raw* volumes, before normalization — per-voxel z-scoring across time flattens the temporal mean, so anatomy is only visible beforehand. The full Plotly report (~5 MB) is opt-in via `--report html`; over a full extraction it would cost more than 100 GB against roughly 0.5 GB of thumbnails.
 - **Transform statistics**: During registration, an affine transformation matrix is produced. Its flattened statistics are recorded in the registry and shown in the subject's HTML QA report. These are diagnostic only; approval is decided by manual labels, not an automatic quality score.
-- **Serialization**: Each participant is written to its own gzip-compressed HDF5 file, `data/<dataset>/<subject>.h5`, holding `eye_block` `[X, Y, Z, T]` float32 and — when gaze is known — `labels` `[T, 10, 2]`. Chunks span the full spatial extent against a 50-TR slab, so reading one training window touches a few chunks instead of striding the whole run. One file per participant (rather than one per dataset) is what allows parallel extraction: each worker owns its output file outright.
+- **Serialization**: Each participant is written to its own gzip-compressed HDF5 file, `data/<dataset>/<subject>.h5`, holding `eye_block` `[X, Y, Z, T]` float32 and — when gaze is known — `labels` `[T, 10, 2]`. OpenNeuro datasets keep their accession as the folder name (`ds000001`); the six gaze-labeled datasets are `dsL01_guided_fixations` … `dsL06_sequences`, so `dsL*/*.h5` selects the probe set by path alone. Chunks span the full spatial extent against a 50-TR slab, so reading one training window touches a few chunks instead of striding the whole run. One file per participant (rather than one per dataset) is what allows parallel extraction: each worker owns its output file outright.
 
 ## 2. Pytorch Data Loading & Batching
 
@@ -61,7 +62,8 @@ The PyTorch `Dataset` instances handle the massive 4D arrays securely by leverag
 
 ### `ProbeDataset` (Supervised Evaluation)
 - Reads the same per-participant layout as `JEPADataset`, restricted to files that carry a `labels` dataset. Labeled and unlabeled participants are byte-format identical, so one code path serves both.
-- Splitting is either subject-wise **within each dataset** (`split_by="subject"`, the default) or whole datasets held out (`split_by="dataset"`, the stricter test of transfer to an unseen scanner and paradigm). Splitting a pooled shuffle across datasets would leak subjects of the same dataset into both sides and inflate the metrics.
+- Splitting is one of four, in increasing strictness: temporally **within each subject** (`split_by="time"`), subject-wise **within each dataset** (`split_by="subject"`, the default), whole datasets held out (`split_by="dataset"`), or a named `holdout={...}` fold, which is what leave-one-dataset-out and leave-one-paradigm-out use. Splitting a pooled shuffle across datasets would leak subjects of the same dataset into both sides and inflate the metrics. The `time` split cuts the *timeline*, not the window index — windows overlap by half a window, so an index-wise split would put the same TRs on both sides.
+- Yields the dataset name and the **subject id** alongside the block, because the subject is the unit metrics are aggregated over (§6).
 - Outputs `[B, X, Y, Z, 100]` BOLD blocks alongside `[B, 100, 10, 2]` label arrays (100 TRs, 10 sub-TR sampling points, X & Y coordinates) in degrees of visual angle. NaNs are preserved — they mark TRs with no valid gaze sample, and the evaluation masks them; dropping them here would misalign block and gaze in time.
 
 ## 3. Patchification (`fMRIPatcher`)
@@ -108,18 +110,71 @@ The network is composed of three Vision Transformers:
    - Operation: Attempts to guess the exact output vectors produced by the Target Encoder for the masked regions.
    - Loss: Computes the `SmoothL1Loss` or Euclidean distance between the Predictor's output vectors and the Target Encoder's output vectors.
 
-## 6. Evaluation Loop & Linear Probing
+## 6. Evaluation: the Gaze Probe and its Baselines
 
-Because the unsupervised training learns representations, we validate the semantic meaning of these embeddings by mapping them to explicit gaze tracking coordinates.
+The probe is a *measurement of the representation*, not a model, so it is kept
+deliberately weak: a linear map, fitted in closed form, on frozen features. The
+harness is `scripts/eval_probe.py`; the metrics live in
+`deepmreye/evaluate/probe.py` and the readouts in
+`deepmreye/evaluate/baselines.py`.
 
-- **Linear Probe**: A single shallow `nn.Linear(256, 2)` layer.
-- **Inference**: A batch of `[B, X, Y, Z, 100]` labeled data runs through the frozen **Context Encoder** (with zero masking, meaning it processes all tokens).
-- **Pooling**: The resulting token sequences are mean-pooled across the $N_s \times N_t$ dimension, resulting in a single `[B, 256]` latent semantic vector per subject sequence.
-- **Decoding**: The probe multiplies this by weights to predict a scalar `[X, Y]` coordinate.
-- **Metrics**: 
-   - A PyTorch Euclidean Distance loss (`MSELoss` / `SmoothL1`) trains the probe.
-   - The validation loop cleanly filters out `NaN` ground-truth tracking elements safely. 
-   - Performance is quantized into $R^2$ Variance Explained and Pearson Correlation ($r$).
+### Feature extraction
+
+A batch of `[B, X, Y, Z, 100]` labeled blocks runs through the frozen **Context
+Encoder** with zero masking, producing `[B, N_s * N_t, D]` tokens.
+
+**Pooling is over space only.** Mean-pooling over both axes gives one vector per
+window and forces the target to be the mean gaze over that whole window — 80 to
+250 seconds depending on the dataset's TR. Measured on the labeled corpus, that
+discards **84–96% of the gaze variance** (within-window SD 2.4–7.1°, SD of the
+window means 0.12–1.11°), so the probe would be asked to predict a nearly
+constant target. `pool_spatial` therefore returns `[B, N_t, D]`, one embedding
+per temporal patch, and `temporal_targets` reduces the `[B, 100, 10, 2]` labels
+to `[B, N_t, 2]` with the same binning and padding the patcher uses.
+
+`nanmean`, not `mean`: missing gaze samples are marked NaN and are common
+(windows containing at least one NaN are 100% of `dsL03_pursuit` and
+`dsL06_sequences`, 61% of `dsL05_free_viewing`). A plain mean turns those into
+NaN targets that get dropped, which silently removed two of six labeled datasets
+from the evaluation entirely.
+
+### Generalization levels (`--protocol`)
+
+| | train / test |
+|---|---|
+| `within` | same participant, early timepoints vs late. Train and test share no timepoint; we store no run boundaries, so they are temporally adjacent. |
+| `subject` | held-out participants, same scanner and paradigm |
+| `dataset` | leave one dataset out, each in turn |
+| `paradigm` | leave one paradigm out — `dsL02/03/04` are all smooth pursuit, so holding out one alone still trains on the same task |
+
+### Arms and readouts
+
+Three feature sources — `voxels` (stride-4 downsampled raw voxels, no learning),
+`random` (the same architecture untrained), `trained` (a JEPA checkpoint) —
+crossed with the same readouts: `mean`, `linear` (OLS), `ridge`, `ridge-cv`
+(alpha by inner LOO-GCV), `pca-ridge`, `pls`, `rf`, `gbt`.
+
+The bar the method must clear is **`pca-ridge` on raw voxels**, not the random
+encoder. A random ViT is a non-linear random projection that scores *below* raw
+voxels everywhere, so beating it demonstrates nothing; `pca-ridge` is the honest
+competitor because it is the same shape of method — compress without seeing
+gaze, then fit a linear map.
+
+### Metrics
+
+Euclidean error in degrees, Pearson $r$ per axis, and $R^2$ against the
+**training-set** mean gaze (against the test mean it would flatter a model that
+has only learned where this dataset's gaze sits on average).
+
+Aggregation is **per participant, then median across participants**. Pooling
+every row together is gameable: if one subject's gaze sits left of another's, a
+model that predicts only *which subject this is* scores a high pooled $r$ with
+zero within-subject decoding.
+
+**Pearson $r$ is the headline rather than $R^2$.** Cross-dataset predictions are
+mis-calibrated in gain (measured 0.11–2.27 against the training scale) with
+offsets near zero, which destroys $R^2$ while leaving the correlation intact.
+See §Discussion and `scripts/analyze_calibration.py`.
 
 ## 7. Crucial Hyperparameters & Optimization
 

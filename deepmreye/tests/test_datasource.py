@@ -99,12 +99,30 @@ def test_a_local_corpus_is_never_topped_up(tmp_path, monkeypatch):
 
 
 def test_stage_patterns_keep_labeling_small(tmp_path):
-    """The point of the table: `qa` must not drag down blocks or reports."""
+    """The point of the table: `qa` must not drag down blocks or reports.
+
+    Thumbnails are the exception and the reason this is not simply "no globs":
+    at ~20 KB each they are ~30 MB over the whole QA sample, so labeling can
+    take them in one go rather than streaming 5 MB reports per dataset.
+    """
     qa = datasource.STAGE_PATTERNS["qa"]
-    assert not any("*" in p for p in qa)
     assert "datasets.h5" in qa
+    assert not any(p.endswith(".h5") and "*" in p for p in qa)
+    assert not any("html" in p for p in qa)
+    assert datasource.THUMBNAIL_GLOB in qa
+
     assert any(p.endswith("*.h5") for p in datasource.STAGE_PATTERNS["train"])
     assert not any("html" in p for p in datasource.STAGE_PATTERNS["train"])
+    assert not any("png" in p for p in datasource.STAGE_PATTERNS["train"])
+
+
+def test_probe_stage_takes_only_the_labeled_datasets():
+    """`dsL*` is what makes fitting a probe cheap: labels without the corpus."""
+    probe = datasource.STAGE_PATTERNS["probe"]
+    assert datasource.LABELED_GLOB in probe
+    assert datasource.LABELED_GLOB.startswith("dsL")
+    # A bare `*/*.h5` here would pull the whole pretraining corpus instead.
+    assert "*/*.h5" not in probe
 
 
 def test_no_download_raises_with_a_useful_message(tmp_path, monkeypatch):

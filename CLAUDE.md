@@ -55,20 +55,32 @@ below for the split (stage on login, extract on compute) that replaces them.
   of an eye block goes through here.
 - `deepmreye/registry.py` — sidecar records + `merge_pending`, so parallel
   workers never write `datasets.h5` directly.
-- `deepmreye/qa_classifier.py` — eye-detection features and the triage model.
-  Ranks and flags; never approves.
+- `deepmreye/qa_classifier.py` — 21-feature eye-detection & registration transform triage model (10 inner mask + 8 3-stage ANTs registration transform stats + 3 TR/volume metadata; 78.5% CV accuracy). Ranks and flags; never approves.
+- `deepmreye/thumbnail.py` — the ~20 KB QA thumbnail every participant gets.
+  Three ways in: `from_arrays` at extraction, `from_report` to backfill from an
+  old HTML report, `from_block` when only the stored block survives.
 - `deepmreye/labels.py` — CSV label backup (export / restore).
 - `deepmreye/datasource.py` — finds the corpus (explicit path, `$DEEPMREYE_DATA`,
   `./data`, else HuggingFace) and decides what each stage downloads.
 - `deepmreye/validation.py` — TR extraction/validation from NIfTI headers.
 - `deepmreye/data/{jepa,probe}_dataset.py` — windowed HDF5 dataloaders.
 - `deepmreye/models/{jepa,patcher}.py` — ViT encoders/predictor, patchify + masking.
-- `deepmreye/evaluate/probe.py` — gaze probe metrics (R^2, Pearson r).
+- `deepmreye/evaluate/probe.py` — gaze probe metrics (R^2, Pearson r), temporal
+  target binning, and `aggregate_by_subject` (the per-participant unit of
+  analysis).
+- `deepmreye/evaluate/baselines.py` — the readout zoo: mean, OLS, ridge,
+  ridge-cv, PCA→ridge, PLS, RF, GBT. Pure sklearn, no torch, so it is testable
+  on its own and every arm gets the identical readouts.
 - `scripts/` — portable stages, runnable anywhere: the CLI-imported
   implementations (`run_compile`, `run_preprocess`, `run_labeler`),
-  `train_jepa.py`, `build_index.py` (writes `index.parquet`, validates every
-  file), `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py` (label
-  round trip via the Hub), `convert_labeled_to_h5.py`.
+  `train_jepa.py`, `eval_probe.py` (the baseline table),
+  `analyze_identifiability.py` and `analyze_calibration.py` (paper analyses, not
+  baselines — see below), `build_index.py` (writes `index.parquet`, validates
+  every file), `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py`
+  (label round trip via the Hub), `convert_labeled_to_h5.py` (source
+  `labeled_data/` -> `dsL##_*` in the corpus), `backfill_thumbnails.py`.
+- `docs/ssl_design_brief.md` — the SSL objective question, with measured numbers.
+- `results/` — evaluation output (JSON + logs). Not the corpus.
 - `slurm/` — everything cluster-specific and nothing else: `stage_downloads.py`
   (login node, network), `extract_staged.py` + `extract_array.sbatch` (compute,
   offline), `submit_extraction.sh`. Has its own README. Nothing outside this
@@ -79,7 +91,7 @@ below for the split (stage on login, extract on compute) that replaces them.
 
 - `data/datasets.h5` — central registry. One group per dataset, one subgroup per
   subject. Manual QA labels live as the `approved` attribute:
-  `1` eyes, **`3` eyes but cut off**, `0` no eyes / bad transform,
+  `1` eyes, **`4` eyes but faint**, **`3` eyes but cut off**, `0` no eyes / bad transform,
   `2` no eyes / good transform, `-1` unlabeled, `-99` whole dataset skipped.
   Constants and the approved set live in `deepmreye/pipeline.py`
   (`LBL_*`, `APPROVED_LABELS`) — use those rather than bare integers.
@@ -87,7 +99,16 @@ below for the split (stage on login, extract on compute) that replaces them.
   `eye_block` `[X, Y, Z, T]` float32, plus `labels` `[T, 10, 2]` when gaze is
   known. Metadata (TR, source S3 key, `normalized`, `format_version`) sits in
   file attrs. Labeled and unlabeled participants use the identical container.
-- `data/<ds>/<sub>/report_*.html` — the QA report the labeling UI displays.
+- Dataset names carry the subset: `ds######` is an OpenNeuro accession (keep the
+  real accession, it is the provenance), `dsL##_<name>` is a gaze-labeled
+  dataset. So `dsL*/*.h5` selects the probe set without opening a file — that is
+  what `STAGE_PATTERNS["probe"]` is. The mapping from the source directory names
+  in `labeled_data/` lives in `DATASET_ALIASES`
+  (`scripts/convert_labeled_to_h5.py`).
+- `data/<ds>/<sub>.png` — the QA thumbnail, beside the participant file. ~20 KB.
+  This is what the labeling UI and the audit grid display.
+- `data/<ds>/<sub>/report_*.html` — the full Plotly QA report. ~5 MB, opt-in
+  (`--report html`), and only present for the original QA sample.
 - `data/_pending/worker_*.jsonl` — sidecar registry records from extraction
   workers, folded in by `merge-registry`.
 - `data/index.parquet` — one row per participant (`scripts/build_index.py`);
@@ -112,13 +133,12 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   `is_dataset_approved` does not consult it and must not. If you find yourself
   wiring its probability into an approval path, that is the deleted gate coming
   back.
-- **`3` = eyes visible but clipped by the bounding box.** Counts as approved:
-  a partial eyeball still carries gaze signal, and excluding it would drop whole
-  datasets under the all-or-nothing rule. Kept as its own label rather than
-  folded into `1` so the corpus can be filtered on it if clipping turns out to
+- **`3` = eyes visible but clipped, `4` = eyes visible but faint.** Count as approved:
+  a partial or faint eyeball still carries gaze signal, and excluding them would drop whole
+  datasets under the all-or-nothing rule. Kept as distinct labels rather than
+  folded into `1` so the corpus can be filtered on them later if clipping or low SNR turns out to
   hurt the probe. The triage model predicts the exact label (not binary
-  eyes/no-eyes) precisely so the UI can pre-select this one — it is the
-  distinction that is most tedious to make by eye.
+  eyes/no-eyes) so the UI can pre-select these options.
 - **Dataset-level all-or-nothing approval.** A dataset is used for training only
   if EVERY labeled subject shows eyes; one "no eyes" subject drops the whole
   dataset. This is intentional: the same scanner/experiment tends to fail the
@@ -147,11 +167,25 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   label on a subject that was filtered out of the copy you are labeling from,
   and the excluded ones are exactly the ones worth a second look. The QA gate
   belongs to publication, which happens once, at the end.
+- **A ~20 KB PNG replaced the ~5 MB HTML report as the QA artifact.** Measured
+  on the QA sample: 1773 reports = 9.1 GB, the same 1773 thumbnails = 29 MB,
+  **310x smaller**. At full extraction the reports would have cost >100 GB, and
+  nobody opens twenty thousand Plotly pages anyway. The thumbnail is a strip of
+  the panels QA actually decides on — the z=-30 brain slice with the eye mask in
+  red, then the eye block from two sides — and it renders the *raw* volumes:
+  normalization z-scores each voxel across time, so the temporal mean of a
+  stored block is flat noise (measured 0.06 std against 0.50 for the variance
+  map). Hence three constructors in `thumbnail.py`, and hence `from_block` uses
+  the temporal **SD**, not the mean. `--report {png,html,both}` keeps the report
+  available for a subject worth digging into; `png` is the default. The reports
+  are also the *only* surviving record of the pre-normalization data, so
+  backfill (`scripts/backfill_thumbnails.py`) before deleting any of them.
 - **Each stage downloads only what it reads** (`STAGE_PATTERNS` in
-  `datasource.py`). `qa` takes the registry alone and streams reports per
-  dataset as you reach them, because the reports total more than the eye blocks
-  and downloading them up front means hours before the first label. `train`
-  takes blocks and no reports. The HF cache is topped up when a later stage
+  `datasource.py`). `qa` now takes the registry plus every thumbnail — ~30 MB,
+  small enough to grab in one go. That is the payoff of the PNG switch: it used
+  to stream 5 MB reports per dataset as you reached them, because taking them up
+  front meant hours before the first label. `train` takes blocks and no images;
+  `probe` takes `dsL*/*.h5` alone. The HF cache is topped up when a later stage
   needs more; a directory you pointed at explicitly is never touched over the
   network.
 - **TR is validated but not yet used to resample.** Windows are a fixed number
@@ -204,11 +238,75 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   data, which is the whole premise of the method. It now takes the first N
   (default 200), which keeps ~74% of subjects while still bounding how far one
   dataset can dominate. Only ~1206 of the 2394 datasets contain BOLD at all.
+- **The gaze-labeled datasets are registry citizens, not just folders.** They
+  used to exist only as directories on disk, so `is_dataset_approved` could not
+  see them and they indexed with a null QA label. `convert_labeled_to_h5.py` now
+  enters them with `approved = LBL_EYES` and `labeled = True` on the dataset
+  group. That is not the classifier gate returning: eye tracking was recorded
+  during the scan, so the eyeballs are in frame by construction. The `labeled`
+  flag also keeps them out of the rapid audit grid, where a stray click would
+  mark ground truth as no-eyes.
+- **The labeled datasets' TRs live in code, not in the data.** No repetition
+  time exists anywhere in the source `.npz` or nested `.h5` — only dataset 6
+  encodes it per subject name (`S4_0004_TR1250_2MM`). `DATASET_TR` in
+  `convert_labeled_to_h5.py` is the record: 0.80 / 0.87 / 1.02 / 1.00 / 1.00 s
+  for datasets 1-5. Without it the control set would be the one part of the
+  corpus with no TR, which is precisely the metadata the fixed-TR-window
+  limitation needs.
 - **Probe splits are per dataset, not a pooled shuffle.** The old `ProbeDataset`
   shuffled all subjects together, so subjects of one dataset landed on both
   sides of the train/test split and inflated the probe metrics that serve as the
   control. It now splits within each dataset (`split_by="subject"`) or holds out
   whole datasets (`split_by="dataset"`).
+- **Metrics are aggregated per participant, then median across participants.**
+  Pooling every row of every subject into one correlation is gameable: if one
+  subject's gaze sits left of another's, a model that predicts only *which
+  subject this is* scores a high pooled r with zero within-subject decoding.
+  `aggregate_by_subject` computes r inside each participant, where the
+  between-subject variance is constant by construction. `--pooled` prints the
+  old number for comparison; the gap between them is the size of the trap.
+- **Pearson r is the headline, not R².** Cross-dataset predictions are
+  mis-calibrated in *gain* (measured 0.11–2.27 against the training scale) with
+  offsets near zero, which destroys R² while leaving the correlation intact.
+  The oracle affine correction lifts mean R² from 0.043 to 0.389; every
+  unsupervised correction tested fails (z-match −0.921, quantile −0.973,
+  feature-standardisation 0.003, mean-shift 0.071). The reason is
+  identifiability, not effort: the required gain is ≈ `test_gaze_SD /
+  train_gaze_SD`, and the target's marginal spread is exactly what differs
+  between a fixation task and a free-viewing task. Degrees of visual angle
+  depend on screen size and viewing distance, which are not in the BOLD.
+  `scripts/analyze_calibration.py` is the measurement. Calibration is a separate
+  problem from representation quality and should be reported as one.
+- **CCA is an analysis, not a baseline.** `scripts/analyze_identifiability.py`
+  fits CCA between the left and right orbit crops of a run and recovers gaze
+  with no labels at r ≈ 0.75 mean (0.87–0.92 on pursuit and free viewing),
+  against 0.57 for the *supervised* cross-dataset ridge. That is a strong
+  result, and it is still not a baseline: it is fitted on the first half of the
+  very run it scores, and it needs labels on that half to decide which variate
+  is x, which is y, and their signs. Nothing about it could run on a new subject
+  with no eye tracker. Its job is to separate "the representation cannot carry
+  gaze" from "the readout does not transfer" — and it says the latter.
+  `dsL03_pursuit` is the case in point: within-run supervised r = 0.895/0.865,
+  unsupervised CCA r = 0.746/0.710, cross-dataset supervised r = 0.137/0.196.
+  Keep it out of the baseline table; a reviewer who spots it there will
+  reasonably assume the rest is oversold. Note also that the confound regression
+  uses a crude mean-signal proxy — **realignment parameters are not stored** —
+  so a canonical variate could still be partly head motion.
+- **The baseline to beat is `pca-ridge` on raw voxels, not the random encoder.**
+  A randomly initialised ViT scores *below* raw voxels everywhere and below the
+  mean on three folds, so beating it demonstrates nothing. `pca-ridge` is the
+  honest competitor because it is the same shape of method — compress without
+  seeing gaze, then fit a linear map. And ridge alpha is chosen by inner CV
+  (`ridge-cv`), because a baseline pinned at `alpha=1.0` is the first thing a
+  reviewer attacks.
+- **The in-training probe is a monitor, not a model-selection criterion.**
+  `train_jepa.py` splits the labeled data by subject, so it has seen subjects
+  from every dataset that `eval_probe.py --protocol dataset` later holds out.
+  Picking the checkpoint that maximises it would contaminate the headline
+  number. Checkpoints are saved on a schedule (`last.pt`, `epoch###.pt`) and
+  the reported result comes from a checkpoint chosen without reference to the
+  monitor. Each checkpoint stores its own architecture, so `eval_probe.py`
+  cannot load weights into a differently-shaped model.
 
 ## Running on Leonardo (CINECA)
 
@@ -245,6 +343,8 @@ setsid nohup python slurm/stage_downloads.py --data-dir $DATA \
 
 # 2. COMPUTE — register + extract, offline (~42-110 s/subject)
 SLURM_PARTITION=boost_usr_prod ./slurm/submit_extraction.sh   # sizes the array from the manifest
+# writes a ~20 KB thumbnail per subject; `--report html` is the >100 GB path, do
+# not use it for a full run
 
 # 3. LOGIN NODE — fold worker records in, then label
 python -m deepmreye merge-registry --data-dir $DATA

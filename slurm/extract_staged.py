@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepmreye import registry
 from deepmreye.preprocess import get_masks, normalize_img, run_participant
-from deepmreye.pipeline import DEFAULT_TRANSFORMS
+from deepmreye.pipeline import DEFAULT_REPORT, DEFAULT_TRANSFORMS, REPORT_MODES, thumbnail_path
 from deepmreye.storage import is_intact, subject_path, write_subject
 from deepmreye.validation import MissingTRError, validate_and_extract_tr
 
@@ -40,7 +40,7 @@ def load_manifest(path, task_id=0, stride=1):
     return entries[task_id::stride]
 
 
-def extract_one(entry, data_dir, masks, force=False, save_report=True, max_input_gb=None,
+def extract_one(entry, data_dir, masks, force=False, report=DEFAULT_REPORT, max_input_gb=None,
                 deferred_path=None):
     """Register, extract and persist one staged subject."""
     eyemask_small, eyemask_big, dme_template, x_edges, y_edges, z_edges = masks
@@ -73,8 +73,12 @@ def extract_one(entry, data_dir, masks, force=False, save_report=True, max_input
     except MissingTRError as e:
         return "no_tr", str(e)
 
+    # Only the HTML report needs a per-subject directory; the thumbnail sits
+    # beside the participant file. At full-extraction scale that is tens of
+    # thousands of directories not created.
     report_dir = Path(data_dir) / ds_name / sub_id
-    report_dir.mkdir(parents=True, exist_ok=True)
+    if report in ("html", "both"):
+        report_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         masked_eye, transform_stats, _ = run_participant(
@@ -89,9 +93,11 @@ def extract_one(entry, data_dir, masks, force=False, save_report=True, max_input
             transforms=DEFAULT_TRANSFORMS,
             save_path=str(report_dir),
             as_pickle=False,
-            save_overview=save_report,
+            save_overview=report in ("html", "both"),
             dataset_name=sub_id,
             save_blocks=False,  # the HDF5 write below is the only copy we keep
+            thumbnail_path=(thumbnail_path(data_dir, ds_name, sub_id)
+                            if report in ("png", "both") else None),
         )
     except Exception as e:
         return "failed", f"{e.__class__.__name__}: {e}"
@@ -122,6 +128,9 @@ def extract_one(entry, data_dir, masks, force=False, save_report=True, max_input
     reports = list(report_dir.glob("*.html"))
     if reports:
         meta["report_html_path"] = str(reports[0])
+    thumb = thumbnail_path(data_dir, ds_name, sub_id)
+    if thumb.exists():
+        meta["thumbnail_path"] = str(thumb)
     if transform_stats is not None:
         meta["transform_stats"] = np.asarray(transform_stats, dtype=np.float32).ravel()
 
@@ -223,7 +232,14 @@ def main():
     parser.add_argument("--task-id", type=int, default=None, help="Defaults to SLURM_ARRAY_TASK_ID.")
     parser.add_argument("--stride", type=int, default=None, help="Defaults to SLURM_ARRAY_TASK_COUNT.")
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--no-report", action="store_true", help="Skip the HTML QA report.")
+    parser.add_argument("--report", choices=REPORT_MODES, default=DEFAULT_REPORT,
+                        help="QA artifact per subject. 'png' (default) writes the ~20 KB "
+                             "thumbnail; 'html' the ~5 MB Plotly report; 'both' each; "
+                             "'none' via --no-report. Reports cost 8 GB over the 1779 "
+                             "subject QA sample and would cost >100 GB over a full "
+                             "extraction, which is why png is the default.")
+    parser.add_argument("--no-report", action="store_true",
+                        help="Write no QA artifact at all, thumbnail included.")
     parser.add_argument("--max-input-gb", type=float, default=0,
                         help="Defer inputs larger than this without attempting them. "
                              "Default 0 (disabled): file size does not predict ANTs memory "
@@ -239,6 +255,9 @@ def main():
                              "Extraction shrinks the data ~13x, so this reclaims most of "
                              "the staging footprint; re-staging any subject is cheap.")
     args = parser.parse_args()
+
+    # --no-report is the override: it wins over whatever --report asked for.
+    report_mode = "none" if args.no_report else args.report
 
     task_id = args.task_id if args.task_id is not None else int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
     stride = args.stride if args.stride is not None else int(os.environ.get("SLURM_ARRAY_TASK_COUNT", 1))
@@ -267,12 +286,12 @@ def main():
                 # queued behind it dies too; 25 of 46 tasks were lost that way.
                 status, err = _extract_in_child(
                     entry, args.data_dir, masks, args.mem_limit_gb,
-                    force=args.force, save_report=not args.no_report,
+                    force=args.force, report=report_mode,
                     max_input_gb=args.max_input_gb or None,
                     deferred_path=deferred_path)
             else:
                 status, err = extract_one(entry, args.data_dir, masks,
-                                          force=args.force, save_report=not args.no_report,
+                                          force=args.force, report=report_mode,
                                           max_input_gb=args.max_input_gb or None,
                                           deferred_path=deferred_path)
         except Exception:

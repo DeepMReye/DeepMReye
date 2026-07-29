@@ -22,6 +22,14 @@ from deepmreye.validation import validate_and_extract_tr, MissingTRError
 BUCKET_NAME = "openneuro.org"
 DEFAULT_TRANSFORMS = ["Affine", "Affine", "SyNAggro"]
 
+# QA artifact per subject. The thumbnail is ~20 KB and answers the only question
+# QA asks; the Plotly report is ~5 MB and answers everything else. At the 1779
+# subject QA sample the reports cost 8 GB, at full extraction they would cost
+# over 100 GB -- so the small one is the default and the big one is opt-in for
+# the subject you actually want to dig into.
+REPORT_MODES = ("png", "html", "both")
+DEFAULT_REPORT = "png"
+
 
 def make_s3_client():
     """Anonymous client for the public OpenNeuro bucket."""
@@ -34,26 +42,43 @@ LBL_NO_EYES_BAD_TRANSFORM = 0
 LBL_EYES = 1
 LBL_NO_EYES_GOOD_TRANSFORM = 2
 LBL_EYES_CUT = 3  # eyeballs visible but clipped by the bounding box
+LBL_EYES_FAINT = 4  # eyeballs visible but faint
 LBL_DATASET_SKIPPED = -99
 
-# Labels that count as usable eye signal. `LBL_EYES_CUT` is included: a clipped
-# eyeball still carries gaze information, and dropping those would cost whole
-# datasets under the all-or-nothing rule below. It is kept as a distinct label
-# (rather than folded into `LBL_EYES`) so the corpus can be filtered on it later
-# if clipping turns out to hurt the probe.
-APPROVED_LABELS = (LBL_EYES, LBL_EYES_CUT)
+# Labels that count as usable eye signal. `LBL_EYES_CUT` and `LBL_EYES_FAINT` are
+# included: clipped or faint eyeballs still carry gaze information, and dropping
+# those would cost whole datasets under the all-or-nothing rule below. They are
+# kept as distinct labels (rather than folded into `LBL_EYES`) so the corpus can
+# be filtered on them later.
+APPROVED_LABELS = (LBL_EYES, LBL_EYES_CUT, LBL_EYES_FAINT)
+
+
+# Gaze-labeled datasets are named `dsL<nn>_<name>` (see DATASET_ALIASES in
+# scripts/convert_labeled_to_h5.py). The prefix is the fallback; the `labeled`
+# attribute set at conversion is the authority, so a dataset that arrives under
+# some other name is still recognised.
+LABELED_PREFIX = "dsL"
+
+
+def is_labeled_dataset(ds_grp, ds_name=None):
+    """Whether a dataset is one of the gaze-labeled probe sets."""
+    if ds_grp is not None and ds_grp.attrs.get("labeled", False):
+        return True
+    name = ds_name if ds_name is not None else (
+        ds_grp.name.lstrip("/") if ds_grp is not None else "")
+    return str(name).startswith(LABELED_PREFIX)
 
 
 def is_dataset_approved(ds_grp):
     """Whether a dataset qualifies for training based on manual QA labels.
 
     Labels (on each subject's ``approved`` attribute): 1 = eyes visible,
-    3 = eyes visible but cut off, 0 = no eyes / bad transform,
-    2 = no eyes / good transform, -1 = unlabeled.
+    4 = eyes visible but faint, 3 = eyes visible but cut off,
+    0 = no eyes / bad transform, 2 = no eyes / good transform, -1 = unlabeled.
     A dataset qualifies only if it was not skipped (-99) and *every* labeled
-    subject shows eyes (clipped or not). A single 'no eyes' subject drops the
-    whole dataset, since the same scanner/experiment tends to fail the same way
-    across subjects and OpenNeuro has more datasets than we need.
+    subject shows eyes (clean, cut off, or faint). A single 'no eyes' subject
+    drops the whole dataset, since the same scanner/experiment tends to fail the
+    same way across subjects and OpenNeuro has more datasets than we need.
     """
     if ds_grp.attrs.get("approved", 0) == LBL_DATASET_SKIPPED:
         return False
@@ -99,7 +124,13 @@ def find_bold_by_subject(s3, ds_name):
     return bold_by_sub
 
 
-def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, force=False):
+def thumbnail_path(data_dir, dataset, subject):
+    """Where a participant's QA thumbnail lives: beside its HDF5."""
+    return Path(data_dir) / dataset / f"{subject}.png"
+
+
+def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, force=False,
+                    report=DEFAULT_REPORT):
     """Download, coregister, extract and persist one subject.
 
     Returns a dict of registry metadata if the subject was processed and
@@ -108,6 +139,9 @@ def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, forc
     participant file; the caller decides how to record the returned metadata,
     which keeps this usable both with a live registry handle and from a
     parallel worker that must not touch the shared registry.
+
+    ``report`` selects the QA artifact: ``"png"`` (default) writes only the
+    ~20 KB thumbnail, ``"html"`` only the ~5 MB Plotly report, ``"both"`` each.
     """
     eyemask_small, eyemask_big, dme_template, x_edges, y_edges, z_edges = masks
 
@@ -121,9 +155,12 @@ def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, forc
     if ds_grp is not None:
         sub_grp = ds_grp[sub_id] if sub_id in ds_grp else ds_grp.create_group(sub_id)
 
-    # Reports land beside the participant file, under a per-subject folder.
+    # The HTML report needs a per-subject folder to live in; the thumbnail does
+    # not -- it sits directly beside the participant file. So in the default
+    # png-only mode that directory level is never created at all.
     ds_out_dir = Path(data_dir) / ds_name / sub_id
-    ds_out_dir.mkdir(parents=True, exist_ok=True)
+    if report in ("html", "both"):
+        ds_out_dir.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         file_basename = file_key.split("/")[-1]
@@ -156,9 +193,11 @@ def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, forc
                 transforms=DEFAULT_TRANSFORMS,
                 save_path=str(ds_out_dir),
                 as_pickle=False,
-                save_overview=True,
+                save_overview=report in ("html", "both"),
                 dataset_name=sub_id,
                 save_blocks=False,  # the HDF5 write below is the only copy we keep
+                thumbnail_path=(thumbnail_path(data_dir, ds_name, sub_id)
+                                if report in ("png", "both") else None),
             )
         except Exception as e:
             print(f"  [!] Failed processing {sub_id}: {e}")
@@ -171,16 +210,20 @@ def process_subject(s3, ds_grp, ds_name, sub_id, file_key, data_dir, masks, forc
     # different input distributions.
     masked_eye = normalize_img(np.asarray(masked_eye, dtype=np.float32))
 
-    reports = list(ds_out_dir.glob("*.html"))
-
     meta = {
         "func_path": file_key,  # the S3 key, not a local path
         "data_path": str(out_path),
         "repetition_time": float(tr),
         "n_trs": int(masked_eye.shape[-1]),
     }
+
+    reports = list(ds_out_dir.glob("*.html"))
     if reports:
         meta["report_html_path"] = str(reports[0])
+
+    thumb = thumbnail_path(data_dir, ds_name, sub_id)
+    if thumb.exists():
+        meta["thumbnail_path"] = str(thumb)
 
     write_subject(
         out_path,
