@@ -97,31 +97,34 @@ Key improvements implemented earlier:
 
 ---
 
-## Current phase: test the model on the corpus we already have
+## Current phase: replicate the classic-regressor benchmark on the current corpus
 
-Full extraction is deliberately **not** the next step. The unlabeled half is
-still the 2-subjects-per-dataset QA sample (1332 usable subjects across 703
-approved datasets, `dsL*` excluded), and that is enough to answer the question
-that gates everything else: *does the self-supervised representation beat
-reading gaze straight off the voxels?* If it does not, extracting 20k more
-subjects does not help.
+JEPA self-supervised pretraining was tried on this codebase (see the
+`pytorch-jepa` branch) and set aside: after correcting a broken random-encoder
+control, an *untrained* encoder scored the same as every trained configuration
+tested (widths 8-256, 7 learning rates, 4 mask schedules) — nothing showed
+training helps, so there is nothing to build further on right now. This branch
+drops JEPA and goes back to the question DeepMReye 1.0 originally answered with
+a supervised CNN: how well can gaze be read straight off fMRI voxels with
+classic regressors? `media/deepmreye_benchmarks.ipynb` (an old branch's
+notebook) compared Ridge, SVR, LightGBM (`lgb.LGBMRegressor`) and an MLP
+against DeepMReye 1.0's CNN, per dataset. `deepmreye/evaluate/baselines.py` now
+has all three non-CNN regressors (`svr`, `lgbm`, `mlp`, alongside the existing
+`ridge-cv`/`pca-ridge`/`pls`/`rf`/`gbt`), reproducing that comparison is the
+current goal.
 
-So the order is: baselines → JEPA → compare → only then scale up. The first
-three are done locally on a laptop (CPU/MPS); **JEPA training itself needs
-Leonardo GPUs next** — a local epoch takes minutes and 30 epochs was not
-finished before moving over.
+Full extraction (20-28k more subjects) is **not** the next step regardless: the
+unlabeled corpus does not matter to this comparison at all, only the 270
+gaze-labeled participants (`dsL01`-`dsL06`) do.
 
-1. **Baselines** — done, as a table, not a number. `scripts/eval_probe.py`,
-   four generalization levels (`within` / `subject` / `dataset` / `paradigm`)
-   crossed with the readout zoo (`mean`, `linear`, `ridge-cv`, `pca-ridge`,
-   `pls`, `gbt`). Rerun locally with:
+1. **Baselines, `ridge-cv` only — done, as a table, not a number.**
+   `scripts/eval_probe.py`, four generalization levels (`within` / `subject` /
+   `dataset` / `paradigm`). Rerun with:
    ```
-   python scripts/eval_probe.py --protocol dataset --arms voxels random \
-       --feature-cache .cache/features --readouts mean linear ridge-cv pca-ridge pls
+   python scripts/eval_probe.py --protocol dataset --readouts mean linear ridge-cv pca-ridge pls
    ```
    **Headline numbers** (per-subject median Pearson r, `ridge-cv` readout on
-   raw stride-4 voxels — the bar to beat, *not* the random encoder, which
-   scores near zero everywhere post-fix):
+   raw stride-4 voxels):
 
    | protocol | best case | worst case |
    |---|---|---|
@@ -134,48 +137,16 @@ finished before moving over.
    but fails under leave-one-dataset-out — a transfer/calibration failure, not a
    missing-signal one (consistent with the CCA analysis, see `CLAUDE.md`). GBT
    vs `ridge-cv` on raw voxels is a coin flip on every fold (±0.05 R²) — no
-   nonlinear gain to be had on this feature source, so if JEPA beats the table
-   it will not be because a nonlinear map became available.
+   nonlinear gain to be had on this feature source with tree models; whether
+   SVR/LightGBM/MLP do better is the open question below.
 
-2. **JEPA pretraining bugs found and fixed while wiring up the eval** (both
-   have regression tests):
-   - The `split_by="time"` (within-subject) split silently dropped `dsL01` —
-     170 of 270 labeled subjects — from the test side, because window starts
-     sit on a stride-50 grid and `start >= cut` had no solution for 270-TR
-     runs. Fixed in `deepmreye/data/probe_dataset.py`.
-   - **Positional embeddings were drowning the patch signal.**
-     `nn.Embedding` defaulted to `N(0,1)` while patch tokens come out at
-     std ~0.36 — the input was 6% of token variance before the transformer
-     even started, diluted to 0.05% after 6 layers. Measured effect: an
-     untrained random encoder fit training subjects at r≈0.45 and transferred
-     at r≈0.00 (only the position pattern, identical for every window,
-     survived pooling). Fixed with `std=0.02` init
-     (`deepmreye/models/jepa.py`) — signal share 6% → 99.4%. **This landed
-     after one epoch of what was otherwise a real training run; any
-     checkpoint from before this fix is invalid and was discarded.**
-   - `train_jepa.py` was separately broken before this session (pointed at a
-     `labeled_data/` dir that no longer exists, dead `ds_key` reference, no
-     checkpoint saving at all) and was rewritten. It now writes `last.pt`
-     every epoch plus `epoch###.pt` every `--save-every`, each carrying its
-     own architecture dict so `eval_probe.py` cannot load weights into a
-     mismatched model shape.
-   - A 3-epoch smoke run (batch 16, embed 256, depth 6) confirmed the full
-     loop end-to-end: loss decreasing, and the `trained` arm on the `subject`
-     protocol went from random-encoder r≈0.03 to r≈0.56 — real learning, just
-     not yet near the voxel baseline (r≈0.83) at 3 epochs, which is expected.
-     That checkpoint was for wiring verification only and was not kept as a
-     result.
-
-3. **Next, on Leonardo**: real JEPA training on GPU, long enough to actually
-   compare against the baseline table above, then
-   `eval_probe.py --checkpoint runs/jepa/<ckpt>.pt` to add the `trained` arm.
-   `slurm/` currently has staging + extraction sbatch scripts only — a
-   training sbatch script does not exist yet and is the first thing to write
-   there. `runs/` and `results/` are gitignored (regenerable); only the
-   numbers that matter should get written back into this file.
-4. **Then** full extraction of the 703 approved datasets, which is where the
-   premise of the method (unlabeled fMRI is abundant) actually gets tested —
-   see below. Not before step 3 says the representation is worth scaling.
+2. **Next**: run with the new readouts and record the result here.
+   ```
+   python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp
+   ```
+   SVR is O(n²)-O(n³) in training rows and `--protocol dataset` trains each
+   fold on five pooled datasets (tens of thousands of rows after flattening) —
+   watch for it being impractically slow; `--max-windows` subsamples if so.
 
 ### Full extraction, when it is time
 

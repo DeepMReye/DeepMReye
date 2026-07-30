@@ -6,14 +6,12 @@ entire datasets from the evaluation.
 """
 import numpy as np
 import pytest
-import torch
 
 from deepmreye.data.probe_dataset import PARADIGM_GROUPS, dataset_folds, paradigm_folds
 from deepmreye.evaluate.baselines import fit_readout
 from deepmreye.evaluate.probe import (
     compute_probe_metrics,
     flatten_valid,
-    pool_spatial,
     temporal_targets,
 )
 
@@ -77,27 +75,6 @@ def test_uneven_window_pads_like_the_patcher():
     out = temporal_targets(labels, n_t=20)
     assert out.shape == (1, 20, 2)
     assert not np.isnan(out[0, :19]).any()
-
-
-def test_pool_spatial_keeps_time_and_averages_space():
-    n_s, n_t, d = 4, 3, 8
-    # Token (s, t) is flattened as s * n_t + t; give each a distinct value.
-    reps = torch.zeros(1, n_s * n_t, d)
-    for s in range(n_s):
-        for t in range(n_t):
-            reps[0, s * n_t + t, :] = s * 10 + t
-
-    out = pool_spatial(reps, n_s, n_t)
-
-    assert out.shape == (1, n_t, d)
-    # Mean over s of (s*10 + t) = 15 + t for n_s = 4.
-    for t in range(n_t):
-        assert out[0, t, 0].item() == pytest.approx(15.0 + t)
-
-
-def test_pool_spatial_rejects_a_token_count_that_does_not_match():
-    with pytest.raises(ValueError):
-        pool_spatial(torch.zeros(1, 11, 8), 4, 3)
 
 
 def test_flatten_valid_drops_only_nan_target_rows():

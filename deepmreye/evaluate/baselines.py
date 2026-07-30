@@ -32,12 +32,21 @@ Why these and not others:
                 against the reading that a learned representation only helps
                 because it is non-linear; if trees on raw voxels close the gap,
                 that is the explanation.
+- ``svr``/``lgbm``/``mlp`` the three non-DeepMReye regressors compared against
+                the original CNN in ``media/deepmreye_benchmarks.ipynb``
+                (``sklearn.svm.SVR``, ``lightgbm.LGBMRegressor``,
+                ``sklearn.neural_network.MLPRegressor``). Included to reproduce
+                that comparison on the current corpus. SVR is O(n^2)-O(n^3) in
+                the number of training rows -- fine on a single dataset's worth
+                of windows, potentially slow on a pooled leave-one-dataset-out
+                fold; subsample with ``--max-windows`` if it does not finish.
 
 Every readout is wrapped in a ``StandardScaler``. Feature scales differ by
 orders of magnitude between arms (voxel means against transformer
 activations), and an unscaled ridge penalty means something different in each,
 which would make the arms incomparable rather than merely different.
 """
+import lightgbm as lgb
 import numpy as np
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
@@ -45,8 +54,10 @@ from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge, RidgeCV
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVR
 
 # Wide enough that the chosen alpha is interior for both arms: voxel features
 # want heavy regularisation, encoder embeddings much less.
@@ -56,7 +67,8 @@ ALPHA_GRID = np.logspace(-2, 6, 17)
 # OLS is informative once, not every run, and the tree models cost minutes.
 DEFAULT_READOUTS = ("mean", "ridge-cv", "pca-ridge", "pls")
 
-ALL_READOUTS = ("mean", "linear", "ridge", "ridge-cv", "pca-ridge", "pls", "rf", "gbt")
+ALL_READOUTS = ("mean", "linear", "ridge", "ridge-cv", "pca-ridge", "pls", "rf", "gbt",
+                "svr", "lgbm", "mlp")
 
 
 def _n_components(requested, n_samples, n_features):
@@ -100,6 +112,16 @@ def build_readout(name, n_samples, n_features, n_components=32, seed=0):
         return make_pipeline(
             scale, MultiOutputRegressor(
                 HistGradientBoostingRegressor(max_iter=200, random_state=seed)))
+    if name == "svr":
+        # SVR is single-output too.
+        return make_pipeline(scale, MultiOutputRegressor(SVR()))
+    if name == "lgbm":
+        return make_pipeline(
+            scale, MultiOutputRegressor(
+                lgb.LGBMRegressor(random_state=seed, verbosity=-1)))
+    if name == "mlp":
+        # MLPRegressor is natively multi-output, unlike the three above it.
+        return make_pipeline(scale, MLPRegressor(random_state=seed, max_iter=500))
     raise ValueError(f"unknown readout {name!r}; known: {', '.join(ALL_READOUTS)}")
 
 

@@ -13,10 +13,10 @@ classifiers = [
 ]
 dependencies = [
     "plotly",
-    "statsmodels",
     "scipy",
+    "scikit-learn",
+    "lightgbm",
     "torch",
-    "torchvision",
     "pydantic",
     "tqdm",
     "nbmake",

@@ -1,19 +1,11 @@
 """Fitting and scoring the linear gaze probe.
 
-The probe is the control for the whole method: it asks whether the
-self-supervised representation carries gaze information, by fitting a linear map
-from frozen encoder features to gaze coordinates.
+The probe asks how well gaze can be read out of a feature source -- currently
+downsampled raw voxels (``scripts/eval_probe.py``) -- by fitting a readout from
+those features to gaze coordinates.
 
-Two things here are deliberate, because getting either wrong makes the numbers
+One thing here is deliberate, because getting it wrong makes the numbers
 meaningless rather than merely worse:
-
-**Time is not pooled away.** The encoder produces one token per (spatial patch,
-temporal patch). Pooling over *both* axes gives a single vector per window and
-forces the target to be the mean gaze over that window -- 80 to 250 seconds
-depending on the dataset's TR. Measured on the labeled corpus, that discards 84
-to 96% of the gaze variance (within-window SD 2.4-7.1 degrees, SD of the window
-means 0.12-1.11), so the probe is asked to predict a nearly constant target.
-Pooling over space alone keeps one prediction per temporal patch.
 
 **NaNs are averaged around, not propagated.** Missing gaze samples are marked
 NaN and are common: windows containing at least one NaN are 100% of
@@ -59,18 +51,6 @@ def temporal_targets(labels, n_t):
         # recorded there, and it is masked rather than dropped.
         warnings.simplefilter("ignore", category=RuntimeWarning)
         return np.nanmean(binned, axis=axes)
-
-
-def pool_spatial(context_reps, n_s, n_t):
-    """Mean-pool encoder tokens over space, keeping the temporal axis.
-
-    ``context_reps`` is ``[B, n_s * n_t, D]`` flattened as ``s * n_t + t`` by
-    the patcher. Returns ``[B, n_t, D]``.
-    """
-    b, total, d = context_reps.shape
-    if total != n_s * n_t:
-        raise ValueError(f"expected {n_s * n_t} tokens, got {total}")
-    return context_reps.view(b, n_s, n_t, d).mean(dim=1)
 
 
 def flatten_valid(features, targets):

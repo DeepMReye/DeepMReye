@@ -1,14 +1,17 @@
-# DeepMReye 2.0: JEPA for fMRI Eye Tracking
+# DeepMReye 2.0: fMRI Eye Tracking
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
-![Architecture: JEPA](https://img.shields.io/badge/Architecture-JEPA-blue.svg)
 
 Decode eye gaze from fMRI without an eye tracker. The BOLD signal around the
-eyeballs carries gaze position; DeepMReye 1.0 decoded it with a supervised model.
-DeepMReye 2.0 pretrains a representation on **unlabeled** eye-region fMRI from
-OpenNeuro using a Joint Embedding Predictive Architecture (JEPA), then fits a
-lightweight linear probe to gaze coordinates. The motivation: unlabeled fMRI is
-abundant, simultaneous eye-tracking labels are scarce.
+eyeballs carries gaze position; DeepMReye 1.0 decoded it with a supervised CNN.
+This branch (`pytorch`) is the data ingestion/QA/HuggingFace pipeline plus a
+classic-regressor baseline: read gaze straight off downsampled raw voxels with
+sklearn readouts (ridge, PCA→ridge, PLS, random forest, gradient boosting, SVR,
+LightGBM, MLP), reproducing the regressor comparison from
+`media/deepmreye_benchmarks.ipynb` on the current corpus.
+
+A self-supervised JEPA pretraining approach was tried on this codebase and set
+aside (see `CLAUDE.md`); it is preserved on the **`pytorch-jepa`** branch.
 
 ![Logo](media/deepmreye_logo.png)
 
@@ -23,8 +26,6 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
-Training uses CUDA (NVIDIA) or MPS (Apple Silicon) if available, otherwise CPU.
-
 ## Running the pipeline
 
 Everything runs through a single CLI. `--data-dir` goes after the command.
@@ -32,14 +33,13 @@ Everything runs through a single CLI. `--data-dir` goes after the command.
 ```bash
 python -m deepmreye compile --data-dir data --limit 5     # 1. sample subjects from OpenNeuro
 python -m deepmreye qa --data-dir data                    # 2. label datasets in the browser
-python -m deepmreye preprocess --data-dir data            # 3. extract all subjects of approved datasets
-python -m deepmreye train --data-dir data -- --epochs 50  # 4. train JEPA + probe
+python -m deepmreye preprocess --data-dir data             # 3. extract all subjects of approved datasets
+python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp  # 4. read out gaze
 ```
 
-Extra training arguments after `--` are forwarded to `scripts/train_jepa.py`.
-`run_pipeline.sh <command>` is a thin `.venv` wrapper around these same calls.
+`run_pipeline.sh <command>` is a thin `.venv` wrapper around the pipeline calls.
 
-### The four stages
+### The three pipeline stages
 
 1. **compile** — Samples a few subjects per OpenNeuro dataset, coregisters them
    to the eye template, extracts the eye bounding box, and builds the
@@ -51,8 +51,9 @@ Extra training arguments after `--` are forwarded to `scripts/train_jepa.py`.
    in `data/datasets.h5` and mirrored to `data/labels.csv`.
 3. **preprocess** — Downloads and extracts every subject of the approved
    datasets into per-participant HDF5 files.
-4. **train** — Trains the JEPA model and evaluates a linear gaze probe. Writes
-   checkpoints to `runs/jepa/` (`last.pt` plus one every `--save-every` epochs).
+
+From there, `scripts/eval_probe.py` reads gaze out of the labeled subset
+(`dsL01`-`dsL06`) — see "Evaluation" below.
 
 Note the ordering constraint: QA labeling needs the thumbnails, and those are
 produced by coregistration. So `compile` registers a sample of subjects to give
@@ -79,9 +80,9 @@ python -m deepmreye qa --no-download      # never reach for HuggingFace
 
 Each stage pulls only what it reads. `qa` takes the registry plus every QA
 thumbnail — ~20 KB per subject, ~30 MB in total, so it arrives in one go and you
-can start labeling immediately. `train` pulls the blocks and no images; `probe`
-pulls only `dsL*/*.h5`, the gaze-labeled subset. A directory you point at is
-never topped up from the network; only the cache is.
+can start labeling immediately. `eval_probe.py` only needs `dsL*/*.h5`, the
+gaze-labeled subset. A directory you point at is never topped up from the
+network; only the cache is.
 
 To download up front instead — before a flight, or to work offline:
 
@@ -100,9 +101,8 @@ with its own README; the rest of the repo is portable.
 
 ## Evaluation
 
-The claim of the method is that a self-supervised representation decodes gaze
-better than what you can read straight off the voxels. `scripts/eval_probe.py`
-is the table that has to show it, crossing two axes.
+`scripts/eval_probe.py` reads gaze out of downsampled raw fMRI voxels, crossing
+two axes.
 
 **Generalization level** (`--protocol`), in increasing strictness:
 
@@ -113,21 +113,18 @@ is the table that has to show it, crossing two axes.
 | `dataset` | leave one dataset out, each in turn |
 | `paradigm` | leave one paradigm out (`dsL02/03/04` are all pursuit) |
 
-**Feature source** (`--arms`): `voxels` (downsampled raw voxels, no learning),
-`random` (the same architecture untrained), `trained` (a JEPA checkpoint).
-
 **Readout** (`--readouts`): `mean`, `linear`, `ridge`, `ridge-cv`, `pca-ridge`,
-`pls`, `rf`, `gbt` — see `deepmreye/evaluate/baselines.py`. Every readout runs
-on every arm's features, so nothing wins by being tuned better than what it is
-compared against.
+`pls`, `rf`, `gbt`, `svr`, `lgbm`, `mlp` — see `deepmreye/evaluate/baselines.py`.
+The last three reproduce the regressor comparison in
+`media/deepmreye_benchmarks.ipynb`.
 
 ```bash
-python scripts/eval_probe.py --protocol dataset --feature-cache .cache/features
-python scripts/eval_probe.py --protocol dataset --checkpoint runs/jepa/last.pt
+python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp
 ```
 
-Feature extraction is the expensive half and the readouts take seconds, so
-`--feature-cache` makes it cheap to add a readout to a table you already ran.
+SVR is O(n²)-O(n³) in the number of training rows — `--protocol dataset` pools
+five datasets' worth per fold, which may be slow; `--max-windows` subsamples if
+so.
 
 Two things about how the numbers are reported. Metrics are aggregated **per
 participant, then median across participants** — pooling every row together lets
@@ -206,10 +203,10 @@ the HuggingFace cache. They are versioned by pushing them to the Hub; see
 
 - `deepmreye/__main__.py` — the CLI entry point.
 - `deepmreye/pipeline.py` — shared OpenNeuro download / coregistration / extraction.
-- `deepmreye/models/` — the JEPA ViT (`jepa.py`) and patchification + masking (`patcher.py`).
-- `deepmreye/data/` — HDF5 dataloaders for pretraining (`jepa_dataset.py`) and probing (`probe_dataset.py`).
+- `deepmreye/data/probe_dataset.py` — the windowed HDF5 dataloader over the
+  gaze-labeled subset, with its train/test split protocols.
 - `deepmreye/evaluate/probe.py` — gaze probe metrics and per-subject aggregation.
-- `deepmreye/evaluate/baselines.py` — the readout models every arm is scored with.
+- `deepmreye/evaluate/baselines.py` — the readout zoo `eval_probe.py` scores voxel features with.
 - `deepmreye/labels.py` — CSV label backup.
 - `deepmreye/storage.py` — the per-participant HDF5 layout (all block I/O).
 - `deepmreye/registry.py` — worker sidecar records and their merge into the registry.
@@ -217,16 +214,17 @@ the HuggingFace cache. They are versioned by pushing them to the Hub; see
   HuggingFace) so no command needs a path.
 - `deepmreye/qa_classifier.py` — eye-detection triage features and model.
 - `deepmreye/thumbnail.py` — the QA thumbnail every participant gets.
-- `scripts/` — portable stages: labeling UI, `train_jepa.py`, `eval_probe.py`,
-  `analyze_identifiability.py`, `analyze_calibration.py`, `build_index.py`,
-  `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py`,
-  `convert_labeled_to_h5.py`, `backfill_thumbnails.py`.
-- `docs/ssl_design_brief.md` — the open questions on the SSL objective.
+- `scripts/` — portable stages: labeling UI, `eval_probe.py` (the baseline
+  table), `analyze_identifiability.py`, `analyze_calibration.py`,
+  `build_index.py`, `train_qa_classifier.py`, `upload_to_hf.py`,
+  `sync_labels.py`, `convert_labeled_to_h5.py`, `backfill_thumbnails.py`.
 - `results/` — evaluation output.
 - `slurm/` — everything cluster-specific (staging, extraction array). Has its
   own README. Nothing outside this folder needs SLURM.
 - `overview.md` — detailed method reference.
-- `paper/` — ICLR 2026 manuscript draft.
+
+Self-supervised JEPA pretraining (`deepmreye/models/`, `jepa_dataset.py`,
+`train_jepa.py`) lives on the `pytorch-jepa` branch, not here.
 
 ## Data formats
 
@@ -347,11 +345,11 @@ dataset skipped.
 pytest deepmreye/tests/ -q
 ```
 
-Covers patchification and masking geometry, EMA target updates, the label
-backup round-trip, TR validation, the on-disk storage format (atomic writes,
-truncation detection, label alignment), registry merging under parallel
-workers, the windowed dataloaders and their train/test splits, and the manifest
-sharding that partitions work across the extraction array.
+Covers the readout zoo, the gaze probe metrics, the label backup round-trip, TR
+validation, the on-disk storage format (atomic writes, truncation detection,
+label alignment), registry merging under parallel workers, the windowed
+dataloader and its train/test splits, and the manifest sharding that
+partitions work across the extraction array.
 
 ## Correspondence
 

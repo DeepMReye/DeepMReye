@@ -8,13 +8,25 @@ Orientation for an agent picking up this project. Read this first, then
 
 DeepMReye 2.0: decode eye gaze from fMRI without an eye tracker. The signal
 around the eyeballs in a BOLD volume carries gaze position. Version 1 (published,
-`frey2021deepmreye`) did this with a supervised regressor. This branch (`pytorch`)
-rewrites it as a **self-supervised JEPA**: pretrain a representation on unlabeled
-eye-region fMRI from OpenNeuro, then fit a light linear probe to gaze on the few
-labeled datasets. The bet: unlabeled fMRI is abundant, gaze labels are scarce.
+`frey2021deepmreye`) did this with a supervised CNN regressor. This branch
+(`pytorch`) is the data ingestion/QA/HuggingFace pipeline plus a **classic
+regressor** baseline: read gaze straight off downsampled raw voxels with
+sklearn readouts (ridge, PCA→ridge, PLS, random forest, gradient boosting, SVR,
+LightGBM, MLP — `deepmreye/evaluate/baselines.py`), replicating the comparison
+in `media/deepmreye_benchmarks.ipynb` on the current corpus. No representation
+learning here.
 
-Status: pipeline runs end-to-end, tests pass, not yet trained at scale. The
-immediate goal is to run the full pipeline on a cluster and iterate on the model.
+A self-supervised JEPA pretraining approach was tried on this codebase and set
+aside — its own corrected controls showed an untrained encoder scoring the same
+as a trained one at every configuration tested, so there was nothing left to
+build on. That work is preserved on the **`pytorch-jepa`** branch if it is ever
+worth revisiting; do not resurrect it here without a reason the numbers on that
+branch don't already rule out.
+
+Status: pipeline runs end-to-end, tests pass. Corpus is built (see `STATE.md`):
+270 gaze-labeled participants across `dsL01`-`dsL06`, plus ~1770 unlabeled QA
+sample participants (unused by this branch's baseline, which only needs the
+labeled set).
 
 ## Pipeline (single entry point)
 
@@ -24,7 +36,9 @@ Everything runs through `python -m deepmreye <command>` (see `deepmreye/__main__
 1. `compile`    — sample ~2 subjects/dataset from OpenNeuro into `data/datasets.h5`.
 2. `qa`         — Flask browser UI to label each subject eyes / no-eyes.
 3. `preprocess` — download + extract all subjects of approved datasets.
-4. `train`      — train the JEPA + linear probe.
+
+Then `scripts/eval_probe.py` reads gaze out of the labeled subset with the
+readout zoo (see below) — there is no `train` stage on this branch.
 
 Plus `fetch` to pull the corpus from HuggingFace up front, `export-labels` /
 `restore-labels` for the label backup, and `merge-registry` to fold worker
@@ -34,7 +48,7 @@ sidecars into `datasets.h5` (see below).
 python -m deepmreye compile --data-dir data --limit 5
 python -m deepmreye qa --data-dir data
 python -m deepmreye preprocess --data-dir data
-python -m deepmreye train --data-dir data -- --epochs 50   # args after `--` go to train_jepa.py
+python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp
 ```
 
 `--data-dir` goes AFTER the command (subparser-only, by design).
@@ -63,29 +77,29 @@ below for the split (stage on login, extract on compute) that replaces them.
 - `deepmreye/datasource.py` — finds the corpus (explicit path, `$DEEPMREYE_DATA`,
   `./data`, else HuggingFace) and decides what each stage downloads.
 - `deepmreye/validation.py` — TR extraction/validation from NIfTI headers.
-- `deepmreye/data/{jepa,probe}_dataset.py` — windowed HDF5 dataloaders.
-- `deepmreye/models/{jepa,patcher}.py` — ViT encoders/predictor, patchify + masking.
+- `deepmreye/data/probe_dataset.py` — windowed HDF5 dataloader over the
+  gaze-labeled subset (`dsL*`), with `within`/`subject`/`dataset`/`paradigm`
+  split protocols.
 - `deepmreye/evaluate/probe.py` — gaze probe metrics (R^2, Pearson r), temporal
   target binning, and `aggregate_by_subject` (the per-participant unit of
   analysis).
 - `deepmreye/evaluate/baselines.py` — the readout zoo: mean, OLS, ridge,
-  ridge-cv, PCA→ridge, PLS, RF, GBT. Pure sklearn, no torch, so it is testable
-  on its own and every arm gets the identical readouts.
+  ridge-cv, PCA→ridge, PLS, RF, GBT, SVR, LightGBM, MLP. Pure sklearn, no
+  torch, so it is testable on its own.
 - `scripts/` — portable stages, runnable anywhere: the CLI-imported
   implementations (`run_compile`, `run_preprocess`, `run_labeler`),
-  `train_jepa.py`, `eval_probe.py` (the baseline table),
-  `analyze_identifiability.py` and `analyze_calibration.py` (paper analyses, not
-  baselines — see below), `build_index.py` (writes `index.parquet`, validates
-  every file), `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py`
-  (label round trip via the Hub), `convert_labeled_to_h5.py` (source
-  `labeled_data/` -> `dsL##_*` in the corpus), `backfill_thumbnails.py`.
-- `docs/ssl_design_brief.md` — the SSL objective question, with measured numbers.
+  `eval_probe.py` (the baseline table), `analyze_identifiability.py` and
+  `analyze_calibration.py` (paper analyses, not baselines — see below),
+  `build_index.py` (writes `index.parquet`, validates every file),
+  `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py` (label round
+  trip via the Hub), `convert_labeled_to_h5.py` (source `labeled_data/` ->
+  `dsL##_*` in the corpus), `backfill_thumbnails.py`.
 - `results/` — evaluation output (JSON + logs). Not the corpus.
 - `slurm/` — everything cluster-specific and nothing else: `stage_downloads.py`
   (login node, network), `extract_staged.py` + `extract_array.sbatch` (compute,
   offline), `submit_extraction.sh`. Has its own README. Nothing outside this
   folder needs SLURM.
-- `overview.md` — detailed method reference. `paper/` — ICLR 2026 draft.
+- `overview.md` — detailed method reference.
 
 ## Data model
 
@@ -292,21 +306,13 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   reasonably assume the rest is oversold. Note also that the confound regression
   uses a crude mean-signal proxy — **realignment parameters are not stored** —
   so a canonical variate could still be partly head motion.
-- **The baseline to beat is `pca-ridge` on raw voxels, not the random encoder.**
-  A randomly initialised ViT scores *below* raw voxels everywhere and below the
-  mean on three folds, so beating it demonstrates nothing. `pca-ridge` is the
-  honest competitor because it is the same shape of method — compress without
-  seeing gaze, then fit a linear map. And ridge alpha is chosen by inner CV
-  (`ridge-cv`), because a baseline pinned at `alpha=1.0` is the first thing a
-  reviewer attacks.
-- **The in-training probe is a monitor, not a model-selection criterion.**
-  `train_jepa.py` splits the labeled data by subject, so it has seen subjects
-  from every dataset that `eval_probe.py --protocol dataset` later holds out.
-  Picking the checkpoint that maximises it would contaminate the headline
-  number. Checkpoints are saved on a schedule (`last.pt`, `epoch###.pt`) and
-  the reported result comes from a checkpoint chosen without reference to the
-  monitor. Each checkpoint stores its own architecture, so `eval_probe.py`
-  cannot load weights into a differently-shaped model.
+- **`pca-ridge` is the readout to compare everything else against, not just
+  another entry in the zoo.** It is unsupervised dimensionality reduction (no
+  peeking at gaze) followed by a linear map, so it is the honest floor for any
+  non-linear readout: if SVR/LightGBM/MLP do not clear it, the extra
+  complexity is not earning its keep. Ridge alpha is chosen by inner CV
+  (`ridge-cv`) rather than pinned at `alpha=1.0`, because an under-tuned ridge
+  baseline is the first thing a reviewer attacks.
 
 ## Running on Leonardo (CINECA)
 
@@ -454,12 +460,7 @@ Other environment notes:
 
 - Env: `uv` + `pyproject.toml` / `uv.lock` (no `requirements.txt`). The wrapper
   script expects a `.venv`. Use `.venv/bin/python` on this machine.
-- Tests: `pytest deepmreye/tests/ -q` (jepa forward/masking, label round-trip,
-  TR validation). Run before pushing.
-- Device: training auto-selects cuda / mps / cpu in `train_jepa.py`.
-
-## Paper sync
-
-`paper/main.tex` Method section mirrors `overview.md`. When the pipeline or model
-changes substantially, update `overview.md` AND the paper's Method, and note it
-here if it changes a key decision above.
+- Tests: `pytest deepmreye/tests/ -q` (probe splits, readout zoo, label
+  round-trip, TR validation). Run before pushing.
+- `scripts/eval_probe.py` is CPU-only sklearn — no GPU, no `.venv` device
+  selection to worry about.

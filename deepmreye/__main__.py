@@ -9,8 +9,7 @@ Commands
 compile     Sample a few subjects per OpenNeuro dataset for manual QA.
 qa          Launch the browser labeling UI to mark eyes / no eyes.
 preprocess  Download and extract every subject of approved datasets.
-train       Train the JEPA model on the approved data.
-all         Run compile -> qa -> preprocess -> train, pausing for QA.
+all         Run compile -> qa -> preprocess, pausing for QA.
 
 fetch       Download the corpus from HuggingFace up front (stages do it lazily).
 
@@ -22,7 +21,9 @@ manual labels survive a corrupted or rebuilt registry. Both files travel
 between machines with scripts/sync_labels.py.
 
 The stages are ordered: compile produces the registry, qa approves datasets,
-preprocess extracts the full data, and train consumes it.
+preprocess extracts the full data. From there, scripts/eval_probe.py reads out
+gaze against the classic regressors (see baselines.py) -- there is no training
+stage in this branch; see the pytorch-jepa branch for the self-supervised model.
 """
 import argparse
 import sys
@@ -59,13 +60,6 @@ def cmd_preprocess(args):
     from download_and_preprocess import run_preprocess
     run_preprocess(args.data_dir, force=args.force,
                    report=getattr(args, "report", DEFAULT_REPORT))
-
-
-def cmd_train(args):
-    import runpy
-    # train_jepa parses its own args; forward the remaining CLI verbatim.
-    sys.argv = ["train_jepa.py", "--data_dir", args.data_dir] + args.train_args
-    runpy.run_path(str(SCRIPTS_DIR / "train_jepa.py"), run_name="__main__")
 
 
 def cmd_export_labels(args):
@@ -109,7 +103,6 @@ def cmd_all(args):
         "Press Enter here once labeling is finished to continue with preprocessing..."
     )
     cmd_preprocess(args)
-    cmd_train(args)
 
 
 def build_parser():
@@ -155,10 +148,6 @@ def build_parser():
                              "~5 MB Plotly report (html), or both.")
     p_pre.set_defaults(func=cmd_preprocess)
 
-    p_train = sub.add_parser("train", parents=[common], help="Train the JEPA model.")
-    p_train.add_argument("train_args", nargs=argparse.REMAINDER, help="Args forwarded to train_jepa.py.")
-    p_train.set_defaults(func=cmd_train)
-
     p_export = sub.add_parser("export-labels", parents=[common], help="Snapshot current QA labels to labels.csv.")
     p_export.set_defaults(func=cmd_export_labels)
 
@@ -178,7 +167,6 @@ def build_parser():
     p_all = sub.add_parser("all", parents=[common], help="Run the whole pipeline, pausing for QA.")
     p_all.add_argument("--limit", type=str, default="5", help="Datasets to sample in compile.")
     p_all.add_argument("--force", action="store_true", help="Force reprocessing in preprocess.")
-    p_all.add_argument("train_args", nargs=argparse.REMAINDER, help="Args forwarded to train_jepa.py.")
     p_all.set_defaults(func=cmd_all)
 
     return parser
