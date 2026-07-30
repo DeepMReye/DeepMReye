@@ -246,6 +246,16 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   during the scan, so the eyeballs are in frame by construction. The `labeled`
   flag also keeps them out of the rapid audit grid, where a stray click would
   mark ground truth as no-eyes.
+- **`ProbeDataset` walks the file system, `JEPADataset` walks the registry.** So
+  a stale directory that is not in `datasets.h5` is invisible to pretraining but
+  silently joins the probe. This bit: a pre-rename `dataset6_sequences/` was
+  left on scratch beside the registered `dsL06_sequences/`, byte-identical files
+  under both names, and the probe monitor duly reported the two as separate
+  datasets. Leave-one-dataset-out would then hold out `dsL06` while training on
+  the very same six participants — the identifiability trap, wearing a different
+  directory name. If a dataset appears in probe output that is not in the
+  registry, it is an orphan; delete it rather than adding it. `iter_subjects`
+  taking the registry as its authority would close this off for good.
 - **The labeled datasets' TRs live in code, not in the data.** No repetition
   time exists anywhere in the source `.npz` or nested `.h5` — only dataset 6
   encodes it per subject name (`S4_0004_TR1250_2MM`). `DATASET_TR` in
@@ -292,21 +302,50 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   reasonably assume the rest is oversold. Note also that the confound regression
   uses a crude mean-signal proxy — **realignment parameters are not stored** —
   so a canonical variate could still be partly head motion.
-- **The baseline to beat is `pca-ridge` on raw voxels, not the random encoder.**
-  A randomly initialised ViT scores *below* raw voxels everywhere and below the
-  mean on three folds, so beating it demonstrates nothing. `pca-ridge` is the
+- **The baseline to beat is `pca-ridge` on raw voxels, and the random encoder is
+  a real competitor rather than a floor.** The claim this bullet used to make —
+  that a randomly initialised ViT scores *below* raw voxels everywhere and below
+  the mean on three folds — came from a broken control: `eval_probe.py` built a
+  separate random encoder for the train and test splits, so the arm measured
+  nothing but basis mismatch. Corrected, one shared untrained encoder scores
+  mean r 0.610 at `embed_dim=32` and full spatial resolution, against voxels'
+  0.623 and a trained band of 0.60–0.66 (see STATE.md). Treat `random` as
+  something to beat, not something to clear. `pca-ridge` is the
   honest competitor because it is the same shape of method — compress without
   seeing gaze, then fit a linear map. And ridge alpha is chosen by inner CV
   (`ridge-cv`), because a baseline pinned at `alpha=1.0` is the first thing a
   reviewer attacks.
 - **The in-training probe is a monitor, not a model-selection criterion.**
-  `train_jepa.py` splits the labeled data by subject, so it has seen subjects
-  from every dataset that `eval_probe.py --protocol dataset` later holds out.
-  Picking the checkpoint that maximises it would contaminate the headline
-  number. Checkpoints are saved on a schedule (`last.pt`, `epoch###.pt`) and
-  the reported result comes from a checkpoint chosen without reference to the
-  monitor. Each checkpoint stores its own architecture, so `eval_probe.py`
-  cannot load weights into a differently-shaped model.
+  Picking the checkpoint or the config that maximises it would contaminate the
+  headline number. Checkpoints are saved on a schedule (`last.pt`,
+  `epoch###.pt`) and the reported result comes from a checkpoint chosen without
+  reference to the monitor. Each checkpoint stores its own architecture, so
+  `eval_probe.py` cannot load weights into a differently-shaped model.
+
+  This got *sharper*, not looser, when the monitor was fixed to compute the real
+  number (below): `probe/dataset/mean_r` is now the same quantity
+  `eval_probe.py --protocol dataset` reports, so selecting on it is selecting on
+  the test folds directly. Select on `train/jepa_loss`, which is unsupervised
+  and leaks nothing, or retrain the winner and report that.
+- **The in-training probe computes what `eval_probe.py` computes.** It used to
+  mean-pool the encoder's 72 spatial tokens and split by subject only, and both
+  were wrong for the job: pooling averages away the across-orbit contrast gaze
+  lives in (r 0.45 pooled against 0.86 unpooled on dsL01), and the subject split
+  is a looser protocol than the reported one. Together they put the curve +0.11
+  to +0.24 above `eval_probe` and — the part that actually cost something —
+  ranked three configs in exactly the reverse order. It now runs leave-one-
+  dataset-out over all six labeled datasets at `--spatial-pool 6x4x3` with
+  `ridge-cv`, plus the subject protocol alongside, and logs every dataset's
+  scores to wandb. The pooling and grid logic is shared code
+  (`deepmreye/evaluate/probe.py`: `collapse_spatial`), not a second
+  implementation, so the two cannot drift apart again.
+
+  It embeds the whole labeled corpus **once** per evaluation and splits the
+  *features* into folds, rather than re-embedding 5/6 of it six times — the
+  windows a fold trains on are exactly the windows of the other datasets, so
+  this is the same computation for a sixth of the I/O. That is what makes a
+  6-fold evaluation affordable inside the training loop at all
+  (`ProbeDataset(split_by="all")` exists for this).
 
 ## Running on Leonardo (CINECA)
 
@@ -416,7 +455,108 @@ python scripts/train_qa_classifier.py --data-dir $DATA --flag   # screen the ful
 It reports grouped (by dataset) cross-validated ROC-AUC. It ranks and flags
 only — see the classifier note under Key decisions.
 
+### GPU training
+
+`slurm/train_jepa.sbatch` (one A100, `--gres=gpu:1`) and `slurm/eval_probe.sbatch`.
+Both take account and partition on the command line, like the extraction
+scripts, and both must be submitted **from the repo root**:
+
+```bash
+EPOCHS=150 sbatch -A AIFAC_S07_154 -p boost_usr_prod --time=16:00:00 slurm/train_jepa.sbatch
+PROTOCOL=dataset ARMS="voxels random" sbatch -A AIFAC_S07_154 -p boost_usr_prod slurm/eval_probe.sbatch
+```
+
+Knobs on `train_jepa.sbatch`, all environment variables: `EPOCHS`, `BATCH_SIZE`,
+`LR`, `EMBED_DIM`, `ENCODER_DEPTH`, `S_RATIO`/`T_RATIO` (default 0.0/0.6, the
+best schedule measured), `PROBE_EVERY` (default 5), `PROBE_PROTOCOLS` (default
+`"dataset subject"`), `SPATIAL_POOL` (default `6x4x3`), `WANDB_PROJECT`,
+`WANDB_RUN_NAME`, and `EXTRA_ARGS` for anything else `train_jepa.py` takes.
+
+**Both mask ratios at zero masks nothing**, the predictor gets an empty target
+and `SmoothL1Loss` fails on a shape mismatch. `train_jepa.py` now refuses to
+start in that case instead of dying on the first batch, and the defaults mask
+something.
+
+**wandb runs offline here and is synced afterwards.** Compute nodes have no
+outbound network, so the sbatch scripts set `WANDB_MODE=offline` and
+`WANDB_DIR=$OUT_DIR`; online mode blocks and then loses the metrics. Upload from
+a login node once the job is done — the job prints the exact command:
+
+```bash
+.venv/bin/wandb sync $SCRATCH_DIR/runs/jepa/<jobid>/wandb/offline-run-*
+```
+
+**Metrics also go to `$OUT_DIR/metrics.jsonl`, one JSON line per epoch**,
+written whether or not wandb is enabled. That is the copy that survives a job
+killed at the wall clock and a sync nobody ran, and it needs no network and no
+account.
+
+**Probe cost, measured** (A100, 7 loader workers, `embed_dim=32`,
+`--spatial-pool 6x4x3`, both protocols): the labeled corpus is 6,537 windows →
+116,234 rows × 2,304 features. Embedding all of it takes **~55 s** — it is one
+pass, not one per fold — and each `ridge-cv` fit takes **~55 s**, so an
+evaluation of 6 dataset folds + 1 subject fold is **~7-8 min**, against ~1.5 min
+for a training epoch at batch 32. The readouts dominate, not the I/O. At
+`PROBE_EVERY=5` over 150 epochs that is ~4 h of probing on top of ~4 h of
+training; trim with `PROBE_EVERY=10`, `PROBE_PROTOCOLS=dataset`, or
+`--probe-windows`.
+
+Logged per epoch: `train/jepa_loss`, and at every `PROBE_EVERY` epoch
+`probe/<protocol>/<dataset>/{pearson_r,pearson_r_x,pearson_r_y,r2,euclidean,n_subjects}`
+for each of the six labeled datasets, `probe/<protocol>/all/*` over every
+held-out subject, and `probe/<protocol>/mean_r` (mean over datasets, the
+headline). `probe/mean_r` is an alias for the first protocol's.
+
+Five things about this environment that each cost a failed job:
+
+- **The `.venv` ships CPU-only torch.** `torch==2.13.0+cpu` installs by default
+  and fails silently on GPU — `torch.cuda.is_available()` is just False and
+  `train_jepa.py` quietly picks the CPU. Boost nodes run driver 535.274.02, so
+  install the cu126 build: `uv pip install --reinstall-package torch
+  "torch==2.13.0+cu126" --index-url https://download.pytorch.org/whl/cu126`.
+  Note that `uv pip install torch==2.13.0` will *not* replace the CPU build —
+  the version compares equal, so only the local tag differs and uv keeps what is
+  there. Name the `+cu126` local version explicitly.
+- **Derive the repo root from `$SLURM_SUBMIT_DIR`, not `$BASH_SOURCE`.** Slurm
+  copies the batch script into its spool directory before running it, so
+  `dirname $BASH_SOURCE` is `/var/spool/slurmd/...` and `cd $REPO_DIR` lands
+  somewhere unwritable — the job dies on `mkdir: cannot create directory 'logs'`
+  before running a line of Python. `extract_array.sbatch` gets away with the
+  `BASH_SOURCE` form only because the failing subshell leaves `REPO_DIR` empty
+  and `cd ""` is a silent no-op that keeps the submit directory.
+- **`export PYTHONUNBUFFERED=1`.** Under `srun`, stdout is a file rather than a
+  terminal, so Python block-buffers it and a 16-hour run shows nothing in the
+  log until it exits — or nothing at all if it is killed at the wall clock.
+- **`export HDF5_USE_FILE_LOCKING=FALSE`.** Every data loader worker opens the
+  same participant files read-only from Lustre, which does not serve the POSIX
+  locks HDF5 asks for.
+- **The probe's readout fits in float64, so `--mem` sizes off the feature
+  matrix.** At `embed_dim=32` and `--spatial-pool 6x4x3` that is 2,304 features
+  over ~130k rows, a few GB; at `embed_dim=256` it is 18,432 features and tens
+  of GB, and sklearn holds more than one copy. `train_jepa.sbatch` asks for
+  128 G. Above that, cap the probe (`--probe-windows 2000`) or probe less often
+  rather than raising the request further.
+
+Use `--qos=boost_qos_dbg` for test jobs: max 30 min and 8 nodes, but it clears
+the queue far faster than `boost_usr_prod` for a two-minute smoke run.
+
+Sizing, measured on an A100-SXM-64GB: the pretraining corpus is ~8k windows of
+100 TRs (~250 steps at batch 32) and runs at **1.7 it/s, so ~2.4 min/epoch**.
+The GPU is not the constraint — each batch is 314 MB of eye blocks off Lustre —
+so data loader workers matter more than a second device, and DDP is not wired
+up. 150 epochs is about 7 hours.
+
 Other environment notes:
+
+- **Large transfers belong on the data movers, not a login node.** Login
+  sessions carry a 10-minute *CPU* time limit that will cut a long transfer off
+  mid-stream, and there is no shell on the movers — only `scp`, `rsync`, `sftp`,
+  `wget`, `curl`, `rclone`, `s3`, `aws s3`, invoked as
+  `ssh -xt $USER@data.leonardo.cineca.it <cmd>` with **absolute paths** ($HOME,
+  $WORK and $CINECA_SCRATCH are undefined there). Host-based auth works from a
+  login node but *not* from inside a batch job. Pulling the 18 GB probe set with
+  `huggingface_hub` survived on a login node because HF downloads are network-
+  bound rather than CPU-bound, but that is luck, not a rule.
 
 - **Submit under account `AIFAC_S07_154`, partition `boost_usr_prod`.** Not
   `EUHPC_D21_101` — that appears in the repo's `/leonardo_work` path but the

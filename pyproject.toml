@@ -21,7 +21,8 @@ dependencies = [
     "tqdm",
     "nbmake",
     "ipywidgets>=7.0.0",
-    "anywidget"
+    "anywidget",
+    "wandb"
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]

@@ -1,0 +1,20 @@
+# Pure temporal masking sweep (t-ratio 0.1 to 0.9, s-ratio 0.0), embed_dim=32, lr=2e-4
+# Evaluated with TR conditioning (--use-tr) and without (--no-tr)
+t-mask-0.1-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.1 --use-tr
+t-mask-0.1-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.1 --no-tr
+t-mask-0.2-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.2 --use-tr
+t-mask-0.2-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.2 --no-tr
+t-mask-0.3-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.3 --use-tr
+t-mask-0.3-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.3 --no-tr
+t-mask-0.4-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.4 --use-tr
+t-mask-0.4-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.4 --no-tr
+t-mask-0.5-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.5 --use-tr
+t-mask-0.5-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.5 --no-tr
+t-mask-0.6-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.6 --use-tr
+t-mask-0.6-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.6 --no-tr
+t-mask-0.7-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.7 --use-tr
+t-mask-0.7-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.7 --no-tr
+t-mask-0.8-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.8 --use-tr
+t-mask-0.8-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.8 --no-tr
+t-mask-0.9-tr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.9 --use-tr
+t-mask-0.9-notr	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio 0.0 --t-ratio 0.9 --no-tr

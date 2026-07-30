@@ -67,6 +67,10 @@ class ProbeDataset(Dataset):
     - ``holdout={...}`` -- a named fold, which is what leave-one-dataset-out and
       leave-one-paradigm-out use (see :func:`dataset_folds`,
       :func:`paradigm_folds`).
+
+    Plus ``split_by="all"``, which is not a split: it yields every labeled
+    window regardless of ``split``, for callers that split the *features*
+    afterwards rather than the files.
     """
 
     def __init__(
@@ -134,7 +138,15 @@ class ProbeDataset(Dataset):
 
         rng = np.random.default_rng(self.seed)
 
-        if self.split_by == "time" and self.holdout is None:
+        if self.split_by == "all":
+            # No split at all: every labeled window, once. Only useful when the
+            # caller does its own splitting downstream -- the in-training probe
+            # embeds the whole labeled set once per evaluation and then slices
+            # folds in feature space, which is six times cheaper than
+            # re-embedding 5/6 of the corpus for each leave-one-dataset-out
+            # fold, and gives the identical windows either way.
+            target = all_subjects
+        elif self.split_by == "time" and self.holdout is None:
             # Within subject: every participant appears in both splits, cut
             # along its own timeline. No timepoint is shared between the two --
             # windows overlap by half a window, so a naive index-wise split

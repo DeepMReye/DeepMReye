@@ -18,7 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from eval_probe import build_model  # noqa: E402
 from train_jepa import ARCH_KEYS, save_checkpoint  # noqa: E402
 
-SMALL = dict(embed_dim=32, encoder_depth=1, predictor_depth=1, num_heads=2)
+# Every key in ARCH_KEYS has to be here: save_checkpoint reads them off the
+# training args, so a shape the checkpoint format grew (`use_tr`) and the test
+# did not is an AttributeError at save time, not a silent omission.
+SMALL = dict(embed_dim=32, encoder_depth=1, predictor_depth=1, num_heads=2,
+             use_tr=True)
 
 
 def _trained_args(**overrides):

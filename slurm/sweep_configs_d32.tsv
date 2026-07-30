@@ -1,0 +1,21 @@
+# Second sweep, embed_dim fixed at 32 throughout (--num-heads 4, head_dim=8).
+# The first sweep (sweep_configs.tsv) varied width among other things and, once
+# evaluated at full spatial resolution instead of pool_spatial, showed 32
+# dims/patch already matches 256 dims/patch (see STATE.md). So width is no
+# longer a free axis here -- every line below fixes it and varies only what
+# is still unexplored: a finer learning-rate grid (the first sweep only had
+# 5e-5 / 2e-4 / 1e-3, and 5e-5 was still visibly climbing at epoch 21) and
+# weight decay, plus the mask schedule that led the full-resolution table
+# (`mask-temporal`, r 0.642 at epoch 21, ahead of `base` 0.631).
+#
+# 5 epochs, per the "epoch 1-3 already tells you if it works" rule -- the
+# embed-dim scan needed only 3 to separate 8/16/32/64, and the full-resolution
+# curve above was already flat by epoch 3 for every config tried so far.
+#
+base32	--lr 2e-4 --embed-dim 32 --num-heads 4
+lr-3e-4	--lr 3e-4 --embed-dim 32 --num-heads 4
+lr-1e-4	--lr 1e-4 --embed-dim 32 --num-heads 4
+lr-3e-5	--lr 3e-5 --embed-dim 32 --num-heads 4
+lr-1e-5	--lr 1e-5 --embed-dim 32 --num-heads 4
+mask-temporal32	--lr 2e-4 --embed-dim 32 --num-heads 4 --s-ratio-start 0.1 --s-ratio-end 0.2 --t-ratio-start 0.3 --t-ratio-end 0.7
+wd-high32	--lr 2e-4 --embed-dim 32 --num-heads 4 --weight-decay 0.05

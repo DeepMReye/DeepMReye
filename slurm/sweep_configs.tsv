@@ -1,0 +1,34 @@
+# JEPA hyperparameter sweep. One config per line: <name> TAB <args for train_jepa.py>.
+# The array task id indexes the non-comment lines, so keep them stable while a
+# sweep is in flight -- reordering renames every run's output directory.
+#
+# Short runs on purpose. The question here is which direction is worth a long
+# run, not what the final number is; the winner gets retrained before it is
+# reported. Everything varies against `base`, one axis at a time, so a result
+# can be attributed to the axis rather than to a combination.
+#
+# The masking ratios are the JEPA-specific knob and get four lines: how much of
+# the volume is hidden, and whether it is hidden across space or across time.
+# That choice decides what the predictor has to model -- spatial masking asks it
+# to complete an eyeball from its surroundings, temporal masking asks it to
+# extrapolate motion, which is closer to what gaze decoding needs.
+#
+base	--lr 2e-4 --batch-size 32
+lr-high	--lr 1e-3 --batch-size 32
+lr-low	--lr 5e-5 --batch-size 32
+wide	--lr 2e-4 --batch-size 32 --embed-dim 384 --encoder-depth 8 --num-heads 12
+small	--lr 2e-4 --batch-size 32 --embed-dim 128 --encoder-depth 4 --num-heads 4
+mask-heavy	--lr 2e-4 --batch-size 32 --s-ratio-start 0.3 --s-ratio-end 0.7 --t-ratio-start 0.3 --t-ratio-end 0.7
+mask-light	--lr 2e-4 --batch-size 32 --s-ratio-start 0.05 --s-ratio-end 0.25 --t-ratio-start 0.05 --t-ratio-end 0.25
+mask-temporal	--lr 2e-4 --batch-size 32 --s-ratio-start 0.1 --s-ratio-end 0.2 --t-ratio-start 0.3 --t-ratio-end 0.7
+mask-spatial	--lr 2e-4 --batch-size 32 --s-ratio-start 0.3 --s-ratio-end 0.7 --t-ratio-start 0.1 --t-ratio-end 0.2
+window-50	--lr 2e-4 --batch-size 32 --window-size 50
+# window-200 at batch 32 is an OOM on a 64 GB A100 and is kept here only so the
+# line numbering does not move. Attention is quadratic in token count: the
+# patcher makes 72 spatial x (window/5) temporal tokens, so 1440 tokens at
+# window 100 becomes 2880 at window 200 and the attention weights alone want
+# ~8 GB per layer. Rerun it at batch 8, with a batch-8 window-100 control, or
+# the window axis is confounded with the batch axis.
+window-200	--lr 2e-4 --batch-size 32 --window-size 200
+batch-64	--lr 4e-4 --batch-size 64
+wd-high	--lr 2e-4 --batch-size 32 --weight-decay 0.05

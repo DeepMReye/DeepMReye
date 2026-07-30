@@ -73,6 +73,74 @@ def pool_spatial(context_reps, n_s, n_t):
     return context_reps.view(b, n_s, n_t, d).mean(dim=1)
 
 
+def spatial_grid(block_shape, s_patch):
+    """The encoder's spatial token grid ``(gx, gy, gz)`` for a ``[X, Y, Z]`` block.
+
+    The patcher pads each axis up to a multiple of ``s_patch`` before splitting,
+    so the grid is the ceiling division, not the floor.
+    """
+    return tuple(-(-int(v) // s_patch) for v in block_shape)
+
+
+def parse_spatial_pool(spec, grid):
+    """Target spatial grid for a ``--spatial-pool`` spec. ``grid`` is the encoder's own.
+
+    ``mean`` -> (1,1,1), ``none`` -> the full grid, ``GXxGYxGZ`` -> that grid.
+    """
+    if spec == "mean":
+        return (1, 1, 1)
+    if spec == "none":
+        return tuple(grid)
+    try:
+        out = tuple(int(v) for v in str(spec).lower().split("x"))
+    except ValueError:
+        out = ()
+    if len(out) != 3 or any(v < 1 for v in out) or any(
+            o > g for o, g in zip(out, grid)):
+        raise ValueError(
+            f"--spatial-pool must be 'mean', 'none' or GXxGYxGZ with each term "
+            f"in 1..{grid}, got {spec!r}")
+    return out
+
+
+def collapse_spatial(reps, n_s, n_t, grid, spec="mean"):
+    """Collapse ``[B, n_s * n_t, D]`` encoder tokens to ``[B, n_t, F]`` features.
+
+    How the 6x4x3 spatial grid over the eye box collapses into features per
+    temporal bin is the single most consequential choice in the evaluation:
+
+    - ``mean`` (1x1x1) averages all 72 tokens -> D features. This was the
+      historical behaviour and it is measurably wrong: gaze direction lives in
+      the *contrast* across the orbit, so averaging it away cost about half the
+      recoverable correlation (dsL01, r 0.45 pooled against 0.86 unpooled).
+    - ``none`` (6x4x3) keeps every token -> 72*D features.
+    - ``GXxGYxGZ`` pools to a coarser grid, keeping coarse spatial identity at a
+      fraction of the width. ``2x1x1`` splits left orbit from right, which is the
+      anatomically meaningful cut and the one the CCA analysis exploits.
+
+    So the extremes are a false choice, and this is the knob between them.
+    """
+    if spec == "mean":
+        return pool_spatial(reps, n_s, n_t)
+
+    if grid[0] * grid[1] * grid[2] != n_s:
+        raise ValueError(f"grid {grid} does not match {n_s} tokens")
+    out = parse_spatial_pool(spec, grid)
+
+    # The patcher flattens the grid as x * (gy * gz) + y * gz + z, and the
+    # sequence as s * n_t + t. Recover both so the pooling is over real space.
+    b, _, d = reps.shape
+    r = reps.view(b, *grid, n_t, d)
+    if out != tuple(grid):
+        # adaptive pooling handles grids that do not divide evenly
+        r = r.permute(0, 4, 5, 1, 2, 3).reshape(b * n_t, d, *grid)
+        r = torch.nn.functional.adaptive_avg_pool3d(r, out)
+        r = r.view(b, n_t, d, -1).permute(0, 1, 3, 2)
+    else:
+        r = r.permute(0, 4, 1, 2, 3, 5)
+    return r.reshape(b, n_t, -1)
+
+
 def flatten_valid(features, targets):
     """Stack ``[B, n_t, ...]`` into rows and drop rows with a NaN target."""
     x = np.asarray(features).reshape(-1, np.asarray(features).shape[-1])
@@ -132,12 +200,26 @@ def aggregate_by_subject(targets, predictions, subjects, baseline=None, min_rows
         per_subject[str(sub)] = compute_probe_metrics(
             targets[sel], predictions[sel], baseline)
 
+    return median_over_subjects(per_subject)
+
+
+MEDIAN_KEYS = ("euclidean_error", "pearson_r_x", "pearson_r_y",
+               "r2_x", "r2_y", "r2_vs_baseline")
+
+
+def median_over_subjects(per_subject):
+    """Median of each metric over a ``{subject: metrics}`` mapping.
+
+    Split out from :func:`aggregate_by_subject` so per-subject scores computed in
+    separate leave-one-dataset-out folds -- each subject appears in exactly one,
+    against that fold's own baseline -- can be merged into one corpus-wide
+    number without rescoring anything.
+    """
     if not per_subject:
         return {"n_subjects": 0, "per_subject": {}}
 
     out = {"n_subjects": len(per_subject), "per_subject": per_subject}
-    for key in ("euclidean_error", "pearson_r_x", "pearson_r_y",
-                "r2_x", "r2_y", "r2_vs_baseline"):
+    for key in MEDIAN_KEYS:
         vals = [m[key] for m in per_subject.values()
                 if key in m and np.isfinite(m[key])]
         out[key] = float(np.median(vals)) if vals else np.nan

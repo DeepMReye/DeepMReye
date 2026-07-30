@@ -11,9 +11,12 @@ import torch
 from deepmreye.data.probe_dataset import PARADIGM_GROUPS, dataset_folds, paradigm_folds
 from deepmreye.evaluate.baselines import fit_readout
 from deepmreye.evaluate.probe import (
+    collapse_spatial,
     compute_probe_metrics,
     flatten_valid,
+    parse_spatial_pool,
     pool_spatial,
+    spatial_grid,
     temporal_targets,
 )
 
@@ -98,6 +101,75 @@ def test_pool_spatial_keeps_time_and_averages_space():
 def test_pool_spatial_rejects_a_token_count_that_does_not_match():
     with pytest.raises(ValueError):
         pool_spatial(torch.zeros(1, 11, 8), 4, 3)
+
+
+def test_spatial_grid_ceils_because_the_patcher_pads():
+    # 47x29x18 at patch size 8 pads to 48x32x24 -> the 6x4x3 grid the whole
+    # evaluation is written in terms of.
+    assert spatial_grid((47, 29, 18), 8) == (6, 4, 3)
+
+
+def test_parse_spatial_pool_rejects_a_grid_finer_than_the_encoder_has():
+    assert parse_spatial_pool("mean", (6, 4, 3)) == (1, 1, 1)
+    assert parse_spatial_pool("none", (6, 4, 3)) == (6, 4, 3)
+    assert parse_spatial_pool("2x1x1", (6, 4, 3)) == (2, 1, 1)
+    for bad in ("7x4x3", "2x1", "sixby", "0x1x1"):
+        with pytest.raises(ValueError):
+            parse_spatial_pool(bad, (6, 4, 3))
+
+
+def _positional_reps(grid, n_t, d):
+    """Tokens whose value encodes their spatial position -- the contrast that
+    mean-pooling destroys and that gaze direction is actually carried in."""
+    n_s = grid[0] * grid[1] * grid[2]
+    reps = torch.zeros(1, n_s * n_t, d)
+    for s in range(n_s):
+        for t in range(n_t):
+            reps[0, s * n_t + t, :] = float(s)
+    return reps
+
+
+def test_collapse_spatial_mean_matches_pool_spatial():
+    grid, n_t, d = (2, 2, 2), 3, 4
+    reps = _positional_reps(grid, n_t, d)
+    n_s = 8
+
+    assert torch.allclose(collapse_spatial(reps, n_s, n_t, grid, "mean"),
+                          pool_spatial(reps, n_s, n_t))
+
+
+def test_collapse_spatial_unpooled_keeps_every_token_and_its_position():
+    """The 0.45 -> 0.86 correlation gap lives here: 'none' must keep the
+    across-orbit contrast, and keep it in a stable feature order."""
+    grid, n_t, d = (2, 2, 2), 3, 4
+    reps = _positional_reps(grid, n_t, d)
+
+    out = collapse_spatial(reps, 8, n_t, grid, "none")
+
+    assert out.shape == (1, n_t, 8 * d)
+    for t in range(n_t):
+        # Features are laid out position-major: token s occupies columns s*d.
+        assert out[0, t].view(8, d)[:, 0].tolist() == list(range(8))
+    # Mean-pooling the same tokens throws all of that away.
+    assert collapse_spatial(reps, 8, n_t, grid, "mean").shape == (1, n_t, d)
+
+
+def test_collapse_spatial_pools_to_a_coarser_grid():
+    """2x1x1 is the left-orbit / right-orbit cut."""
+    grid, n_t, d = (2, 2, 2), 3, 4
+    reps = _positional_reps(grid, n_t, d)
+
+    out = collapse_spatial(reps, 8, n_t, grid, "2x1x1")
+
+    assert out.shape == (1, n_t, 2 * d)
+    # Grid index x * 4 + y * 2 + z, so x = 0 holds tokens 0-3 and x = 1 holds
+    # 4-7; pooling over y and z leaves their means, 1.5 and 5.5.
+    assert out[0, 0].view(2, d)[:, 0].tolist() == pytest.approx([1.5, 5.5])
+
+
+def test_collapse_spatial_rejects_a_grid_that_does_not_match_the_tokens():
+    with pytest.raises(ValueError):
+        collapse_spatial(torch.zeros(1, 24, 4), 8, 3, (3, 3, 3), "none")
 
 
 def test_flatten_valid_drops_only_nan_target_rows():

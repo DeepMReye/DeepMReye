@@ -63,8 +63,13 @@ def cmd_preprocess(args):
 
 def cmd_train(args):
     import runpy
-    # train_jepa parses its own args; forward the remaining CLI verbatim.
-    sys.argv = ["train_jepa.py", "--data_dir", args.data_dir] + args.train_args
+    # train_jepa parses its own args; forward the remaining CLI verbatim. The
+    # flag is `--data-dir`, with a hyphen -- `--data_dir` reaches train_jepa.py
+    # as an unrecognised argument and it exits. And argparse.REMAINDER keeps the
+    # `--` that separates the two argument sets, which train_jepa.py would also
+    # reject, so drop it here rather than making the caller omit it.
+    forwarded = args.train_args[1:] if args.train_args[:1] == ["--"] else args.train_args
+    sys.argv = ["train_jepa.py", "--data-dir", args.data_dir] + forwarded
     runpy.run_path(str(SCRIPTS_DIR / "train_jepa.py"), run_name="__main__")
 
 

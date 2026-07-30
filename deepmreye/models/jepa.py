@@ -53,9 +53,10 @@ class JEPAModel(nn.Module):
      - Target Encoder (EMA weights, evaluates on masked targets)
      - Predictor (Attempts to decode target representation from context)
     """
-    def __init__(self, embed_dim=256, encoder_depth=6, predictor_depth=3, num_heads=8, max_n_s=500, max_n_t=500):
+    def __init__(self, embed_dim=256, encoder_depth=6, predictor_depth=3, num_heads=8, max_n_s=500, max_n_t=500, use_tr=True):
         super().__init__()
         self.embed_dim = embed_dim
+        self.use_tr = use_tr
         
         self.patcher = fMRIPatcher(embed_dim=embed_dim)
         
@@ -63,23 +64,38 @@ class JEPAModel(nn.Module):
         self.pos_s = nn.Embedding(max_n_s, embed_dim)
         self.pos_t = nn.Embedding(max_n_t, embed_dim)
 
+        # TR Conditioning & Continuous Temporal Positional Encoding
+        self.num_time_freqs = 16
+        self.temp_pos_mlp = nn.Sequential(
+            nn.Linear(self.num_time_freqs * 2, embed_dim),
+            nn.GELU(),
+            nn.Linear(embed_dim, embed_dim)
+        )
+        self.tr_mlp = nn.Sequential(
+            nn.Linear(1, embed_dim // 4),
+            nn.GELU(),
+            nn.Linear(embed_dim // 4, embed_dim)
+        )
+
         # Predictor specialized Mask Token
         self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         # Positional embeddings are added to the patch tokens, so their scale
         # decides how much of a token is "where it is" versus "what is in it".
-        # nn.Embedding defaults to N(0, 1), while patch tokens come out at
-        # std ~0.36 -- measured, that leaves the *input* at 6% of token variance
-        # before the transformer starts, and six layers dilute it to 0.05%. The
-        # consequence is visible in the evaluation: a randomly initialised
-        # encoder fits gaze on training subjects (r ~ 0.45) and transfers at
-        # exactly r ~ 0.00, because the only thing surviving pooling is the
-        # position pattern, which is identical for every window.
-        # std 0.02 is the ViT / MAE / I-JEPA convention and puts position at a
-        # few percent of the patch signal instead of 16x it.
+        # std 0.02 is the ViT / MAE / I-JEPA convention.
         nn.init.trunc_normal_(self.pos_s.weight, std=0.02)
         nn.init.trunc_normal_(self.pos_t.weight, std=0.02)
         nn.init.trunc_normal_(self.mask_token, std=0.02)
+        for m in self.temp_pos_mlp.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.trunc_normal_(m.weight, std=0.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+        for m in self.tr_mlp.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.trunc_normal_(m.weight, std=0.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
         # Core ViTs
         self.context_encoder = ViTEncoder(embed_dim, encoder_depth, num_heads)
@@ -90,15 +106,38 @@ class JEPAModel(nn.Module):
         # Stop gradient on target encoder
         for param in self.target_encoder.parameters():
             param.requires_grad = False
-            
-    def _add_positional_embedding(self, tokens, spatial_ids, temporal_ids):
+
+    def _sinusoidal_time_embedding(self, t_sec, max_period=100.0):
+        device = t_sec.device
+        bands = torch.exp(torch.linspace(0, np.log(max_period), self.num_time_freqs, device=device))
+        angles = t_sec.unsqueeze(-1) * bands.view(1, 1, -1)
+        sin = torch.sin(angles)
+        cos = torch.cos(angles)
+        return torch.cat([sin, cos], dim=-1)
+
+    def _add_positional_embedding(self, tokens, spatial_ids, temporal_ids, tr=None):
         """
         Adds independent spatial and temporal positional embeddings to tokens. 
-        spatial_ids/temporal_ids: 1D tensors describing the location of each token.
+        spatial_ids/temporal_ids: tensors describing the location of each token.
+        tr: repetition time tensor [B] in seconds (or None).
         """
         ps = self.pos_s(spatial_ids)
-        pt = self.pos_t(temporal_ids)
-        return tokens + ps + pt
+        
+        if self.use_tr and tr is not None:
+            # Reshape tr to [B, 1]
+            tr_b = tr.view(-1, 1).to(tokens.device)
+            # Physical time in seconds for each token center
+            t_sec = (temporal_ids.float() + 0.5) * float(self.patcher.t_patch) * tr_b
+            sin_emb = self._sinusoidal_time_embedding(t_sec)
+            pt = self.temp_pos_mlp(sin_emb)
+            
+            log_tr = torch.log(torch.clamp(tr_b, min=1e-3))
+            ptr = self.tr_mlp(log_tr).unsqueeze(1)
+            
+            return tokens + ps + pt + ptr
+        else:
+            pt = self.pos_t(temporal_ids)
+            return tokens + ps + pt
         
     def update_target_encoder(self, momentum=0.996):
         """Exponential Moving Average (EMA) update for strict JEPA architectures."""
@@ -106,27 +145,25 @@ class JEPAModel(nn.Module):
             for param_q, param_k in zip(self.context_encoder.parameters(), self.target_encoder.parameters()):
                 param_k.data.mul_(momentum).add_((1 - momentum) * param_q.detach().data)
 
-    def forward_target(self, target_tokens, c_idx_tensor, t_idx_tensor, N_S, N_T):
+    def forward_target(self, target_tokens, c_idx_tensor, t_idx_tensor, N_S, N_T, tr=None):
         """Passes target tokens strictly through the EMA Target Encoder"""
         with torch.no_grad():
-            # Recover indices locally for embeddings. 
-            # This logic mimics the N_S x N_T grid flattening arithmetic: seq_idx = (s_id * N_T) + t_id
             target_s_ids = t_idx_tensor // N_T
             target_t_ids = t_idx_tensor % N_T
             
-            x = self._add_positional_embedding(target_tokens, target_s_ids, target_t_ids)
+            x = self._add_positional_embedding(target_tokens, target_s_ids, target_t_ids, tr=tr)
             target_reps = self.target_encoder(x)
         return target_reps.contiguous()
         
-    def forward_context(self, context_tokens, c_idx_tensor, N_S, N_T):
+    def forward_context(self, context_tokens, c_idx_tensor, N_S, N_T, tr=None):
         """Passes valid unmasked tokens into Context Encoder"""
         context_s_ids = c_idx_tensor // N_T
         context_t_ids = c_idx_tensor % N_T
         
-        x = self._add_positional_embedding(context_tokens, context_s_ids, context_t_ids)
+        x = self._add_positional_embedding(context_tokens, context_s_ids, context_t_ids, tr=tr)
         return self.context_encoder(x)
 
-    def forward_predict(self, context_reps, t_idx_tensor, N_S, N_T):
+    def forward_predict(self, context_reps, t_idx_tensor, N_S, N_T, tr=None):
         """
         Takes learned Context representations, and attempts to predict
         Target representations purely given the *Positional Embeddings* of the missing targets.
@@ -139,17 +176,14 @@ class JEPAModel(nn.Module):
         # 2. Add specific Target Positional Embeddings
         target_s_ids = t_idx_tensor // N_T
         target_t_ids = t_idx_tensor % N_T
-        mask_tokens = self._add_positional_embedding(mask_tokens, target_s_ids, target_t_ids)
+        mask_tokens = self._add_positional_embedding(mask_tokens, target_s_ids, target_t_ids, tr=tr)
         
         # 3. Concatenate (Context + Mask Tokens)
-        # The exact implementation of classical JEPA passes only the masks into the Predictor, 
-        # cross-attending to the Context. Alternatively, we can self-attend a concatenated sequence.
-        # ViT typically self-attends context concatenated with MASK.
         concat_sequence = torch.cat([context_reps, mask_tokens], dim=1)
         
         pred_full = self.predictor(concat_sequence)
         
         # 4. Extract *only* the predictions corresponding to the Mask Tokens
-        # They were concatenated at the end, so we slice them off
         pred_targets = pred_full[:, -N_target:, :]
         return pred_targets.contiguous()
+

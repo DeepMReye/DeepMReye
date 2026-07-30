@@ -49,8 +49,10 @@ problem from whether the representation carries gaze -- see
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -64,9 +66,10 @@ from deepmreye.datasource import resolve
 from deepmreye.evaluate.baselines import ALL_READOUTS, DEFAULT_READOUTS, fit_readout, predict
 from deepmreye.evaluate.probe import (
     aggregate_by_subject,
+    collapse_spatial,
     compute_probe_metrics,
     flatten_valid_groups,
-    pool_spatial,
+    spatial_grid,
     temporal_targets,
 )
 from deepmreye.models.jepa import JEPAModel
@@ -88,6 +91,9 @@ def build_model(args, device, checkpoint=None):
     ``train_jepa.py`` stores the shape it trained with. Trusting this script's
     own defaults instead would either raise on a size mismatch or, worse, load
     successfully into a differently-shaped model on some future refactor.
+
+    Seeded, because the ``random`` arm has no checkpoint to fix its weights and
+    an unseeded control is a different encoder on every run.
     """
     arch = dict(embed_dim=args.embed_dim, encoder_depth=args.encoder_depth,
                 predictor_depth=args.predictor_depth, num_heads=args.num_heads)
@@ -99,23 +105,55 @@ def build_model(args, device, checkpoint=None):
                 print(f"    [*] using checkpoint architecture {state['arch']}")
             arch = state["arch"]
 
+    torch.manual_seed(getattr(args, "seed", 0))
     model = JEPAModel(**arch)
     if state is not None:
         model.load_state_dict(state.get("model", state))
     return model.to(device)
 
 
-def encoder_features(model, loader, device, desc):
-    """Frozen context encoder over a loader, keeping the temporal axis."""
+def build_arms(args, device):
+    """One encoder per non-voxel arm, built **once** for the whole evaluation.
+
+    This has to be built once rather than per split, and the reason is not
+    efficiency. A fresh ``JEPAModel()`` per call gives the ``random`` arm
+    *different weights for the train split and the test split*: the readout is
+    then fitted in one random basis and asked to predict in another, so it
+    scores ~0 no matter what the encoder does. That is a broken control, not a
+    measurement of an untrained encoder -- and it is what produced the
+    `random` = -0.003 row at full spatial resolution, which in turn was read as
+    "a random spatially-resolved projection cannot do this". One shared random
+    encoder scores far higher; see STATE.md.
+    """
+    return {arm: build_model(args, device,
+                             args.checkpoint if arm == "trained" else None)
+            for arm in args.arms
+            if arm != "voxels" and not (arm == "trained" and not args.checkpoint)}
+
+
+def encoder_features(model, loader, device, desc, spatial_pool="mean"):
+    """Frozen context encoder over a loader, keeping the temporal axis.
+
+    The encoder's spatial tokens form a 6x4x3 grid over the eye box (patch size
+    8 on a 47x29x18 block); ``spatial_pool`` decides how that grid collapses to
+    features per temporal bin -- see
+    :func:`deepmreye.evaluate.probe.collapse_spatial`, which
+    ``scripts/train_jepa.py``'s in-training probe shares, so a curve logged
+    during training and a number from here mean the same thing.
+    """
     feats, targs, dsets, subs = [], [], [], []
     model.eval()
+    s_patch = model.patcher.s_patch
     with torch.no_grad():
-        for x, y, ds, sub, _tr in tqdm(loader, desc=desc, leave=False):
+        for x, y, ds, sub, tr_val in tqdm(loader, desc=desc, leave=False):
             x = x.to(device)
+            tr_tensor = tr_val.to(device)
             seq, n_s, n_t = model.patcher(x)
             idx = torch.arange(n_s * n_t, device=device).unsqueeze(0).expand(x.shape[0], -1)
-            reps = model.forward_context(seq, idx, n_s, n_t)
-            feats.append(pool_spatial(reps, n_s, n_t).cpu().numpy())
+            reps = model.forward_context(seq, idx, n_s, n_t, tr=tr_tensor)
+
+            grid = spatial_grid(x.shape[1:4], s_patch)
+            feats.append(collapse_spatial(reps, n_s, n_t, grid, spatial_pool).cpu().numpy())
             targs.append(temporal_targets(y, n_t))
             dsets.extend(ds)
             subs.extend(sub)
@@ -182,32 +220,56 @@ def cache_key(args, fold, split, arm):
              args.gap, args.embed_dim, args.encoder_depth, args.num_heads,
              _source_fingerprint(probe_dataset)]
     if arm != "voxels":
-        parts.append(_source_fingerprint(jepa, patcher))
+        # Pooling changes the features but nothing else in this key would show
+        # it, so a pooled and an unpooled run would collide on the same cache
+        # entry and silently report each other's numbers.
+        parts += [args.spatial_pool, _source_fingerprint(jepa, patcher)]
     if arm == "trained" and args.checkpoint:
         parts += [args.checkpoint, Path(args.checkpoint).stat().st_mtime]
     return hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:16]
 
 
-def get_features(args, device, fold, split, arm, loader, n_t):
+def get_features(args, device, fold, split, arm, loader, n_t, model=None):
     cache = Path(args.feature_cache) / f"{cache_key(args, fold, split, arm)}.npz" \
         if args.feature_cache else None
     if cache and cache.exists():
-        d = np.load(cache, allow_pickle=False)
-        return d["f"], d["y"], d["ds"], d["sub"]
+        try:
+            d = np.load(cache, allow_pickle=False)
+            return d["f"], d["y"], d["ds"], d["sub"]
+        except (zipfile.BadZipFile, EOFError, ValueError) as e:
+            # A concurrent job may be part-way through writing this entry (the
+            # `voxels` and `random` keys carry no checkpoint, so every job in a
+            # sweep shares them). Recomputing costs minutes; failing the job
+            # costs hours, and the cache is only ever a speedup.
+            print(f"    [!] cache {cache.name} unreadable ({e.__class__.__name__}); "
+                  f"recomputing")
 
     desc = f"{fold}/{arm} {split}"
     if arm == "voxels":
         out = voxel_features(loader, n_t, args.voxel_stride, desc)
     else:
-        model = build_model(args, device, args.checkpoint if arm == "trained" else None)
-        out = encoder_features(model, loader, device, desc)
-        del model
+        # The caller owns the encoder; both splits of a fold must go through the
+        # *same* weights (see build_arms).
+        out = encoder_features(model, loader, device, desc, args.spatial_pool)
     if out is None:
         return None
 
     if cache:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(cache, f=out[0], y=out[1], ds=out[2], sub=out[3])
+        # Write then rename. Concurrent jobs share cache entries by design --
+        # `voxels` and `random` keys carry no checkpoint, so every job in a
+        # sweep computes the same ones -- and a reader that opens a half-written
+        # file gets `BadZipFile` rather than a wait. Rename is atomic on the
+        # same filesystem, so a reader sees either the old file or a complete
+        # new one. The pid keeps two writers from sharing a temp name.
+        tmp = cache.with_suffix(f".{os.getpid()}.tmp.npz")
+        # Uncompressed, deliberately. These entries reach 3 GB at full spatial
+        # resolution (18,432 features x 30k rows), and zlib on float32 activations
+        # buys little while costing minutes per file -- measured, it was the
+        # entire reason four 6-fold jobs hit a 6 h wall while the ridge fits they
+        # fed took 15 s per fold. Scratch has the space; the time we do not have.
+        np.savez(tmp, f=out[0], y=out[1], ds=out[2], sub=out[3])
+        os.replace(tmp, cache)
     return out
 
 
@@ -232,7 +294,7 @@ def make_splits(protocol, holdout, data_dir, args):
             ProbeDataset(split="test", **kw, **common))
 
 
-def run_fold(fold, holdout, data_dir, args, device):
+def run_fold(fold, holdout, data_dir, args, device, arm_models):
     train_ds, test_ds = make_splits(args.protocol, holdout, data_dir, args)
     if not len(train_ds) or not len(test_ds):
         print(f"  [!] {fold}: empty split (train {len(train_ds)}, test {len(test_ds)}) -- skipped")
@@ -251,8 +313,9 @@ def run_fold(fold, holdout, data_dir, args, device):
     for arm in args.arms:
         if arm == "trained" and not args.checkpoint:
             continue
-        tr = get_features(args, device, fold, "train", arm, loaders["train"], n_t)
-        te = get_features(args, device, fold, "test", arm, loaders["test"], n_t)
+        encoder = arm_models.get(arm)
+        tr = get_features(args, device, fold, "train", arm, loaders["train"], n_t, encoder)
+        te = get_features(args, device, fold, "test", arm, loaders["test"], n_t, encoder)
         if tr is None or te is None:
             continue
 
@@ -326,6 +389,13 @@ def main():
     p.add_argument("--window-size", type=int, default=100)
     p.add_argument("--temp-patch-size", type=int, default=5)
     p.add_argument("--voxel-stride", type=int, default=4)
+    p.add_argument("--spatial-pool", default="mean",
+                   help="How the encoder's 6x4x3 spatial token grid collapses to "
+                        "features per temporal bin: 'mean' (1x1x1, 256 features), "
+                        "'none' (6x4x3, 18432), or GXxGYxGZ to pool to a coarser "
+                        "grid, e.g. 2x1x1 (512, left/right orbit) or 3x2x1 (1536). "
+                        "Averaging away spatial contrast costs about half the "
+                        "recoverable gaze correlation; 18k features do not finish.")
     p.add_argument("--n-components", type=int, default=32, help="For pca-ridge and pls.")
     p.add_argument("--gap", type=int, default=0, help="TRs discarded either side of a `within` split.")
     p.add_argument("--batch-size", type=int, default=8)
@@ -368,10 +438,14 @@ def main():
     if args.limit_folds:
         folds = folds[: args.limit_folds]
 
+    # Built once, before the folds: every fold and both splits must see the
+    # same weights, or the `random` arm compares two different random encoders.
+    arm_models = build_arms(args, device)
+
     all_results = {}
     for name, holdout in folds:
         print(f"\n[*] fold: {name}" + (f"  (holding out {sorted(holdout)})" if holdout else ""))
-        all_results[name] = run_fold(name, holdout, data_dir, args, device)
+        all_results[name] = run_fold(name, holdout, data_dir, args, device, arm_models)
 
     report(all_results, args.pooled)
 

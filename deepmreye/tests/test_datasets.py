@@ -1,10 +1,17 @@
 """Tests for the windowed loaders over the per-participant layout."""
+import sys
+from collections import Counter
+from pathlib import Path
+
 import h5py
 import numpy as np
 
 from deepmreye.data.jepa_dataset import JEPADataset
 from deepmreye.data.probe_dataset import ProbeDataset
 from deepmreye.storage import subject_path, write_subject
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from train_jepa import cap_probe_windows  # noqa: E402
 
 
 def _block(t, seed=0):
@@ -302,3 +309,37 @@ def test_probe_skips_labeled_subjects_without_a_usable_tr(tmp_path):
 
     ds = ProbeDataset(tmp_path, split="train", split_ratio=1.0, window_size=100)
     assert {s["subject"] for s in ds.samples} == {"sub-ok"}
+
+
+def test_probe_cap_keeps_small_datasets_visible():
+    """Capping probe windows must not silently drop a whole dataset.
+
+    The monitor reports per dataset, so weighting the cap by dataset size is
+    exactly wrong: on the real corpus the test split is 1353 windows of which
+    dsL06_sequences contributes 4, and an evenly spaced 1-in-3.4 stride over the
+    concatenated list left it with nothing to score -- the monitor printed nan
+    for that dataset every epoch.
+    """
+    samples = ([{"dataset": "big", "start": i} for i in range(1349)]
+               + [{"dataset": "tiny", "start": i} for i in range(4)])
+
+    kept = cap_probe_windows(samples, cap=400)
+
+    assert len(kept) <= 400
+    per_ds = Counter(s["dataset"] for s in kept)
+    # Every dataset survives, and the small one keeps all it had rather than a
+    # size-proportional share of it.
+    assert per_ds["tiny"] == 4
+    assert per_ds["big"] > 0
+
+
+def test_probe_cap_is_a_noop_below_the_cap():
+    samples = [{"dataset": "ds1", "start": i} for i in range(10)]
+    assert cap_probe_windows(samples, cap=400) == samples
+
+
+def test_probe_cap_of_zero_keeps_every_window():
+    """0 is the default: the probe scores the whole labeled corpus, which is
+    what makes its curve comparable with eval_probe.py's headline number."""
+    samples = [{"dataset": "ds1", "start": i} for i in range(1000)]
+    assert cap_probe_windows(samples, cap=0) == samples
