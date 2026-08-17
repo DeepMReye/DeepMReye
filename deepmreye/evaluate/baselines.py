@@ -32,6 +32,15 @@ Why these and not others:
                 against the reading that a learned representation only helps
                 because it is non-linear; if trees on raw voxels close the gap,
                 that is the explanation.
+- ``banded-ridge``/``stack-ridge``
+                the two readouts that exist only for *concatenated* features
+                (``deepmreye/evaluate/combine.py``). ``ridge-cv`` applies one
+                alpha to every column, so on ``fold-pca:64+lr-cca:32`` it cannot
+                shrink one block harder than the other -- which is the whole
+                content of the question "does the corpus basis add anything on
+                top". These two can, and on a single block they collapse back to
+                ``ridge-cv``, so the comparison is nested rather than merely
+                adjacent.
 - ``svr``/``lgbm``/``mlp`` the three non-DeepMReye regressors compared against
                 the original CNN in ``media/deepmreye_benchmarks.ipynb``
                 (``sklearn.svm.SVR``, ``lightgbm.LGBMRegressor``,
@@ -68,7 +77,12 @@ ALPHA_GRID = np.logspace(-2, 6, 17)
 DEFAULT_READOUTS = ("mean", "ridge-cv", "pca-ridge", "pls")
 
 ALL_READOUTS = ("mean", "linear", "ridge", "ridge-cv", "pca-ridge", "pls", "rf", "gbt",
-                "svr", "lgbm", "mlp")
+                "svr", "lgbm", "mlp", "banded-ridge", "stack-ridge")
+
+# Readouts that need to know where one feature block ends and the next begins,
+# and that select their regularisation on participant-grouped folds. Handed a
+# single block they are ridge with a CV-selected alpha.
+BLOCK_READOUTS = ("banded-ridge", "stack-ridge")
 
 
 def _n_components(requested, n_samples, n_features):
@@ -76,7 +90,8 @@ def _n_components(requested, n_samples, n_features):
     return max(1, min(requested, n_samples - 1, n_features))
 
 
-def build_readout(name, n_samples, n_features, n_components=32, seed=0):
+def build_readout(name, n_samples, n_features, n_components=32, seed=0,
+                  blocks=None):
     """Construct one readout, sized for the data it will see.
 
     ``n_samples``/``n_features`` are needed because PCA and PLS cannot ask for
@@ -113,27 +128,48 @@ def build_readout(name, n_samples, n_features, n_components=32, seed=0):
             scale, MultiOutputRegressor(
                 HistGradientBoostingRegressor(max_iter=200, random_state=seed)))
     if name == "svr":
-        # SVR is single-output too.
-        return make_pipeline(scale, MultiOutputRegressor(SVR()))
+        k = _n_components(n_components, n_samples, n_features)
+        return make_pipeline(scale, PCA(n_components=k, random_state=seed),
+                             MultiOutputRegressor(SVR()))
     if name == "lgbm":
+        k = _n_components(n_components, n_samples, n_features)
         return make_pipeline(
-            scale, MultiOutputRegressor(
+            scale, PCA(n_components=k, random_state=seed),
+            MultiOutputRegressor(
                 lgb.LGBMRegressor(random_state=seed, verbosity=-1)))
     if name == "mlp":
-        # MLPRegressor is natively multi-output, unlike the three above it.
-        return make_pipeline(scale, MLPRegressor(random_state=seed, max_iter=500))
+        k = _n_components(n_components, n_samples, n_features)
+        return make_pipeline(
+            scale, PCA(n_components=k, random_state=seed),
+            MLPRegressor(random_state=seed, max_iter=500))
+    if name in BLOCK_READOUTS:
+        from deepmreye.evaluate.combine import BandedRidge, StackedRidge
+
+        # No outer scaler: both own their scaling, because they also own the
+        # grouped inner split and threading groups through a pipeline is the
+        # kind of wiring the xrot control bug came from.
+        cls = BandedRidge if name == "banded-ridge" else StackedRidge
+        return cls(blocks=list(blocks) if blocks else [n_features], seed=seed)
     raise ValueError(f"unknown readout {name!r}; known: {', '.join(ALL_READOUTS)}")
 
 
-def fit_readout(name, x, y, n_components=32, seed=0):
-    """Fit one readout on ``x [N, D]`` -> ``y [N, 2]``. None if unfittable."""
+def fit_readout(name, x, y, n_components=32, seed=0, blocks=None, groups=None):
+    """Fit one readout on ``x [N, D]`` -> ``y [N, 2]``. None if unfittable.
+
+    ``blocks`` (widths of the concatenated feature blocks) and ``groups``
+    (participant ids, for the inner split) are used by ``BLOCK_READOUTS`` and
+    ignored by everything else, so callers can pass them unconditionally.
+    """
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
     if x.ndim != 2 or len(x) < 3 or len(x) != len(y):
         return None
 
-    model = build_readout(name, len(x), x.shape[1], n_components, seed)
-    model.fit(x, y)
+    model = build_readout(name, len(x), x.shape[1], n_components, seed, blocks)
+    if name in BLOCK_READOUTS:
+        model.fit(x, y, groups=groups)
+    else:
+        model.fit(x, y)
     return model
 
 

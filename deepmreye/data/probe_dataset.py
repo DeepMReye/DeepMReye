@@ -80,6 +80,7 @@ class ProbeDataset(Dataset):
         seed=42,
         holdout=None,
         gap=0,
+        datasets=None,
     ):
         self.labeled_data_dir = Path(labeled_data_dir).resolve()
         self.split = split
@@ -98,29 +99,40 @@ class ProbeDataset(Dataset):
         # while leave-one-dataset-out is six folds every subject appears in
         # exactly once as test.
         self.holdout = set(holdout) if holdout else None
+        # Restrict the corpus *before* any split logic runs. Combined with
+        # `holdout` this expresses train-on-one/test-on-one: pass
+        # datasets={S, T}, holdout={T}, and the existing leave-one-out branch
+        # yields exactly S for train and T for test. That is the protocol the
+        # published single-dataset DeepMReye checkpoints were trained under, so
+        # it is the only way to compare against them like for like.
+        self.datasets = set(datasets) if datasets else None
 
         self.samples = []
         self._build_index()
 
     def _discover(self):
         """Every participant file that actually carries gaze labels."""
-        found = []
-        for ds_name, sub_id, path in iter_subjects(self.labeled_data_dir):
+        from concurrent.futures import ThreadPoolExecutor
+
+        subs = list(iter_subjects(self.labeled_data_dir))
+
+        def inspect(item):
+            ds_name, sub_id, path = item
             try:
                 with h5py.File(path, "r") as f:
                     if "eye_block" not in f or "labels" not in f:
-                        continue
+                        return None
                     tr = f.attrs.get("repetition_time")
                     if not is_plausible_tr(tr):
-                        # The encoder conditions on TR, so a probe subject
-                        # without a usable one cannot be scored against it.
-                        logging.warning(f"Skipping {ds_name}/{sub_id}: TR {tr} not usable")
-                        continue
-                    found.append(Subject(str(path), ds_name, sub_id,
-                                         f["eye_block"].shape[-1], float(tr)))
-            except Exception as e:
-                logging.warning(f"Failed to scan {path}: {e}")
-        return found
+                        return None
+                    return Subject(str(path), ds_name, sub_id,
+                                   f["eye_block"].shape[-1], float(tr))
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            res = list(pool.map(inspect, subs))
+        return [s for s in res if s is not None]
 
     def _build_index(self):
         if not self.labeled_data_dir.exists():
@@ -128,6 +140,8 @@ class ProbeDataset(Dataset):
 
         logging.info(f"Scanning labeled data for '{self.split}' split...")
         all_subjects = self._discover()
+        if self.datasets is not None:
+            all_subjects = [s for s in all_subjects if s.dataset in self.datasets]
         if not all_subjects:
             logging.warning("No labeled participant files found.")
             return

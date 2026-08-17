@@ -169,3 +169,71 @@ def test_probe_skips_labeled_subjects_without_a_usable_tr(tmp_path):
 
     ds = ProbeDataset(tmp_path, split="train", split_ratio=1.0, window_size=100)
     assert {s["subject"] for s in ds.samples} == {"sub-ok"}
+
+
+def _corpus(tmp_path, datasets=("dsL01_a", "dsL02_b", "dsL03_c"), n_subs=3):
+    for ds in datasets:
+        for i in range(n_subs):
+            write_subject(subject_path(tmp_path, ds, f"sub-{i:02d}"), _block(200),
+                          labels=np.zeros((200, 10, 2), np.float32),
+                          attrs=LABEL_ATTRS)
+
+
+def test_datasets_filter_restricts_the_corpus(tmp_path):
+    _corpus(tmp_path)
+    ds = ProbeDataset(tmp_path, split="train", split_ratio=1.0, window_size=100,
+                      datasets={"dsL02_b"})
+    assert {s["dataset"] for s in ds.samples} == {"dsL02_b"}
+
+
+def test_datasets_filter_applies_before_the_split(tmp_path):
+    """It must narrow the corpus, not post-filter a split that was computed over
+    everything -- otherwise a within-dataset subject split would be drawn from
+    the wrong population."""
+    _corpus(tmp_path, n_subs=6)
+    narrowed = ProbeDataset(tmp_path, split="train", window_size=100,
+                            datasets={"dsL01_a"})
+    alone = ProbeDataset(tmp_path, split="train", window_size=100)
+    assert {s["dataset"] for s in narrowed.samples} == {"dsL01_a"}
+    # The same subjects of dsL01_a land in train either way; only the reachable
+    # corpus changed, not the per-dataset split.
+    assert ({s["subject"] for s in narrowed.samples}
+            == {s["subject"] for s in alone.samples if s["dataset"] == "dsL01_a"})
+
+
+def test_datasets_plus_holdout_gives_train_on_one_test_on_one(tmp_path):
+    """The protocol the published single-dataset DeepMReye checkpoints require:
+    train on exactly one dataset, test on exactly another."""
+    _corpus(tmp_path)
+    kw = dict(window_size=100, datasets={"dsL01_a", "dsL03_c"},
+              holdout={"dsL03_c"})
+    train = ProbeDataset(tmp_path, split="train", **kw)
+    test = ProbeDataset(tmp_path, split="test", **kw)
+
+    assert {s["dataset"] for s in train.samples} == {"dsL01_a"}
+    assert {s["dataset"] for s in test.samples} == {"dsL03_c"}
+    # Every subject of the source is available for training -- no 80/20 cut.
+    assert len({s["subject"] for s in train.samples}) == 3
+
+
+def test_no_datasets_filter_keeps_every_dataset(tmp_path):
+    _corpus(tmp_path)
+    ds = ProbeDataset(tmp_path, split="train", split_ratio=1.0, window_size=100)
+    assert {s["dataset"] for s in ds.samples} == {"dsL01_a", "dsL02_b", "dsL03_c"}
+
+
+def test_dataset_pairs_enumerates_ordered_pairs_without_self_pairs():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from eval_probe import dataset_pairs
+
+    names = ["a", "b", "c"]
+    pairs = dataset_pairs(names)
+    assert len(pairs) == len(names) * (len(names) - 1)
+    assert all(s != t for _, (s, t) in pairs)
+    # Ordered: training on a and testing on b is a different experiment from
+    # the reverse, and both belong in the matrix.
+    assert ("a -> b", ("a", "b")) in pairs
+    assert ("b -> a", ("b", "a")) in pairs

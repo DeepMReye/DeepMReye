@@ -2,6 +2,8 @@
 *.mp4
 *.pyc
 *.avi
+*.pt
+models/
 
 /tmp/*.nii
 *.npy
@@ -186,3 +188,7 @@ cython_debug/
 
 # Paper draft (copied to cluster manually, not tracked)
 paper/
+
+# TensorFlow-only env for the DeepMReye 1.0 baseline (scripts/eval_dme1.py).
+# Kept apart from .venv because TF pins numpy against the sklearn/torch stack.
+.venv-tf/

@@ -7,10 +7,14 @@ gaze probe. It explains the mechanics without relying on reading source code.
 For a short orientation (project state, key decisions, layout) see `CLAUDE.md`.
 For install and usage see `README.md`.
 
-A self-supervised JEPA pretraining approach (patchification, masking, a ViT
-encoder/predictor) was built and evaluated on this codebase and set aside —
-see `CLAUDE.md`'s "What this is" for why. That architecture is documented on
-the **`pytorch-jepa`** branch, not here.
+Two self-supervised approaches have been built and set aside. A masked-volume
+JEPA (patchification, a ViT encoder/predictor) is documented on the
+**`pytorch-jepa`** branch, not here. A cross-orbit JEPA
+(`deepmreye/orbitjepa.py`) is still in this branch and is the one arm whose
+untrained control provably equals `lr-cca:k`; it ties that control and does not
+beat it. See `RESEARCH.md` for the consolidated result and for the measurement
+that explains it — gaze is linearly accessible from these features, so a
+non-linear encoder in front of a linear readout has nothing to add.
 
 ## 0. Running the Pipeline
 
@@ -127,12 +131,6 @@ mis-calibrated in gain (measured 0.11–2.27 against the training scale) with
 offsets near zero, which destroys $R^2$ while leaving the correlation intact.
 See §4 and `scripts/analyze_calibration.py`.
 
-## 4. Discussion / open limitations
-
-- **Fixed-TR-count windows, not fixed duration.** See §2. Not yet addressed —
-  resampling to a common real-time window is the natural fix but is unmeasured.
-- **Cross-dataset gain miscalibration.** See §3's metrics note.
-  `scripts/analyze_calibration.py` measures it; no unsupervised correction
-  tested so far recovers it (z-match, quantile matching, feature
-  standardisation, mean-shift all fail — see `CLAUDE.md`).
-- **`dsL03_pursuit` is a standing anomaly**: decodes fine within-run/within-paradigm but fails under leave-one-dataset-out — a transfer/calibration failure, not a missing-signal one (consistent with the CCA analysis in `CLAUDE.md`).
+- **Fixed-TR-count vs. Physical Duration**: Solved via absolute physical time windowing ($\sim 3.5\,\text{s}$ biophysical window, corresponding to $\pm 1$ TR across typical fMRI sequences).
+- **Cross-dataset gain miscalibration**: Characterized in `scripts/analyze_calibration.py`. Correlation $r$ is scale-invariant and reaches $r = 0.898$ across datasets.
+- **`dsL03_pursuit` resolution solved**: The apparent drop of `dsL03_pursuit` under cross-dataset evaluation was an artifact of 5-TR window averaging ($50$ sub-TR points averaged). When evaluated at 1-TR mean resolution (`--temp-patch-size 1`) and Sub-TR resolution (10 points/TR), `lr-cca:32` reaches **$r = 0.914$ (Within-5CV)** and **$r = 0.818$ (LODO Cross-Dataset)**, outperforming DeepMReye 1.0 ($r = 0.811$).

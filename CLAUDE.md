@@ -1,7 +1,10 @@
 # CLAUDE.md
 
-Orientation for an agent picking up this project. Read this first, then
-**`STATE.md`** for what is running right now and what to do next, then
+Orientation for an agent picking up this project. Read **`RESEARCH.md`** first —
+it is the synthesis: what is established, what is closed and why, which
+experiments are worth running, and the open question of how the project should
+be framed. Then this file for the operating manual (layout, cluster constraints,
+every design decision), then **`STATE.md`** for the dated experimental log, then
 `overview.md` for the method in depth.
 
 ## What this is
@@ -23,10 +26,32 @@ build on. That work is preserved on the **`pytorch-jepa`** branch if it is ever
 worth revisiting; do not resurrect it here without a reason the numbers on that
 branch don't already rule out.
 
+A **second** JEPA attempt — cross-orbit rather than masked-volume
+(`deepmreye/orbitjepa.py`) — has since been rebuilt so that its untrained
+control *is* `lr-cca:k` exactly, and measured properly: it ties that control
+(0.823 against 0.825) and no configuration in a 27-checkpoint sweep beats it.
+The reason is not tuning, and it is now measured: **gaze is linearly accessible
+from these features**, so a non-linear encoder in front of a linear readout has
+nothing to add (`scripts/analyze_nonlinear_ceiling.py` — every *supervised*
+non-linear readout loses to ridge on identical features). Read that entry in
+`STATE.md` before proposing any further non-linear encoder here. It also
+retracts the `0.221` figure that circulated for this arm: that model was
+**collapsed**, by an inverted SIGReg whose anti-collapse term was minimised by
+collapsing.
+
 Status: pipeline runs end-to-end, tests pass. Corpus is built (see `STATE.md`):
-270 gaze-labeled participants across `dsL01`-`dsL06`, plus ~1770 unlabeled QA
+**372 gaze-labeled participants across 10 datasets**, plus ~1770 unlabeled QA
 sample participants (unused by this branch's baseline, which only needs the
-labeled set).
+labeled set). `dsL01`-`dsL06` are the original DeepMReye 1.0 sets;
+`dsL07`/`dsL08`/`dsL09`/`dsL12` were ingested from OpenNeuro datasets that
+already recorded eye tracking, each verified by `scripts/verify_gaze_sync.py`
+(see Key decisions). Two numbers are deliberately missing from that range:
+`dsL10` was rejected (unrecoverable per-run timing) and `dsL11_backtothefuture`
+is a **pending** ingest parked at `~/.cache/deepmreye_pending/` — 4 of 39
+participants extracted, not verified, and deliberately outside the corpus root
+so nothing picks it up. Note that the published baselines below were measured on
+the original six; rerun them before quoting a number against the ten, and read
+the label-units entry in Key decisions first.
 
 ## Pipeline (single entry point)
 
@@ -49,6 +74,11 @@ python -m deepmreye compile --data-dir data --limit 5
 python -m deepmreye qa --data-dir data
 python -m deepmreye preprocess --data-dir data
 python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp
+
+# The feature axis. `fold-pca:64` is the current best arm (median r 0.814).
+python scripts/eval_probe.py --protocol dataset --readouts ridge-cv \
+    --features raw fold-pca:64
+python scripts/analyze_axis_conventions.py     # is a bad fold mis-aimed, or resolution-limited?
 ```
 
 `--data-dir` goes AFTER the command (subparser-only, by design).
@@ -74,6 +104,13 @@ below for the split (stage on login, extract on compute) that replaces them.
   Three ways in: `from_arrays` at extraction, `from_report` to backfill from an
   old HTML report, `from_block` when only the stored block survives.
 - `deepmreye/labels.py` — CSV label backup (export / restore).
+- `deepmreye/eyetracking.py` — ingest for OpenNeuro datasets that already ship
+  gaze. Parses BIDS physio streams and bins them to `[T, 10, 2]`. The hard part
+  is the time origin, so it is **recovered**, never assumed: three explicit
+  anchor strategies (`starttime`, `trigger`, `message`), and it raises rather
+  than accept a `StartTime` that turns out to be a raw tracker clock. Fed by
+  `scripts/fetch_eyetracking.py`; every result is checked by
+  `scripts/verify_gaze_sync.py`. See the entry under Key decisions.
 - `deepmreye/datasource.py` — finds the corpus (explicit path, `$DEEPMREYE_DATA`,
   `./data`, else HuggingFace) and decides what each stage downloads.
 - `deepmreye/validation.py` — TR extraction/validation from NIfTI headers.
@@ -86,10 +123,125 @@ below for the split (stage on login, extract on compute) that replaces them.
 - `deepmreye/evaluate/baselines.py` — the readout zoo: mean, OLS, ridge,
   ridge-cv, PCA→ridge, PLS, RF, GBT, SVR, LightGBM, MLP. Pure sklearn, no
   torch, so it is testable on its own.
+- `deepmreye/evaluate/align.py` — unsupervised per-group feature alignment
+  (Euclidean Alignment, CORAL). Measured and negative; see Key decisions.
+- `deepmreye/evaluate/features.py` — the *feature* axis, crossed with the
+  readouts above: `raw` (stride-4 voxels, the published baseline), `fold-pca`
+  (full mask, PCA fitted on the training fold — the control), and the three
+  frozen corpus bases.
+- `deepmreye/unsupervised.py` — the linear bases over the unlabeled corpus. One
+  streaming pass accumulates a 14236² second moment over the masked voxels **and
+  the same over temporal differences**; every basis is a decomposition of those
+  two, so adding one costs an eigendecomposition rather than another read of the
+  corpus. `corpus-pca`, `diff-pca`, `lr-cca`, plus the temporally-selected
+  family: `gev-fast`/`gev-slow` (generalized eigendecomposition of the two
+  covariances — GED/CSP, Cohen 2022 NeuroImage), `band-pca` (a lag-1
+  autocorrelation band) and `nuis-pca8`/`nuis-pca32` (PCA after projecting out
+  the slowest high-variance directions). `lag1_autocorrelation` is the enabling
+  trick: `sym(C_1) = C_0 - DC/2`, so per-direction lag-1 autocorrelation is free.
+  Fitted by `scripts/fit_corpus_basis.py`, or across corpus sizes by
+  `scripts/sweep_corpus_scaling.py`.
+- `scripts/sweep_corpus_scaling.py` / `scripts/sweep_probe_scaling.py` — the
+  corpus-size axis. The first fits every basis at a series of unlabeled-corpus
+  sizes in **one incremental pass** (`Moments` is additive, so a snapshot per
+  checkpoint costs the largest fit, not the sum) over a *shuffled* subject order
+  — sorted order is grouped by dataset, so a prefix would confound "more
+  participants" with "fewer acquisitions". The second probes them, and with
+  `--budgets` crosses corpus size against the *labeled* budget instead.
+- `deepmreye/temporal.py` — the causal next-TR objective (`ar-gru`) and its
+  mandatory untrained control (`ar-random`). Trained by
+  `scripts/train_ar_model.py`. Answered and negative; see Key decisions.
+- `deepmreye/crossorbit.py` — the cross-orbit soft-argmax bottleneck (`xorb`),
+  its untrained control (`xorb-random`) and its nuisance path (`xorb-nuis`).
+  Trained by `scripts/train_crossorbit.py`. The only objective here whose
+  training demonstrably helps the probe, though still short of `fold-pca`.
+- `deepmreye/orbitcon.py` — the same cross-orbit constraint again, but
+  **contrastive** rather than reconstructive: VICReg between the two orbits of
+  the *same* TR (`ocon`, control `ocon-random`). The two reconstruction
+  bottlenecks above grade a latent on repainting the other orbit, which pulls it
+  toward appearance; this one grades agreement alone and never decodes. The probe
+  feature is 2x32 = 64 dimensions, matched to `lr-cca:64` — the linear form of
+  the same constraint and the arm it has to beat. Trained by
+  `scripts/train_orbitcon.py`, which has a `--scaling` mode so "does more data
+  help" is measured before a long run rather than assumed.
+
+  **`split_orbits`' mirroring is correct for reconstruction and wrong for
+  contrast — do not share it between the two without thinking.** The right orbit
+  is flipped along x so both crops run lateral-to-medial, which is what
+  `crossorbit`/`orbitrot` want: they repaint one orbit from the other, and that
+  is easiest when the two look anatomically alike. But both eyes rotate
+  conjugately, so horizontal gaze moves both eyeballs the same way in *global* x
+  — and after the flip that becomes *opposite* local directions in the two
+  crops. One shared encoder therefore reports horizontal gaze with opposite sign
+  on the two orbits, and VICReg's invariance term is an MSE between them, so it
+  penalises exactly the feature we are trying to learn. Vertical gaze is
+  untouched, an x-flip leaving y alone.
+
+  The fingerprint is an axis split, and it is what caught this: trained `ocon`
+  scored r_y **0.829** against its untrained control's 0.512 while r_x collapsed
+  to **0.390** against the control's **0.768** — vertical its best number,
+  horizontal *below random*. `orbitcon.unmirror_right` undoes the flip, and the
+  convention is stored in the checkpoint because the feature extractor has to
+  reproduce the training geometry: feeding a mirrored orbit to un-mirrored
+  weights raises nothing and simply scores worse. Un-mirroring also makes the two
+  crops anatomical mirror images, which *helps* here — matching anatomy across
+  them gets harder while matching gaze gets easier, and anatomy is the
+  degenerate solution.
+
+  **The degenerate solution here is anatomy, and the pooled agreement number
+  cannot see it.** Anatomy is shared between the two orbits and varies across a
+  batch, so "encode which participant this is" satisfies VICReg's invariance
+  term perfectly — and *the shuffled control still reads ~0*, because a random
+  re-pairing crosses subjects. Hence three defenses in the model (per-view
+  random gain/bias, per-run re-centering, few runs per batch) and, decisively,
+  `agreement_within_run`: inside one run the participant is constant, so
+  anatomy contributes no variance and what remains has to move during the run.
+  Read that column, not `agreement`.
+- `deepmreye/orbitjepa.py` + `deepmreye/models/jepa_net.py` — the cross-orbit
+  **JEPA** (`jepa`, `jepa-random`), and the one arm here whose untrained control
+  is not a random projection. Each orbit is first projected onto the frozen
+  corpus `lr-cca` basis's own 256 directions, then encoded as `s = z @ W_lin +
+  MLP(z)` with `W_lin = I[:, :k]` and the MLP's last layer zero-initialised. So
+  an untrained model reproduces `project("lr-cca", basis, x, k)` **bit for
+  bit** — the control is the 0.825 arm, and the trained-minus-untrained margin
+  is a margin over the best linear corpus basis.
+
+  Two things not to redo. **A momentum/EMA target encoder is ill-defined here**:
+  the two orbits are different voxel sets, so the encoders' parameter matrices
+  index different anatomy and an EMA between them copies a column prefix across
+  unrelated inputs. That is what the first implementation did, and it made the
+  prediction target noise. The objective is symmetric instead, with a stop-grad
+  on the target side. And **SIGReg's Epps-Pulley exponents are `/2` on the
+  pairwise term and `/4` on the single term**; swapping them inverts the
+  statistic so that it scores collapse (0.163) below its own target N(0, I)
+  (0.285), i.e. the anti-collapse term becomes the collapse mechanism. A
+  training log pinned at **0.16314** is that bug — it is `1 - sqrt(2) +
+  1/sqrt(3)`, collapse toward zero, exactly.
+
+  Feature extraction is **pure numpy** (`encode_numpy`), which sidesteps the
+  LightGBM/OpenMP deadlock rather than working around it, and is parity-tested
+  against torch. Trained by `scripts/train_orbitjepa.py`, screened by
+  `scripts/sweep_orbitjepa.py` (calibrated fast LODO over the same
+  pre-projection — check its `--calibrate` output before trusting an ordering),
+  confirmed by `scripts/eval_orbitjepa.py`, which is a thin driver over
+  `eval_probe.py` because the previous version's separate harness is how a
+  `0.221` came to be compared against a `0.847`.
+- `deepmreye/orbitrot.py` — the same cross-orbit objective through a **rotation**
+  bottleneck instead (`xrot`, `xrot-random`, `xrot-nuis`): a 2-DOF rotation of a
+  learned canonical orbit. Gaze rotates the eyeball rather than translating it,
+  and a soft-argmax centroid is nearly blind to that — see the entry under Key
+  decisions. Shares `encode`/`decode` signatures with `crossorbit`, so the
+  training loop, the shuffle ablation and `OrbitExtractor` are the same code for
+  both and the two arms differ in nothing but the bottleneck. Trained by
+  `scripts/train_crossorbit.py --bottleneck xrot`.
 - `scripts/` — portable stages, runnable anywhere: the CLI-imported
   implementations (`run_compile`, `run_preprocess`, `run_labeler`),
   `eval_probe.py` (the baseline table), `analyze_identifiability.py` and
   `analyze_calibration.py` (paper analyses, not baselines — see below),
+  `visualize_corpus_embedding.py` (where the labeled participants sit inside
+  the unlabeled corpus, and the proxy A-distance that goes with it),
+  `eval_dme1.py` (the published DeepMReye 1.0 CNN on this corpus, using the
+  authors' released OSF weights — runs in `.venv-tf`, see below),
   `build_index.py` (writes `index.parquet`, validates every file),
   `train_qa_classifier.py`, `upload_to_hf.py`, `sync_labels.py` (label round
   trip via the Hub), `convert_labeled_to_h5.py` (source `labeled_data/` ->
@@ -133,6 +285,129 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
 
 ## Key decisions (context you won't get from the code)
 
+- **Label units are not uniform any more. Read `label_units`, and standardise
+  the target per dataset before pooling.** `dsL01`-`dsL06` and
+  `dsL08_studyforrest_movie` are in degrees of visual angle;
+  `dsL07`/`dsL09`/`dsL12` are in screen pixels. The source papers were checked
+  for every ingested set and only studyforrest documents enough to convert
+  (Sengupta et al. 2016, PMC5079121: 63 cm viewing distance, 26.5 cm screen at
+  1280 px, movie subtending 23.75x13.5 deg -> 0.018555 deg/px, square pixels,
+  cross-checking against 2*atan(26.5/2/63) = 23.77 deg). The rest give a viewing
+  distance with no physical screen size, which does not determine degrees, so
+  they stay in pixels.
+
+  **The consequence is not cosmetic.** `--protocol dataset` fits ONE readout
+  over the pooled training folds, so the loss follows whichever dataset has the
+  largest target variance. With the per-fold Euclidean scale spanning 21
+  (`dsL01`) to 595 (`dsL12`), the 10-dataset probe collapsed to median r
+  **0.131**. `--standardize-targets dataset` (the default now) z-scores each
+  training dataset's gaze before pooling; it uses training data only and Pearson
+  r is invariant to it. **R² and Euclidean error are meaningless in that mode**
+  (predictions in z-units against raw test targets) and the report says so.
+  An earlier note here claimed "Pearson r is invariant, so nothing downstream is
+  lost" -- true for *evaluation*, false for *training*, and that is the gap.
+
+  The original six still reproduce exactly (`fold-pca:64` 0.814, `raw` 0.703),
+  so neither the ingest nor the eval changes moved the baseline:
+  `results/probe_orig6_control.json`.
+- **`ProbeDataset` takes any participant with labels — the `dsL*` glob does not
+  gate it.** `_discover()` walks every directory under the corpus and accepts
+  anything carrying a `labels` dataset; `dsL*` only controls what
+  `STAGE_PATTERNS["probe"]` *downloads*. Renaming a rejected dataset out of the
+  prefix therefore does **not** keep it out of the probe, and
+  `dsX10_visseq_unaligned` silently ran as its own fold until that was caught.
+  To retire a labeled dataset, **remove its `labels`** (blocks can stay as
+  unlabeled corpus data) or move it out of the corpus root. Do not rely on a
+  name. The same rule applies to a dataset mid-ingest: `dsL11_backtothefuture`
+  is parked at `~/.cache/deepmreye_pending/` for exactly this reason.
+- **Gaze/BOLD alignment is recovered and then proved, never assumed.** The
+  corpus can be extended with OpenNeuro datasets that already recorded eye
+  tracking — a scan of all 2409 accessions found 382 paired participants across
+  18 datasets, against the original 270 across 6. **Independent acquisitions are
+  the scarce resource**, not participants: every leave-one-dataset-out claim
+  here rests on six folds and the temporal-envelope law on twelve cells.
+
+  The whole difficulty is the time origin. A tracker runs on its own clock, and
+  a constant offset against the scanner is close to invisible — labels still
+  look like gaze, the decoder still trains, it just scores lower, which reads as
+  "harder dataset" rather than "broken labels". So `deepmreye/eyetracking.py`
+  supports exactly three anchors and records which one was used in every
+  participant's attrs: BIDS `StartTime`, a scanner-pulse column (whose period
+  must equal the TR, or it raises), and a sync message in a `physioevents` file.
+
+  **Reading `StartTime` blindly is not one of them.** ds006833 and ds005166 both
+  write the tracker's own first timestamp into a field defined as an offset from
+  volume 0 — self-referential, and worth nothing. Believing it would have put
+  volume 0 **58.5 s early** for ds006833. The guard is that `StartTime` equal to
+  the first sample timestamp is an error, *except* when times were synthesised
+  from the sampling rate (ds000113 has no timestamp column and a legitimate
+  `StartTime: 0.0`), which is why `anchor_seconds` takes `times_from_column`.
+
+  **Proof is a lag sweep, with the old corpus as the control.**
+  `scripts/verify_gaze_sync.py` decodes gaze at every TR shift and finds the
+  peak. The eyeball signal is not hemodynamic, so a correct alignment peaks at
+  **lag 0** — there is no BOLD delay to absorb an error. Sweeping the six
+  original datasets first is what makes the verdict mean anything (5/6 peak at
+  exactly 0). It reports a **margin** over lags >= 2 away, because gaze is smooth
+  and neighbouring lags score nearly as well; the sign convention is calibrated
+  by injecting known shifts into real data (injected +k gives peak +k). A y-axis
+  sign error survives this test, so orientation is checked separately per axis.
+
+  Two things it caught that nothing cheaper would have. **ds001107 is
+  byte-identical to ds000113** (240 files matching on size and ETag, same 30
+  subjects) — ingesting both would have put the same participants on both sides
+  of a "leave-one-dataset-out" split. And **dsL01 peaks at −1** (see below).
+
+  **Result: 82 participants and 3 datasets added, 1 rejected.** The corpus is
+  **352 labeled participants across 9 datasets**, from 270 across 6 — a 50%
+  increase in independent acquisitions. `dsL07_deepmreye_calib` (15, message
+  anchor, offset +0.00 s, mean r 0.785), `dsL08_studyforrest_movie` (15,
+  −0.75 s, 0.667), `dsL09_fearlearning` (52, +0.50 s, 0.291); all peak at lag 0.
+
+  **The sub-TR sweep is not optional.** The integer sweep passed studyforrest at
+  lag 0 while its profile was lopsided (−1 at +0.46 against +1 at +0.12);
+  re-binning the raw gaze at fractional offsets found the optimum **half a TR
+  away**, worth +0.12 r, with 15/15 participants agreeing on the sign. `dsL07`
+  peaking at exactly +0.00 s is what proves the binning itself is right and
+  localises each offset to its own dataset. Both fitted offsets are one scalar
+  per dataset, estimated *with the decoder* — fine for method comparisons,
+  worth stating for absolute-decodability claims.
+
+  **ds007532 was rejected, and rejecting it was the point.** Its `StartTime`
+  mixes proper offsets and raw tracker clocks run by run; a second anchor
+  (`TRIGGER SENT`) helped three subjects and left the rest scattered over lags
+  −3..0; the sub-TR sweep is flat, so no dataset-level offset exists. One offset
+  per *subject* would have fixed it and would have been circular — 36 free
+  parameters fitted on the decoding target. The eye blocks are kept as
+  `dsX10_visseq_unaligned`, deliberately **outside the `dsL*` glob**, and the
+  dataset is `LBL_DATASET_SKIPPED` in `labels.csv`. A labeled dataset nobody can
+  trust is worse than one that is absent.
+
+  Units are recorded, not invented — including when that meant retracting a
+  claim. ds001242 looked fully documented (`degreePerPixel: 0.034`,
+  `ScreenVisualAngle: [22, 16.5]` → a 647×485 screen), but gaze clusters at
+  **(127, 100)** across subjects and a calibrated tracker does not put everyone
+  6.7° left of centre; the export is a ~256×200 grid, not the sidecar's pixel
+  space. Since that is inferred from where people fixate rather than documented,
+  the centre is set to the observed fixation point and **no degree conversion is
+  applied**. No dataset in this batch claims degrees. Nothing is lost: Pearson r
+  is scale invariant and cross-dataset R² was already unidentifiable.
+- **`dsL01`'s labels are stimulus positions, not measured gaze — and they lead
+  the BOLD by one TR.** 11 of 12 subjects peak at lag −1 in the sweep above.
+  The labels give it away: within-TR SD exactly **0.0000**, only **9 distinct x
+  values**, changing every **5 TRs** — a 9-point fixation grid held 4 s per
+  target, which is precisely what v1's `load_label` builds for `calibration_run`
+  (`np.repeat(labels, 5, axis=0)`). `dsL05_free_viewing` by contrast has 1502
+  distinct values changing every TR. So the −1 is the eye arriving after the dot
+  jumps — saccadic latency at a 0.8 s TR — not corruption. It still costs
+  accuracy on the **largest** labeled dataset (170 participants): within-subject
+  r **0.65 at −1 against 0.60 at 0**. Shifting its labels +1 TR recovers that,
+  and it has deliberately **not** been done: editing existing ground truth is a
+  decision to take on purpose. The broader point is that dsL01 is
+  *stimulus-locked* rather than gaze-measured, which makes it qualitatively
+  unlike the other five — remember this when it behaves oddly, as it does in the
+  corpus embedding (most isolated dataset) and as the one fold where
+  `corpus-pca` beats `fold-pca`.
 - **Classifier removed as a gate; reintroduced as triage only.** An earlier
   design trained a decision tree to auto-QA coregistration quality
   (`transform_probability`) and it was deleted: approval is manual labels, and
@@ -202,6 +477,47 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   `probe` takes `dsL*/*.h5` alone. The HF cache is topped up when a later stage
   needs more; a directory you pointed at explicitly is never touched over the
   network.
+- **Every reported number averages 50 gaze samples per target, and that is a
+  choice nobody has revisited.** `temporal_targets` reduces labels
+  `[B, W, 10, 2]` to one coordinate per temporal bin by `nanmean` over *both* the
+  10 sub-TR samples and the `--temp-patch-size` TRs in the bin — at the default
+  patch of 5, that is **5 TRs x 10 samples = 50 gaze samples collapsed into one
+  target**. Averaging a target makes it smoother and therefore more predictable,
+  so the headline r's are partly a property of the binning. (`eval_dme1.py`
+  already takes this seriously in the one place it would have been unfair —
+  it applies the identical binning to the published CNN, because doing it on one
+  side only "would have handed us the win".)
+
+  **Measured, and the obvious guess was backwards.** The expectation was that
+  heavy smoothing *compresses* the differences between arms and that finer targets
+  would spread them out. The reverse happens — the default patch of 5 is the
+  setting that flatters `fold-pca` most:
+
+  | arm | patch=5 | patch=2 | patch=1 |
+  |---|---|---|---|
+  | `fold-pca:64` | **0.847** | 0.840 | 0.830 |
+  | `corpus-pca:64` | 0.821 | **0.837** | **0.827** |
+  | `lr-cca:32` | 0.825 | 0.836 | 0.810 |
+  | `raw` | 0.725 | 0.780 | 0.772 |
+
+  `fold-pca` falls monotonically as the target sharpens while `corpus-pca` rises
+  and holds, so the frozen corpus basis is **tied with the fold-local one at
+  per-TR resolution** (0.003, inside the noise floor) having trailed by 0.026 at
+  patch=5. Since temporal resolution is the whole selling point of MR-based eye
+  tracking, that is the regime worth reporting a no-labels-needed basis in.
+  `--temp-patch-size` is one flag.
+
+  **One confound, not yet controlled:** `--max-train-windows` caps *windows*, not
+  rows, so a finer patch hands the readout proportionally more training rows from
+  the same windows. The direction is mechanistically sensible (a frozen basis has
+  nothing left to estimate, so extra rows go straight into the readout, while
+  `fold-pca` refits its basis from a fixed `--basis-fit-windows` budget either
+  way) but a row-matched control is needed before this is quoted as a pure
+  resolution effect.
+
+  The sub-TR samples are also *real information the pipeline discards* —
+  `dsL05_free_viewing` has within-TR SD 1.18, against `dsL01`'s exactly 0.0000,
+  which is the tell that its labels are stimulus positions rather than gaze.
 - **TR is validated but not yet used to resample.** Windows are a fixed number
   of TRs, not fixed duration, so datasets with different TRs give windows of
   different real length. Known limitation (see `overview.md` §Discussion). If you
@@ -272,6 +588,18 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   sides of the train/test split and inflated the probe metrics that serve as the
   control. It now splits within each dataset (`split_by="subject"`) or holds out
   whole datasets (`split_by="dataset"`).
+- **The noise floor on a 7-fold median is ~0.02, and the data says so itself.**
+  In the labeled-budget sweep `fold-pca:64` reads **0.847 at 1000 training
+  windows and 0.828 with all of them** — a method whose basis and readout can
+  only improve with more labeled data, reporting that it got worse. That is a
+  direct measurement of run-to-run variation across a 7-fold median, and it is
+  the resolution limit for every comparison in this file. Consequences: a
+  difference under ~0.02 is a tie no matter how suggestive its direction (the
+  low-label "crossover" where `lr-cca:32` read 0.816 against `fold-pca`'s 0.812
+  is exactly this trap), and `fold-pca:64` should be quoted as **0.83-0.85**
+  rather than as a point value. Differences that *are* real here are the ones an
+  order of magnitude larger: `lr-cca`'s +0.15 to +0.27 corpus-size gain,
+  `gev-slow`'s -0.34, the k=16-to-24 cliff of +0.28.
 - **Metrics are aggregated per participant, then median across participants.**
   Pooling every row of every subject into one correlation is gameable: if one
   subject's gaze sits left of another's, a model that predicts only *which
@@ -306,6 +634,560 @@ Eye blocks are `[47, 29, 18, T]`: the mask crop is fixed, so only `T` varies.
   reasonably assume the rest is oversold. Note also that the confound regression
   uses a crude mean-signal proxy — **realignment parameters are not stored** —
   so a canonical variate could still be partly head motion.
+- **The unlabeled corpus is NOT redundant — it was only ever measured at one
+  size. Two scaling laws, and `k` must be retuned with the corpus.**
+  `scripts/sweep_corpus_scaling.py` + `scripts/sweep_probe_scaling.py`. Every
+  "the unlabeled half buys nothing" conclusion below was drawn from a basis
+  fitted once on ~1005 participants, never from a curve. On the curve (7 verified
+  folds, labeled budget fixed at 1000 windows):
+
+  | basis | N=25 | N=100 | N=400 | N=800 | N=1039 |
+  |---|---|---|---|---|---|
+  | `lr-cca:64` | 0.661 | 0.749 | 0.784 | **0.811** | 0.809 |
+  | `corpus-pca:64` | 0.758 | 0.813 | 0.810 | 0.818 | **0.821** |
+  | `band-pca:64` | 0.749 | 0.793 | 0.811 | 0.815 | **0.820** |
+  | `gev-slow:64` | 0.578 | 0.305 | 0.320 | **0.242** | — |
+  | `fold-pca:64` | 0.847 | — | — | — | 0.847 |
+
+  **`lr-cca` gains +0.150 and rises at every step** — it is the most data-hungry
+  basis here (two 7000-dim whitenings plus a cross-covariance), which is why it
+  benefits most. The gap to `fold-pca:64` closes from 0.19 to **0.022**. It does
+  **saturate** between N=800 and 1039, so do not extrapolate it; the earlier
+  straight-line projection to parity at N~1800 was wrong.
+
+  **The optimal component count falls as the corpus grows**, which is the reverse
+  of the obvious guess: `corpus-pca` peaks at k=256 when N=25 and at k=64 when
+  N=800; `lr-cca` peaks at k=64 at N=800 and at **k=32 (0.825, the best corpus
+  arm)** at N=1039. With few participants each component is a noisy mixture and
+  ridge needs many to recombine; a well-estimated basis is compact. So retune k
+  whenever the corpus size changes, and read every k conclusion below as
+  conditional on the corpus it was measured at.
+
+  **`gev-slow` is the control that makes the temporal axis credible**: it
+  *degrades* by 0.336 as the corpus grows, because more data localises the slow
+  nuisance subspace better and that subspace cannot carry gaze. One end of an axis
+  improving with data while the other degrades is what a real axis looks like.
+
+  **Lag-1 autocorrelation is free from the existing accumulators** —
+  `sym(C_1) = C_0 - DC/2`, so `rho(w) = 1 - (w' DC w)/(2 w' C_0 w)`
+  (`lag1_autocorrelation`). Measured: the nuisance is concentrated (top 2
+  directions at rho 0.82-0.88 against a median 0.39), and at small N the
+  directions are white (median rho 0.059) — i.e. noise — which is the mechanism
+  behind the scaling.
+
+  **Nuisance projection is tested and negative**, closing the standing "project
+  out the global/motion components" suggestion for the basis: `nuis-pca8` ties
+  `corpus-pca`, `nuis-pca32` *degrades with data* (-0.131). Gaze reaches lag-1
+  0.851 (dsL02) while the corpus nuisance sits at 0.83-0.87, so they overlap and
+  cutting the slow end cuts gaze. `gev-fast` also disappoints for the reason its
+  docstring predicts — white noise maximises that objective.
+
+  **`lr-cca` has a threshold in k, not an optimum**: 0.476 / 0.523 / **0.803** /
+  **0.825** / 0.808 at k = 8 / 16 / 24 / 32 / 48. A cliff of **+0.280 between
+  k=16 and k=24** — below ~24 canonical variates the projection cannot span gaze
+  at all. Unlike `corpus-pca`'s smooth inverted U, do not economise here.
+
+  **And the corpus basis adds NOTHING to `fold-pca` — all four concatenations
+  lose** (`fold-pca:64` 0.847 against `+band-pca:16` 0.834, `+lr-cca:16` 0.829,
+  `+lr-cca:32` 0.823, `fold-pca:32+lr-cca:32` 0.823), at the per-part budgets
+  this file requires. With the scaling curve that settles the mechanism as
+  **redundancy, not domain mismatch**: the corpus estimates the *same subspace*
+  a fold-local PCA does, only less efficiently. The blunt statement to carry
+  forward is that **a 64-dimensional linear subspace of a 14236-voxel eye mask is
+  easy to estimate** — ~200 labeled participants across 6 acquisitions already
+  suffice, so a larger unlabeled corpus can approach that ceiling and has no
+  headroom above it. Corpus scaling is real *and* bounded by the target being
+  easy. What survives is the deployment argument, now quantified: `lr-cca:32`
+  needs no data at all from the target study (0.825 against 0.847).
+- **The win is the full eye mask, not the unlabeled corpus — and 64 components,
+  not 256.** The published baseline reads gaze off a stride-4 subsample — 480 of
+  the 14236 masked voxels. Replacing that with a PCA over the *whole* mask beats
+  it on **6/6** leave-one-dataset-out folds, and it is the cheapest change
+  available: unsupervised, linear, seconds to fit. The component count matters
+  more than expected — median r by budget is 0.744 / 0.792 / 0.808 / **0.814** /
+  0.807 / 0.779 at k = 8 / 16 / 32 / **64** / 128 / 256. Use
+  **`--features fold-pca:64`**: 0.703 → 0.814, and 256 components lets ridge fit
+  directions specific to the training datasets. That is the result to keep.
+
+  **Judge any basis at k=64, not k=256** — the corpus arms were originally
+  measured at 256 and that understated them badly: re-run at 64, `corpus-pca`
+  goes 0.775 → 0.796 and `lr-cca` 0.759 → 0.798. Folding the labeled
+  participants' *voxels* into the unsupervised fit adds a further +0.008 on
+  **6/6** folds, putting `corpus-pca:64` at **0.810** against `fold-pca:64`'s
+  0.814 — 1/6 folds better, mean −0.009, the gap almost entirely `dsL06`. So the
+  ordering below still holds, but the margin is 0.004 and the honest statement is
+  that a frozen corpus basis *ties* a fold-local one at the right k. That makes
+  `corpus-pca:64` the better **deployment** artifact (one precomputed projection,
+  no refitting per study) while `fold-pca:64` stays the right paper baseline
+  (no external file needed).
+
+  The unlabeled corpus does **not** add on top of it. `corpus-pca` (fitted on
+  1005 unlabeled participants across 613 datasets) ties or loses to `fold-pca`
+  at every labeled-data budget tested — 100/300/1000/3000/all training windows,
+  median r 0.670/0.732/0.762/0.776/0.775 against fold-pca's
+  0.716/0.763/0.780/0.782/0.779 — including the low-data regime where
+  pretraining is supposed to pay. `diff-pca` and `lr-cca` behave the same.
+  The reason was recorded here as domain mismatch — a fold-local PCA is
+  estimated on the very acquisitions it is applied to, while the corpus basis
+  orders its components by variance in OpenNeuro scans whose scanners and
+  protocols differ from the labeled gaze sets. **That explanation has now been
+  measured and it does not hold** (see the embedding entry below). This remains
+  the second independent finding on this corpus (after JEPA, see the
+  `pytorch-jepa` branch) that the unlabeled half does not improve gaze decoding,
+  but the mechanism is open, so "address the domain gap" is not the brief.
+
+  Folding the gaze-labeled datasets' **voxels** into the unsupervised fit
+  (`--include-labeled`) does not change this, in either available form: a
+  per-fold basis excluding the held-out dataset gives `corpus-pca` 0.772, and a
+  transductive basis that saw the held-out dataset's own voxels gives 0.775 —
+  both still under `fold-pca`'s 0.779. Over 3 basis scopes, 5 labeled-data
+  budgets and 5 concatenation budgets, the best unsupervised arm ever managed
+  was `fold-pca+lr-cca:16` at 0.783, winning **3 of 6 folds** with a mean delta
+  of **+0.001**. That is noise. Treat this line as closed.
+
+  Two caveats worth keeping. `lr-cca` is the most *robust* basis: it scores
+  0.671 on `dsL06_sequences` against `fold-pca`'s 0.593 and `corpus-pca`'s
+  0.409, giving it the best mean across folds (0.693 vs 0.687) while losing on
+  the median. Requiring a direction to be shared between the two orbits is a
+  stronger constraint than variance, and it degrades more gracefully where
+  variance ordering transfers badly — that is the one thing here worth
+  revisiting. And none of the bases touches `dsL03_pursuit` (r 0.180 →
+  0.196–0.204) under any readout — which is expected, since that fold is a
+  resolution limit rather than a representation or transfer problem (see its own
+  entry below).
+- **The rotation bottleneck learns where the position bottleneck mostly did
+  not — and still loses to it in absolute terms.** `deepmreye/orbitrot.py`,
+  `--bottleneck xrot`. Same cross-orbit objective, same cache, split, optimizer
+  and selection rule as `xorb`; the only difference is that the latent is a
+  2-DOF rotation of a learned canonical orbit instead of `K` soft-argmax
+  positions.
+
+  | arm | dims | median r | mean r |
+  |---|---|---|---|
+  | `fold-pca:64` | 64 | **0.814** | 0.707 |
+  | `xorb` | 24 | 0.389 | 0.352 |
+  | **`xrot`** | **4** | **0.293** | 0.294 |
+  | `xorb-random` | 24 | 0.273 | 0.253 |
+  | **`xrot-random`** | **4** | **0.052** | 0.108 |
+
+  **The controls are the result.** `xorb` scores 0.389 but its *untrained*
+  control already scores 0.273 — so only **30%** of its number comes from
+  training; the rest is what a random 3D conv plus a centroid gives you for
+  free. `xrot` scores less in absolute terms but its control is 0.052, so
+  **82%** of it is learned. Training beats the control on **6/6** folds
+  (mean +0.186) against `xorb`'s 5/6 (mean +0.099), and it does it from **4
+  numbers rather than 24**. This is the same lesson as the JEPA and next-TR
+  entries, one level down: an untrained control is the only thing that
+  distinguishes a bottleneck that learned from a bottleneck that is a lucky
+  random projection. Never report `xorb`-style numbers without one.
+
+  It is nonetheless **not** a win. 0.293 is below `xorb`'s 0.389 and nowhere
+  near `lr-cca`'s 0.798 or `fold-pca:64`'s 0.814, and — importantly — it is far
+  below the temporal envelope above, so the shortfall is a genuine
+  representational deficit, not a data limit it could hide behind. Two things
+  to try before concluding, because neither was ruled out: the run was still
+  improving at its 4000-step limit (`best_step` = 4000, contribution 0.125 and
+  rising against `xorb`'s 0.222), and 4 dimensions may simply be too few —
+  `--angles 3`, `--parts` and more `--template-channels` are one flag each.
+
+  **Encoder/decoder capacity is not the limit.** `--width 32
+  --template-channels 24` (4x the conv width, 3x the template) tracks the
+  original within noise and lands at **0.1268 against 0.1254** at step 4000 —
+  +0.0014 for ~4x the compute, 2.25 s/step against 0.9. Both plateau around
+  0.12-0.13. That was run as a deliberate *screen* with three variables moved at
+  once, which is only sound because it failed: all three are ruled out together.
+  Had it won it would have needed ablating before anyone could say which part
+  mattered. The remaining untested axis is the **bottleneck width itself**
+  (`--parts`), and `--parts 6` is the matched comparison — 12 dimensions per
+  orbit, exactly `xorb`'s K=4 x 3.
+
+  **Bottleneck width was the binding constraint, and at matched width the
+  rotation latent wins.** `--parts 6` (12 dims/orbit, 24 features, identical to
+  `xorb` K=4):
+
+  | arm | dims | median r | untrained | learned margin | folds |
+  |---|---|---|---|---|---|
+  | `fold-pca:64` | 64 | **0.814** | — | — | — |
+  | **`xrot` parts=6** | 24 | **0.422** | 0.208 | **+0.214** | **6/6** |
+  | `xorb` K=4 | 24 | 0.389 | 0.273 | +0.116 | 5/6 |
+
+  It also wins the objective it was trained on (contribution **0.248** vs
+  0.222, val R2 **0.111** vs 0.096) and beats `xorb` on **4/6** probe folds.
+  So the earlier 0.293-vs-0.389 gap was **dimensionality, not the kind of
+  latent** — 4x the encoder bought +0.001, 6x the latent bought +0.12. `xrot`
+  is now the best self-supervised arm on this corpus and the one whose score is
+  most nearly *earned*: it starts from a lower untrained floor (0.208 vs 0.273)
+  and its trained-minus-untrained margin is ~1.8x. It is still nowhere near
+  `fold-pca:64`. Caveat: on `dsL05` training adds only +0.006, so that fold's
+  "win" is nominal.
+
+  **The control must be built from the trained model's own attributes.** Adding
+  `--parts` updated the model and the trainer but not `eval_probe`'s
+  `*-random` branch, which still read a stale `meta` and built a **4**-feature
+  control against a **24**-feature model — inflating the reported margin to
+  +0.370 before it was caught. `build_orbit_extractor` now derives every
+  constructor argument from the loaded model and raises if the widths disagree.
+  A control assembled from configuration rather than from the thing it controls
+  will drift again the next time a field is added.
+
+  **`scripts/analyze_orbit_bottleneck.py` explains the gap, and the probe table
+  cannot.** Four measurements per arm, each against its own untrained control:
+
+  | | dims/orbit | within-subj r | latent travel | L/R agreement |
+  |---|---|---|---|---|
+  | `xorb` trained | 12 | 0.600 | 0.0493 | +0.492 |
+  | `xorb` untrained | 12 | **0.474** | 0.0005 | **+0.201** |
+  | `xrot` trained | 2 | 0.393 | 0.1152 | **+0.739** |
+  | `xrot` untrained | 2 | **0.221** | 0.0004 | **-0.033** |
+
+  *Within-subject r* fits the readout inside one participant, where anatomy is
+  constant — the bottleneck's own ceiling, separate from transfer. *L/R
+  agreement* is the correlation between the two orbits' latents: both eyes
+  rotate conjugately, so this is the cross-orbit objective's own success
+  criterion, and it is invisible in the probe table.
+
+  **The untrained control is mandatory for L/R agreement, not optional.** Both
+  orbits sit in one volume, so global signal, motion and drift are common to
+  them, and a random centroid model already agrees with itself at **+0.201**.
+  `xrot`'s control is **-0.033**, so its 0.739 is entirely learned while a
+  chunk of `xorb`'s 0.492 is not. Same for the headline: `xorb` untrained is
+  already at 0.474 of its 0.600 within-subject, `xrot` untrained at 0.221 of
+  0.393. So the rotation bottleneck wins on every measure of *learning* —
+  agreement from a true zero, larger trained-minus-untrained margin, two
+  dimensions instead of twelve — and loses on the probe only because it starts
+  from a much lower architectural floor. State it that way: the position
+  bottleneck is the better random projection, the rotation bottleneck is the
+  better representation learner.
+
+  One thing that did **not** work out: the learned canonical orbit renders as
+  high-frequency texture, not an eyeball
+  (`media/visualizations/09_template_*.png`). That is functionally sensible —
+  texture makes a rotation more identifiable than a smooth blob does — but the
+  interpretability this design was partly sold on is not delivered, and the
+  figure should not be presented as "what the model thinks an eyeball looks
+  like". The bright volume edge is a `padding_mode="border"` artifact.
+- **The published DeepMReye 1.0 CNN is beaten on the one clean fold, and its
+  gap is entirely vertical.** `scripts/eval_dme1.py`. The authors released model
+  weights on OSF (https://osf.io/mrhk9/, `model_weights/`), so the head-to-head
+  needs no retraining and no reimplementation a reviewer would have to trust.
+  On `dsL06`, scored with the *identical* 5-TR binning `eval_probe` uses
+  (`_reduce` is equivalence-tested against `evaluate.probe.temporal_targets`):
+
+  | arm | r_x | r_y | mean r |
+  |---|---|---|---|
+  | `fold-pca:64` + ridge-cv | 0.947 | **0.343** | **0.645** |
+  | `corpus-pca:64` | 0.922 | 0.250 | 0.586 |
+  | `lr-cca:64` | 0.939 | -0.008 | 0.465 |
+  | **DeepMReye 1.0** (`datasets_1to5`) | 0.946 | **-0.047** | 0.449 |
+
+  Horizontal gaze is a **dead heat** (0.946 vs 0.947). The entire margin is the
+  vertical axis, where the published CNN recovers nothing at all and the linear
+  arm recovers some. Report it decomposed; a single mean r hides the only thing
+  that is actually happening.
+
+  **Which checkpoints are legitimate.** The labeled datasets here *are* the
+  DeepMReye paper's training data, so `datasets_1to6.h5` has seen every
+  participant we would score and must never be reported as held out —
+  `CONTAMINATED` in the script refuses it without `--allow-contaminated`. Usable:
+  `datasets_1to5.h5` (held out on `dsL06` only) and the six `dataset<N>_*.h5`
+  single-dataset checkpoints (held out on the other five). That is one clean
+  leave-one-dataset-out point plus 30 train-on-one/test-on-others points, and
+  the other five folds have **no** clean published checkpoint — do not quietly
+  fill them with `datasets_1to6`.
+
+  Two implementation notes. The weights are Keras 2.4 HDF5, which Keras 3 cannot
+  read: `TF_USE_LEGACY_KERAS=1` plus `tf-keras`, in a **separate `.venv-tf`**
+  because TF's numpy pin fights the sklearn/torch stack. And v1's source is
+  vendored at run time from `main` via `git show` rather than copied into this
+  branch — which also means the script must never import this branch's
+  `deepmreye`, since that would both pull in ANTs and register v2 under the name
+  the vendored v1 needs.
+- **`dsL06`'s vertical axis is broken in the data, not in the model.** Every
+  other fold decodes y at 0.80-0.87; `dsL06` reads 0.343 for `fold-pca:64` and
+  **-0.047 for the published CNN on its own held-out fold**. An earlier note here
+  flagged this as a possible bug in our features worth chasing. It is not:
+  it reproduces with the authors' weights, their preprocessing and their
+  training data, so it is a property of `dsL06`. Note also that OSF names this
+  dataset `dataset6_openclosed` where our source directory was
+  `dataset6_sequences` — if it is an eyes-open/closed paradigm then vertical
+  gaze may be barely sampled, which would explain the whole thing. Worth
+  resolving before the paper, but it is not a modelling problem and further
+  representation work aimed at it is wasted — the same conclusion `dsL03`
+  reached, for a different reason.
+- **The labeled participants are *not* out of domain, so "domain mismatch" is
+  not why the corpus basis fails.** `scripts/visualize_corpus_embedding.py`
+  embeds all 1450 fully-covered participants (246 labeled, 1204 unlabeled) and
+  runs the standard multi-site batch-effect protocol on them: per-participant
+  descriptors, t-SNE, k-means, and a held-out domain classifier scored as proxy
+  A-distance `d_A = 2(1 - 2 eps)` (0 = indistinguishable, 2 = separable).
+  Four results, and they point the same way:
+
+  - **Anatomy is identical.** On per-voxel temporal SD, `d_A` = **-0.01** —
+    exactly chance, grouped by dataset. Registration, coverage and eyeball
+    geometry put the labeled sets squarely inside the corpus.
+  - **Dynamics differ moderately, and the number is inflated.** On the
+    per-participant log-variance and Fisher-z correlation of the corpus-PCA
+    coordinates, `d_A` = **0.67** of a possible 2.0. But see the entry below:
+    most of that is the 6-acquisitions-vs-684 asymmetry, not a domain gap.
+  - **Nothing clusters by acquisition.** k-means at k=12 scores ARI **0.043**
+    against dataset identity, and 1/12 clusters is >90% labeled (that one is
+    `dsL01`). This is not the batch-effect regime the multi-site literature
+    describes; there, embeddings organise by site.
+  - **Decisively: distance does not predict the loss.** Per fold, distance from
+    the corpus against `corpus-pca:64 - fold-pca:64` gives Spearman **-0.37,
+    p=0.47 (n=6)**, and the sign is carried by the wrong dataset. `dsL01` is the
+    *most* isolated set on every measure (nearest-neighbour mix 0.47 against a
+    chance of 0.83; its own k-means cluster) and is the **one fold where the
+    frozen corpus basis beats the fold-local one** (+0.012). If mismatch were the
+    mechanism, that fold would lose hardest.
+
+  So the corpus basis ties rather than wins for some other reason, and the
+  obvious remaining candidate is that it is simply *redundant* — 64 variance
+  directions over an eye mask are recoverable from a few hundred labeled
+  windows, so a second estimate of them adds nothing. Do not build
+  domain-adaptation machinery on the strength of the old story; `align.py`
+  already measured that adaptation of this kind is actively harmful.
+
+  Caveats, both in the script's output. The full-mask coverage filter drops 29%
+  of participants, leaving `dsL02` and `dsL06` with 5 and 6 — their rows are
+  printed with a `*` and are not measurements. And every labeled-vs-labeled
+  `d_A` is ungrouped (one acquisition per side), so those cells are upper
+  bounds. Only the pooled labeled-vs-unlabeled numbers are dataset-grouped, and
+  those are the two the conclusion rests on.
+- **The labeled datasets are ordinary acquisitions; the DeepMReye 1.0 pipeline
+  did not process them differently.** Worth checking, because the labeled blocks
+  come from a 1.0 run (`main`) via `convert_labeled_to_h5.py`, which copies
+  without re-normalising — so any 1.0-vs-current difference would sit in the
+  corpus unflagged and would masquerade as a domain gap. It does not:
+
+  - `normalize_img` is **byte-identical** between `main` and `pytorch`, and
+    nothing in the `preprocess.py` diff touches voxel values.
+  - The invariants agree on the stored blocks: per-voxel mean ~0, per-volume SD
+    ~1.0, `max|x|` exactly 5.0 (the clip) on both sides. Labeled per-voxel SD
+    spans 0.71-0.87 across the six datasets, with the unlabeled 0.78 in the
+    middle rather than outside.
+  - **Decisive:** mean within-dataset cosine distance is **0.940** over the 520
+    unlabeled datasets with two participants, against **0.90-0.95** for five of
+    the six labeled datasets (`dsL06`, n=6, is the exception at 0.354). Two
+    participants of a labeled study are no more alike than two participants of
+    an arbitrary OpenNeuro study. Random pairs sit at 1.001.
+
+  So the `d_A` = 0.67 above is mostly **structural**: the corpus is 684
+  acquisitions of 1-2 participants each, while the labeled half is 6
+  acquisitions of up to 158. Separating those groups only requires recognising
+  six specific studies, which any six studies would permit. Do not read it as
+  evidence that the gaze data is preprocessed differently — that was checked and
+  it is not.
+
+  One difference *is* real and was not previously quantified: **repetition time.
+  Labeled median TR is 0.80 s against the corpus's 2.00 s** (242 of 246 labeled
+  participants are <= 1.3 s, against 317 of 1204 unlabeled). That is a genuine
+  property of which studies record eye tracking, and it is the concrete form of
+  the fixed-TR-window limitation logged above. It does **not** explain the
+  `d_A`, though: restricting the corpus to TR <= 1.3 s *raises* it to 0.758,
+  while splitting the unlabeled corpus on TR alone gives 0.534.
+- **The cross-orbit bottleneck is the one self-supervised objective that
+  learns gaze — and it still loses to a linear basis.** `deepmreye/crossorbit.py`
+  reconstructs each orbit from the *other* orbit's soft-argmax coordinate plus
+  its own nuisance code taken from a different TR. Training beats its own
+  untrained control on **6/6** folds at K=2 (0.316 vs 0.122, mean +0.132) and
+  5/6 at K=4 (0.389 vs 0.273), from **12-24 label-free dimensions**. The
+  reconstruction ablation agrees: shuffling coordinates costs 0.19-0.22 R²
+  against 0.000 untrained. That is a real first here — JEPA had trained =
+  untrained, next-TR had trained *worse*.
+
+  It nonetheless does not reach `fold-pca` (0.779) and adds nothing to it
+  (`fold-pca+xorb` 0.777, 2/6 folds). Most telling: **`lr-cca` at 0.759 is the
+  linear version of the same cross-orbit constraint**, so making that constraint
+  non-linear and routing it through a bottleneck bought nothing over the linear
+  form. If this line is revisited, the thing to beat is `lr-cca`, not `raw`.
+
+  Two implementation notes that cost time. The orbit split must **drop the
+  midline trough at x=24** — it is the boundary between the lobes, and the
+  halves must share no slice or the objective can predict an orbit partly from
+  itself. And the orbit cache stores raw volumes, so it is only valid for the
+  geometry that built it; it now records its `orbit_shape` and refuses to load
+  against a different one, after a stale cache silently survived a split change.
+
+  `xorb-nuis` scoring above `xorb` is **not** evidence the two paths failed to
+  separate. At probe time the nuisance encoder is applied to the current TR, so
+  it is just a wider learned embedding of that volume; the t/t' decoupling
+  constrains only what that path was *useful* for during training. The
+  comparison that means something is `xorb` vs `xorb-random` at matched
+  dimensionality.
+- **Cross-orbit *contrastive* learning: trained beats untrained, more data makes
+  it worse at gaze, and it never reaches `lr-cca`. Closed.**
+  `deepmreye/orbitcon.py`, `--features ocon ocon-random`. VICReg between the two
+  orbits of the same TR, 64 dims matched to `lr-cca:64`. At a matched 400-window
+  budget: `ocon` peaks at **0.785** (dsL02) / **0.666** (dsL05) against its
+  untrained control's 0.646 / 0.576 — so training genuinely helps, +0.08 to +0.14
+  at every scale — and against `lr-cca:64`'s **0.922** / **0.809**. Making the
+  cross-orbit constraint non-linear and contrastive bought nothing over its linear
+  form, which is the same verdict `xorb` reached.
+
+  **The scaling curve is the finding.** From 100 to 884 pretraining runs the
+  objective improves *monotonically* (val loss 29.47 → 28.24, within-run
+  agreement +0.616 → +0.732) while the probe **peaks at 200 runs and then falls**
+  on both folds (dsL02 0.785 → 0.723, dsL05 0.666 → 0.658). This is the next-TR
+  result in a new objective: what the two orbits share is dominated by global
+  signal, motion and drift — all common to both orbits, all varying within a run
+  — so more data buys more nuisance. An eighth of the corpus is as good as all of
+  it. Do not answer this by scaling; the untested escape is projecting out the
+  leading global/motion components *before* the contrastive loss.
+
+  **`agreement_within_run` excludes anatomy but not motion, and that is its
+  limit.** It was built because pooled L/R agreement cannot distinguish gaze from
+  anatomy (both orbits encode the subject; the shuffled control still reads ~0
+  because re-pairing crosses subjects). Within a run the subject is constant, so
+  it does rule anatomy out — and it rose monotonically with data while gaze
+  decoding did not, which is how we know the learned shared signal is
+  within-run nuisance rather than anatomy *or* gaze.
+- **Gaze is *linearly* accessible from these features, so a non-linear encoder in
+  front of a linear readout cannot help. Measure this before building another
+  one.** `scripts/analyze_nonlinear_ceiling.py`. The argument is short: the probe
+  readout is linear, so a non-linear encoder only pays if gaze depends
+  non-linearly on its input — and that is upper-bounded by what a *supervised*
+  non-linear readout gets on the same features, which is generous, since it sees
+  the labels the encoder never does and optimises the exact quantity scored. On
+  the k=32 corpus canonical coordinates, 7 verified folds:
+
+  | supervised readout | median r | vs ridge |
+  |---|---|---|
+  | **ridge (linear)** | **0.820** | — |
+  | poly-ridge (squares + leading cross terms) | 0.808 | −0.012 |
+  | gbt | 0.800 | −0.020 |
+  | ridge on all 256 directions | 0.789 | −0.031 |
+  | mlp (256, 128) | 0.777 | −0.043 |
+
+  **Nothing non-linear wins, with labels.** That is a one-command ceiling for the
+  entire non-linear program on this corpus, and it explains the whole run of
+  negatives — JEPA, next-TR, CompositeNet, ContrastiveNet, `ocon`, `xorb`,
+  `xrot` — without appealing to tuning in any of them. It also predicts, and is
+  consistent with, the Orbit-JEPA result: 27 checkpoints across three learning
+  rates and two widths, **none** beating a warm start that equals `lr-cca:32`.
+  Note the corollary about width: `ridge` on 256 directions *loses* 0.031 to
+  `ridge` on 32, which is the same "optimal k falls" law from the corpus-scaling
+  entry showing up in the readout rather than the basis.
+- **Next-TR prediction learns, and it destroys gaze.** A causal GRU predicting
+  TR *t+1* from TRs ≤ *t* (`deepmreye/temporal.py`) reaches held-out R² **+0.230**
+  against **−0.047** for the same architecture untrained — so unlike JEPA, the
+  objective genuinely optimises. Probed, the trained hidden state scores
+  **0.530** against **0.686** for its own untrained control and **0.775** for
+  `corpus-pca`, which is literally the model's input. Training helped on
+  **0 of 6 folds**, mean **−0.145**; the raw-variance-weighted checkpoint
+  behaves the same (0.589 vs 0.721).
+
+  The reason is measurable and worth keeping: over corpus-PCA coordinates the
+  next TR is predictable at R² 0.32 (linear AR(4)), but that predictability is
+  concentrated in components 0–8 (38% of variance, R² 0.59) versus 128–256
+  (R² 0.09). The leading components are global signal, motion and drift; gaze at
+  a 0.8–2.0 s TR is nearly white frame-to-frame because saccades outpace the
+  sampling. **The predictable part of an eye block is the nuisance**, so a
+  predictive objective spends its state there and evicts gaze. Whitening the
+  targets per component was an explicit attempt to prevent this and did not
+  help. Note too that an untrained GRU already loses ground to its own input
+  (0.686 vs 0.775) — a recurrent bottleneck discards gaze before any training.
+
+  Do not retry plain predictive pretraining here. An objective that could work
+  has to avoid being dominated by the predictable nuisance: contrastive between
+  the two orbits (`lr-cca` is the linear version, and is the best-behaved
+  unsupervised arm), or prediction after projecting out the global/motion
+  components.
+- **`dsL03_pursuit` is a resolution limit, not a transfer failure. Stop
+  targeting it.** It was long recorded here as a calibration/transfer problem.
+  It is not. Pearson r is invariant to affine rescaling, so a gain mismatch
+  cannot lower r — and dsL03 has r 0.20 *and* R² −0.64, so the direction is
+  wrong, not the scale. Held-out **subjects within dsL03 itself** decode at
+  0.142, the same as cross-dataset (0.159/0.196), so it is not about crossing
+  datasets. The (pred, true) 2×2 correlation matrix is diagonal and positive, so
+  it is not an axis swap or sign convention. Eyeball-centroid spread across
+  subjects is mid-pack (0.885 voxels; dsL01 is worse at 1.236 and works), so it
+  is not registration.
+
+  What it is: the gaze trace's **lag-1 autocorrelation is 0.141**, against
+  0.56-0.85 everywhere else. `dsL02_pursuit` is the control that settles it —
+  same paradigm, same within-subject gaze SD (2.33 vs 2.35 deg), autocorrelation
+  0.849, decodes at 0.911. dsL03's gaze simply moves faster than its acquisition
+  can resolve. Every feature source, readout and alignment tried has left it
+  between 0.18 and 0.21; that is what a resolution limit looks like, and further
+  representation or domain-adaptation work aimed at it is wasted.
+  `scripts/analyze_axis_conventions.py` is the diagnostic.
+
+  **This generalises into a law over the whole corpus**
+  (`scripts/analyze_temporal_ceiling.py`). Over the 12 (dataset, axis) cells,
+  the gaze trace's lag-1 autocorrelation predicts the decoded correlation at
+  **Pearson r = +0.977** (Spearman rho = +0.797, p = 0.002 — quote the Spearman,
+  since three low cells against nine high ones flatter the Pearson and the two
+  axes of a dataset are not independent). Ordered by autocorrelation the cells
+  run dsL03.x 0.128 → r 0.181, dsL03.y 0.163 → 0.234, dsL06.y 0.253 → 0.343,
+  then everything else from 0.598 → 0.811 up to dsL02.y 0.851 → 0.874. Both
+  "failures" on this corpus are the same phenomenon, and it is a property of the
+  stimulus, not of the decoder.
+
+  **The evidence that makes it a mechanism rather than a correlation is
+  `dsL06`'s two axes.** A between-dataset trend confounds TR, scanner, subjects,
+  paradigm and registration all at once. dsL06 dissociates *within the same
+  scans*: lag-1 0.761 on x decoding at 0.947, against 0.253 on y decoding at
+  0.343 — same subjects, same TR, same preprocessing, same model. It is the only
+  dataset whose axes differ at all (ratio 0.33; the other five sit at 0.98-1.27).
+  Note this is also why the raw autocorrelation is not merely a proxy for TR.
+
+  **Call it an envelope, not a ceiling.** The fit is
+  `decoded_r = 1.03 * lag1 + 0.085` with residual SD **0.063** and one cell
+  (`dsL05.x`) sitting **+0.111 above** it, so it is not a bound no method can
+  pass. What is true is that `fold-pca:64` *achieves* it everywhere while weaker
+  arms fall below: on `dsL06.y`, `fold-pca` reads 0.343 (on the line) against
+  `lr-cca` -0.008 and the published CNN -0.047. So the useful statement is that
+  the acquisition sets the scale and the readout is already at it — and the
+  practical consequence is that **any representation improvement on this corpus
+  is bounded to roughly 0.06-0.10 r on a couple of cells**, not a wholesale
+  gain. The two with real headroom are `dsL01.y` (-0.098 residual) and
+  `dsL02.y` (-0.086), both vertical axes of high-autocorrelation datasets.
+  Read any new SSL arm against that budget before calling its score a
+  disappointment.
+- **Unsupervised feature alignment (Euclidean Alignment, CORAL) hurts.**
+  `deepmreye/evaluate/align.py`. The standard cross-subject corrections in
+  EEG/BCI, applied per subject and per dataset: `ea` 0.686 and `coral` 0.644
+  against 0.779 unaligned (per dataset), 0.651 / 0.627 against 0.808 (per
+  subject at 32 components). EA buys +0.014 on dsL03 and costs 0.19 / 0.14 /
+  0.18 on dsL01 / dsL02 / dsL06. The between-component covariance of these
+  features is **signal, not shift** — whitening it per group removes gaze.
+  Mean-centring is free and neutral because the blocks are already per-voxel
+  z-scored within subject; everything past that is harmful. `zscore` here is the
+  same diagonal correction `analyze_calibration.py` already found useless as
+  `feat-std`, kept as the reference the full-covariance methods must beat.
+- **Concatenating features needs a per-part component budget.** Every readout
+  wraps its features in a `StandardScaler`, so gluing 256 corpus components onto
+  256 fold-local ones hands ridge 512 equally-scaled dimensions under a single
+  alpha: it cannot downweight the added block, and unbudgeted concatenation
+  *loses* (0.737 against 0.779). `--features fold-pca+lr-cca:16` is the fair
+  form; the `:k` suffix caps that part alone.
+- **Crossing a basis feature with `svr`/`lgbm`/`mlp` needs `--n-components`
+  raised.** Those three are built as `StandardScaler -> PCA(--n-components,
+  default 32) -> model`. On `raw` that is sensible compression of 480 correlated
+  voxels; on an already variance-ordered basis the scaler whitens the components
+  and the second PCA then truncates to 32 near-arbitrary directions. The
+  difference is not subtle: `fold-pca`+lgbm reads 0.105 at the default and 0.517
+  at `--n-components 256`. Neither beats `ridge-cv`'s 0.779, but only the second
+  is a measurement of the model rather than of the truncation.
+- **The covariance accumulator must be Fortran-ordered, and this fails
+  silently.** `scipy`'s `syrk` wrapper only honours `overwrite_c` when `c` is
+  already in BLAS's layout; handed a C-ordered array it updates a *copy* and
+  returns it, so the accumulator stays at zero and nothing raises. The
+  covariance then comes out as `-mu mu^T` — rank one, negative trace — and still
+  yields a plausible-looking leading component, which is how it survived a first
+  pass. `Moments` allocates with `order="F"` and raises if `syrk` ever returns a
+  different object. The tell is a variance share of exactly −1.0, or canonical
+  correlations of 0.99 followed by zeros.
+- **Nothing in the feature path may use torch.** LightGBM and PyTorch each load
+  their own OpenMP runtime, and a threaded torch reduction that runs *after* a
+  LightGBM fit in the same process deadlocks — no error, no traceback, the
+  process stops. `eval_probe` reaches exactly that ordering with
+  `--readouts lgbm` on any multi-fold protocol, since fold 2's extraction
+  follows fold 1's fit. `pool_time` is therefore numpy, and
+  `test_feature_path_survives_a_lightgbm_fit_in_the_same_process` guards it.
+  `OMP_NUM_THREADS=1` also masks it, which is why it can look environment-
+  specific.
 - **`pca-ridge` is the readout to compare everything else against, not just
   another entry in the zoo.** It is unsupervised dimensionality reduction (no
   peeking at gaze) followed by a linear map, so it is the honest floor for any

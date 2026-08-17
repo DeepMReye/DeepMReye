@@ -50,7 +50,25 @@ can select what you need before downloading anything.
 
 - **Unlabeled** — the bulk of the corpus, for self-supervised pretraining.
 - **Labeled** — participants with simultaneous eye-tracking, for fitting and
-  evaluating a gaze probe. Same format; `labels` is simply present.
+  evaluating a gaze probe. Same format; `labels` is simply present. These are
+  the `dsL##_*` folders, so `dsL*/*.h5` selects them without opening a file.
+
+`dsL01`–`dsL06` come from the DeepMReye 1.0 training sets. `dsL07` and `dsL11` were
+ingested from OpenNeuro datasets that recorded eye tracking during the scan:
+
+| folder | source | n | paradigm |
+|---|---|---|---|
+| `dsL07_deepmreye_calib` | ds006833 | 15 | fixation / pursuit / free viewing |
+| `dsL11_backtothefuture` | ds006642 | 4 | movie (backtothefuture) |
+
+### Gaze/BOLD alignment
+
+Every ingested dataset was checked by decoding gaze from the eye block at a
+range of TR shifts and confirming the correlation peaks at **lag 0** — the
+eyeball signal is not hemodynamic, so a correctly aligned recording has no delay
+to absorb an error. Each file records how its time origin was recovered
+(`gaze_anchor`: a BIDS `StartTime`, a scanner-trigger column, or a sync message
+in the tracker stream) and any residual offset applied (`gaze_time_offset`).
 
 ## Processing
 
@@ -60,9 +78,25 @@ mask set to 0, and cropped to a fixed `[47, 29, 18]` bounding box. Values are
 z-scored per voxel across time and per volume across space, then clipped at
 5 SD. Labeled and unlabeled participants went through identical processing.
 
-Gaze labels are in degrees of visual angle, sampled 10 times per TR. `NaN`
-marks TRs with no valid gaze sample — mask them rather than dropping them, or
-the block and the gaze go out of alignment.
+Gaze labels are sampled 10 times per TR: sub-bin `j` of volume `t` holds the
+mean gaze over `[(t + j/10)·TR, (t + (j+1)/10)·TR)`, so the bins do not overlap
+and the mean of the ten is the mean gaze during that volume. `NaN` marks TRs
+with no valid gaze sample — mask them rather than dropping them, or the block
+and the gaze go out of alignment.
+
+**Units differ by dataset — read `label_units` from the file attributes.**
+
+| folder | units |
+|---|---|
+| `dsL01`–`dsL06` | degrees of visual angle |
+| `dsL07_deepmreye_calib` | degrees of visual angle |
+| `dsL11_backtothefuture` | degrees of visual angle |
+
+The source papers were checked for each dataset. `dsL07` and `dsL11` document geometry (display size and viewing distance) to convert to degrees of visual angle.
+
+Pearson correlation is invariant to the difference. **Training is not**: if you
+fit one readout over several datasets pooled, standardise the target per dataset
+first, or the largest-scale dataset dominates the loss.
 
 ## Loading
 
@@ -173,6 +207,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Validate and report, upload nothing.")
     parser.add_argument("--deep", action="store_true", help="Full-read validation (slow, thorough).")
     parser.add_argument("--labeled-only", action="store_true", help="Upload only labeled participants.")
+    parser.add_argument("--exclude-datasets", nargs="*", default=(),
+                        help="Dataset folders to hold back. Use for data that is "
+                             "technically valid but should not be published -- "
+                             "`dsX10_visseq_unaligned` carries labels that failed "
+                             "sync verification, and shipping them would export "
+                             "exactly the problem it was rejected for.")
     parser.add_argument("--reports", action="store_true",
                         help="Also upload the full QA report HTML (~5 MB/subject, larger "
                              "in total than the eye blocks). Not needed to label: the "
@@ -201,6 +241,13 @@ def main():
         return
 
     n_candidates = len(good)
+
+    if args.exclude_datasets:
+        drop = set(args.exclude_datasets)
+        held = [r for r in good if r["dataset"] in drop]
+        good = [r for r in good if r["dataset"] not in drop]
+        print(f"Holding back {len(held)} participants from {len(drop)} dataset(s): "
+              f"{', '.join(sorted(drop))}")
 
     if args.labeled_only:
         good = [r for r in good if r.get("has_labels")]
@@ -231,6 +278,16 @@ def main():
     if args.dry_run:
         print("\n[dry run] nothing uploaded.")
         return
+
+    # `run_build` indexed everything on disk, but the upload is a subset. An
+    # index that lists participants the repo does not contain is worse than no
+    # index -- anyone filtering on it gets 404s -- so it is rewritten to match
+    # exactly what goes up.
+    if len(good) != n_candidates:
+        import pandas as pd
+
+        pd.DataFrame(good).to_parquet(data_dir / "index.parquet", index=False)
+        print(f"Rewrote index.parquet with the {len(good)} uploaded participants.")
 
     from huggingface_hub import HfApi
 
