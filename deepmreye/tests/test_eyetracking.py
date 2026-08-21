@@ -8,10 +8,13 @@ tests here are deliberately about *time*, not about shapes.
 import gzip
 import json
 
+import re
+
 import numpy as np
 import pytest
 
 from deepmreye.eyetracking import (
+    ANCHOR_EVENTS,
     ANCHOR_INDEXED_MESSAGE,
     ANCHOR_MESSAGE,
     ANCHOR_STARTTIME,
@@ -627,7 +630,12 @@ def test_excluded_configs_are_not_offered_on_the_command_line():
         [_sys.executable, str(_Path(__file__).resolve().parents[2]
                               / "scripts" / "fetch_eyetracking.py"), "--list"],
         capture_output=True, text=True, timeout=120)
-    assert "dsX10_visseq_unaligned" not in out.stdout
+    for key in ("_ds007532_excluded", "_ds001242_excluded"):
+        assert key not in out.stdout, (
+            f"{key} is offered on the command line. Configs keyed with a "
+            "leading underscore failed verification and are kept only as "
+            "documentation -- an excluded dataset must not be re-ingested "
+            "because someone tab-completed it.")
 
 
 def test_only_documented_geometry_claims_degrees():
@@ -641,8 +649,17 @@ def test_only_documented_geometry_claims_degrees():
 
 
 def test_configs_with_no_timestamp_column_can_synthesise_times():
+    """A TSV needs a clock from somewhere; an EyeLink file brings its own.
+
+    `.asc` and `.edf` carry sample timestamps in the file, so `timestamp_col`
+    is meaningless for them -- `build_labels` never reads it on those paths.
+    Only the TSV branch has to synthesise times, and only it needs a sampling
+    frequency or a sidecar to do so.
+    """
     DATASETS, _ = _configs()
     for ds, cfg in DATASETS.items():
+        if re.search(r"\\.(asc|edf)(\\.gz)?\$", cfg["et_pattern"], re.IGNORECASE):
+            continue
         if cfg.get("timestamp_col") is None:
             assert cfg.get("sidecar_key") or cfg.get("sampling_frequency"), ds
 
@@ -800,3 +817,143 @@ def test_indexed_message_anchor_tolerates_jitter_but_reports_it():
                                message_pattern=r"TTLPulse_(\d+)", tr=tr)
     assert got == pytest.approx(t0, abs=0.02)
     assert info["max_residual"] > 0
+
+
+# --------------------------------------------------------------------------
+# the vertical convention
+#
+# Three ingested datasets (ds000113, ds001242, ds004158) shipped with y negated
+# because `center_and_scale`'s docstring had the corpus's vertical direction
+# backwards. Nothing caught it: a lag sweep is blind to a sign error, so every
+# one of them verified at lag 0 with a healthy margin while decoding at a
+# *negative* vertical correlation. These pin the convention so the next config
+# cannot be written against a guess.
+# --------------------------------------------------------------------------
+
+def _ingest_configs():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from fetch_eyetracking import DATASETS
+    return DATASETS
+
+
+def test_corpus_vertical_convention_is_y_downward():
+    """No flip for a top-left tracker -- the corpus is in screen coordinates.
+
+    Established from anatomy rather than from another dataset: the template is
+    stored L, A, S and the eyeball's dark lens sits at its anterior pole, so
+    looking up moves that lens to higher z. `verify_gaze_sync.py --convention`
+    measures the resulting dipole and six datasets vote positive unanimously.
+    """
+    lab = np.ones((1, N_SUBTR, 2), dtype=np.float32)
+    out = center_and_scale(lab, flip_y=False)
+    assert np.allclose(out[..., 1], 1.0), "flip_y=False must leave y untouched"
+
+
+@pytest.mark.parametrize("accession", ["ds006833", "ds006642", "ds004158",
+                                       "ds000113", "_ds001242_excluded"])
+def test_every_ingest_config_keeps_the_screen_vertical_convention(accession):
+    cfg = _ingest_configs()[accession]
+    assert cfg.get("flip_y", False) is False, (
+        f"{accession} sets flip_y=True. Every tracker here is top-left origin "
+        "and so is the corpus, so a flip inverts the dataset -- which is what "
+        "happened to ds000113, ds001242 and ds004158. See the note in "
+        "deepmreye/eyetracking.center_and_scale before changing this.")
+
+
+def test_ds004158_reads_its_gaze_columns_y_first():
+    """The TSV is (y, x, pupil, time) and nothing in the dataset says so.
+
+    There is no root sidecar, so this override is the only column information
+    available. The README's "keep fixation to a fixation dot at the screen
+    center" is what settles it: read this way, 20 subjects' medians land 10 px
+    and 2 px from a 1920x1080 centre; read the other way, 422 px and 430 px off.
+    """
+    cols = _ingest_configs()["ds004158"]["columns"]
+    assert find_gaze_columns(cols) == (1, 0)
+
+
+# --------------------------------------------------------------------------
+# ANCHOR_EVENTS and the EDF reader
+#
+# Three datasets (ds001840, ds004283, ds007305) ship gaze only as EyeLink's
+# binary .edf and carry no scanner pulse anywhere in the recording. What they do
+# carry is stimulus messages on the tracker clock plus a BIDS events.tsv whose
+# onsets are already relative to volume 0, so the origin is recovered by fitting
+# one against the other. That fit is the only anchor here that validates itself,
+# and these pin the two checks that make it worth trusting.
+# --------------------------------------------------------------------------
+
+def _events_anchor(t0, *, clock=1.0, jitter=0.0, n=60, seed=0):
+    rng = np.random.default_rng(seed)
+    onsets = np.sort(rng.uniform(0, 700, n))
+    msg_t = clock * onsets + t0 + rng.normal(0, jitter, n)
+    return onsets, [(t, "stim_onset") for t in msg_t]
+
+
+def test_events_anchor_recovers_the_origin():
+    onsets, events = _events_anchor(267.886, jitter=0.0003)
+    got, info = anchor_seconds(ANCHOR_EVENTS, events=events,
+                               message_pattern=r"^stim_onset$",
+                               bids_onsets=onsets)
+    assert got == pytest.approx(267.886, abs=0.01)
+    assert info["n_events"] == 60
+    assert info["clock_ratio"] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_events_anchor_rejects_a_clock_that_is_not_the_same_rate():
+    """A slope away from 1 means the messages are not these events.
+
+    ds001840 fails exactly here: its events.tsv onsets are the *design*, and the
+    stimulus actually ran ~2.5% fast, so the fit returns a slope of 0.975. Over
+    an 859 s run that is 21 s of drift -- no single origin can align it, which
+    is why it is not ingested on this anchor.
+    """
+    onsets, events = _events_anchor(2.30, clock=0.975)
+    with pytest.raises(SyncError, match="clock ratio"):
+        anchor_seconds(ANCHOR_EVENTS, events=events,
+                       message_pattern=r"^stim_onset$", bids_onsets=onsets)
+
+
+def test_events_anchor_rejects_scattered_residuals():
+    onsets, events = _events_anchor(100.0, jitter=0.5)
+    with pytest.raises(SyncError, match="residual"):
+        anchor_seconds(ANCHOR_EVENTS, events=events,
+                       message_pattern=r"^stim_onset$", bids_onsets=onsets)
+
+
+def test_events_anchor_rejects_a_mismatched_event_count():
+    onsets, events = _events_anchor(10.0)
+    with pytest.raises(SyncError, match="not the\n?\\s*same event list|same event list"):
+        anchor_seconds(ANCHOR_EVENTS, events=events[:-3],
+                       message_pattern=r"^stim_onset$", bids_onsets=onsets)
+
+
+def test_events_anchor_needs_onsets():
+    _, events = _events_anchor(10.0)
+    with pytest.raises(SyncError, match="events.tsv onsets"):
+        anchor_seconds(ANCHOR_EVENTS, events=events,
+                       message_pattern=r"^stim_onset$", bids_onsets=None)
+
+
+def test_read_edf_rejects_european_data_format():
+    """EEG's European Data Format shares the extension and must not parse.
+
+    Silently reading one as gaze would produce plausible-looking numbers with no
+    relationship to where anyone was looking.
+    """
+    from deepmreye.eyetracking import read_edf
+    edf_plus = b"0       " + b" " * 80 + b"EDF+C" + b"\x00" * 100
+    with pytest.raises(SyncError, match="SR_RESEARCH|European Data Format"):
+        read_edf(edf_plus)
+
+
+def test_ds004283_uses_the_self_validating_anchor():
+    DATASETS, _ = _configs()
+    cfg = DATASETS["ds004283"]
+    assert cfg["anchor"] == ANCHOR_EVENTS
+    assert cfg.get("center") is None, (
+        "ds004283 must take its screen centre from the .edf header's "
+        "DISPLAY_COORDS, not from a number typed into the config -- that guess "
+        "is what hid ds004158's transposed columns.")

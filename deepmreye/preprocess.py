@@ -55,11 +55,22 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
             aff_iterations=(200, 200, 200, 10),
             aff_smoothing_sigmas=(0, 0, 0, 0),
         )
-        if verbose > 0:
-            if "SyN" in type_of_transform:
-                registered_fwd = loadmat(register_to_nau["fwdtransforms"][1])["AffineTransform_float_3_3"]
-            else:
-                registered_fwd = loadmat(register_to_nau["fwdtransforms"][0])["AffineTransform_float_3_3"]
+        mat_file = (
+            register_to_nau["fwdtransforms"][1]
+            if "SyN" in type_of_transform
+            else register_to_nau["fwdtransforms"][0]
+        )
+        try:
+            mat_data = loadmat(mat_file)
+            mat_key = next(
+                (k for k in mat_data.keys() if "affinetransform" in k.lower() or "matrixoffsettransform" in k.lower()),
+                None,
+            )
+            registered_fwd = np.asarray(mat_data[mat_key], dtype=np.float32) if mat_key is not None else np.zeros((12, 1), dtype=np.float32)
+        except Exception:
+            registered_fwd = np.zeros((12, 1), dtype=np.float32)
+
+        if verbose > 0 and registered_fwd is not None:
             print(
                 f"Mask {idx}/{len(masks) - 1}, "
                 f"Sum: {np.sum(registered_fwd):.3f}, "

@@ -25,8 +25,16 @@ Two things make the read honest:
   margin (peak minus best competing lag at distance >= 2) is what says the peak
   is real.
 
+**What the lag sweep does not verify is the sign.** Negate an axis and every lag
+scores the same magnitude, so a flipped dataset peaks at 0 with a healthy margin
+and passes -- which is exactly what ds000113, ds001242 and ds004158 did while
+their vertical axis was inverted. ``--convention`` is the complementary check:
+it reads the direction of y off the orbit's own anatomy, so it needs no
+reference dataset and cannot be fooled by a consistent flip.
+
     python scripts/verify_gaze_sync.py --datasets dsL07_deepmreye_calib
     python scripts/verify_gaze_sync.py --control          # the original six
+    python scripts/verify_gaze_sync.py --convention       # is y pointing the right way?
 """
 import argparse
 import json
@@ -225,6 +233,73 @@ def sub_tr_sweep(data_dir, corpus_name, n_subjects=4, span=1.5, step=0.25):
     return per_subject
 
 
+def convention_check(data_dir, datasets, per_dataset=30):
+    """Which way does the corpus's label y point? Ask the anatomy.
+
+    A lag sweep is blind to a sign error: negate y and every lag scores the same
+    magnitude, so the peak stays at 0 and the verdict stays PASS. Three ingested
+    datasets shipped with an inverted vertical axis behind exactly that blind
+    spot. Catching it with a cross-dataset readout works, but it cannot check
+    the *reference* corpus's own convention without circularity. This can.
+
+    The template is stored L, A, S, so axis 2 grows superior and axis 1 grows
+    anterior. The eyeball is a bright vitreous sphere with a dark lens at its
+    anterior pole, so looking up rotates that dark lens to higher z: it darkens
+    the superior-anterior voxels and brightens the inferior-anterior ones.
+    corr(voxel, label y) is therefore a **dipole along z in the anterior half of
+    the orbit**, and its sign reports which way y points, from one dataset alone.
+
+    Positive superior-minus-inferior means **y grows downward** -- the corpus's
+    convention (screen coordinates, top-left origin), i.e. ``flip_y=False`` for
+    a top-left tracker.
+
+    **This is a corpus-level instrument, not a per-dataset gate.** It is
+    computed per participant and reported as a vote, because on some datasets
+    the participants do not agree and the dipole is then measuring noise. It is
+    decisive (>=80% agreement) on dsL01, dsL02, dsL03, dsL04, dsL07 and dsL11 --
+    unanimously positive, which is what establishes the convention. It is
+    inconclusive on the rest, and dsL05 is the warning: its participants split
+    41/59 here while its vertical axis decodes at r 0.83. Do not read a
+    minority-negative vote as a flip; go to a cross-dataset readout for that.
+    """
+    rows = []
+    print(f"{'dataset':<30}{'n':>4}{'median':>10}{'frac>0':>8}   verdict")
+    for ds in datasets:
+        vals = []
+        for p_ in sorted((Path(data_dir) / ds).glob("*.h5"))[:per_dataset]:
+            with h5py.File(p_, "r") as f:
+                if "labels" not in f:
+                    continue
+                block = f["eye_block"][...]
+                y = per_tr_gaze(f["labels"][...])[:, 1]
+            n = min(block.shape[-1], len(y))
+            block, y = block[..., :n], y[:n]
+            ok = np.isfinite(y)
+            block, y = block[..., ok], y[ok]
+            if len(y) < 60 or y.std() < 1e-9:
+                continue
+            z = (block - block.mean(-1, keepdims=True)) / (block.std(-1, keepdims=True) + 1e-9)
+            c = z @ ((y - y.mean()) / (y.std() * len(y)))
+            ant = c[:, c.shape[1] // 2:, :]          # anterior half of the orbit
+            vals.append(float(np.nanmean(ant[..., ant.shape[2] * 2 // 3:]) -
+                              np.nanmean(ant[..., : ant.shape[2] // 3])))
+        v = np.array([a for a in vals if np.isfinite(a)])
+        if not len(v):
+            print(f"{ds:<30}{0:>4}{'  no usable participants':>26}")
+            continue
+        frac = float(np.mean(v > 0))
+        if frac >= 0.80:
+            verdict = "y grows DOWN (corpus convention)"
+        elif frac <= 0.20:
+            verdict = "y grows UP  <-- FLIPPED"
+        else:
+            verdict = f"inconclusive ({int(frac * len(v))}/{len(v)} positive)"
+        rows.append({"dataset": ds, "n": int(len(v)), "median": float(np.median(v)),
+                     "frac_positive": frac, "verdict": verdict})
+        print(f"{ds:<30}{len(v):4d}{np.median(v):+10.4f}{frac:8.2f}   {verdict}")
+    return rows
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--data-dir", default=None)
@@ -233,6 +308,9 @@ def main():
                         "onset of volume 0 finer than one TR.")
     p.add_argument("--sub-tr-subjects", type=int, default=4)
     p.add_argument("--datasets", nargs="*", default=None)
+    p.add_argument("--convention", action="store_true",
+                   help="Check each dataset's vertical sign against the orbit's "
+                        "own anatomy rather than against another dataset.")
     p.add_argument("--control", action="store_true",
                    help="Also sweep the six original labeled datasets, whose "
                         "alignment is independent of this ingest.")
@@ -242,6 +320,21 @@ def main():
     args = p.parse_args()
 
     data_dir = Path(args.data_dir or resolve(None, download=False, quiet=True))
+
+    if args.convention:
+        datasets = list(args.datasets or sorted(d.name for d in data_dir.glob("dsL*")))
+        print(f"[*] corpus {data_dir}\n")
+        rows = convention_check(data_dir, datasets, max(args.per_dataset, 30))
+        bad = [r for r in rows if r["frac_positive"] <= 0.20]
+        weak = [r for r in rows if 0.20 < r["frac_positive"] < 0.80]
+        if weak:
+            print("\n[*] inconclusive (participants disagree; the dipole is "
+                  "measuring noise there, not a sign): "
+                  + ", ".join(r["dataset"] for r in weak))
+        if bad:
+            print("\n[!] FLIPPED: " + ", ".join(r["dataset"] for r in bad))
+            return 1
+        return 0
 
     if args.sub_tr:
         for ds in args.sub_tr:

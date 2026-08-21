@@ -4,9 +4,1019 @@ What exists right now, how it was made, and what is next. For the method see
 `overview.md`; for design decisions and cluster constraints see `CLAUDE.md`;
 for how to run anything see `README.md` and `slurm/README.md`.
 
-Last updated **2026-08-15**.
+Last updated **2026-08-20**.
 
 ## Recent Accomplishments
+
+### A voxel network that provably matches the linear incumbent — and two bugs that faked it (2026-08-20)
+
+`deepmreye/voxelnet.py`, `scripts/train_voxelnet.py`, `deepmreye/tests/test_voxelnet.py`,
+`results/subtr/voxelnet_lowrank32.json`, `results/subtr/voxelnet_heavyaug.json`.
+
+The objection to stopping at the temporal ceiling is a good one: a network is a universal
+function approximator, so it should be **at least as good** as `lr-cca:32 + lags` read off
+voxels. That is right, and it is right *constructively* -- `W_cca` is a linear layer,
+`make_lags` is a fixed convolution, the ridge head is a linear layer. The mistake would be
+treating universal approximation as a claim about optimisation or generalisation, which it is
+not. So the network is **initialised at** the incumbent rather than asked to rediscover it:
+
+    pred(x) = head_lin(make_lags(W_cca @ (x - mu), L))     # the incumbent, warm-started
+            + alpha * head_nl(make_lags(g(x), L))          # zero-init; must earn adoption
+
+`g` is a **supervised learned projection from voxels** -- and that is the arm
+`analyze_temporal_ceiling_supervised.py` never tested. Its Block B varied the rank of a
+*frozen, unsupervised* projection (`lr-cca` fitted blind to gaze) and found more of it
+monotonically harmful; a projection fitted *against gaze* is a different object.
+
+#### 1. The guarantee holds, and it is exact
+
+Per fold the linear branch is warm-started from that fold's own `RidgeCV` fit. **All nine
+per-fold incumbent values reproduce `ridge-L1` to four decimals** (0.7678, 0.9169, 0.7751,
+0.8488, 0.8039, 0.6760, 0.7471, 0.2859, 0.6693), which is what makes the comparison
+trustworthy rather than merely favourable. With selection on held-out *datasets*, the
+unaugmented network lands at **+0.0000 on 8 of 9 folds** -- exactly the incumbent, because the
+branch is adopted only if it clears a margin on datasets it did not train on.
+
+| arm | median sub-TR | vs incumbent | folds won |
+|---|---|---|---|
+| incumbent (`ridge-L1`) | 0.7678 | — | — |
+| voxelnet low-rank, no augmentation | **0.7678** | +0.0000 | 0/9 |
+| voxelnet low-rank, heavy augmentation | 0.7476 | −0.0202 | 0/9 |
+| voxelnet CNN, random init | **0.7678** | +0.0000 | 0/9 |
+| voxelnet CNN, **SSL-init** (3,318 unlabeled) | **0.7678** | +0.0000 | 0/9 |
+
+#### 2. Two bugs that produced plausible numbers instead of errors
+
+**A zero gate times a zero head is a saddle.** The obvious reading of "the branch starts
+switched off" is `alpha = 0` *and* `head_nl = 0`. But d(loss)/d(alpha) is proportional to the
+branch output and d(loss)/d(head_nl) is proportional to alpha, so with both at zero neither
+ever moves. The network sits at initialisation forever and reports an immaculate **+0.0000
+margin that reads exactly like the guarantee working**. Measured: `alpha` pinned at 0.0000
+with validation loss identical across epochs. Only one may be zero -- `head_nl` zero and
+`alpha` one gives the same prediction at step 0 with gradient flowing immediately.
+`test_gradient_reaches_the_learned_branch_at_init` fails (both gradients exactly 0.000e+00)
+if the bug is reintroduced.
+
+**Early stopping on held-out participants selects branches that do not cross a dataset
+boundary.** The test is cross-dataset; validating on held-out participants *of the training
+datasets* measures within-distribution fit and happily adopts dataset-specific structure. It
+cost dsL01 0.7678 → 0.7263 while its validation loss was still improving. Selection moved to
+held-out **datasets** scored by **sub-TR r** (the reported quantity, not residual MSE), which
+restored dsL01 to +0.0000. A related detail: adoption needs a *margin* (0.005), because
+selection is a median over a handful of participants and any-improvement adoption cost dsL08
+0.2859 → 0.1545.
+
+#### 3. Augmentation raised the selection score without improving transfer
+
+Heavy augmentation -- integer-voxel shift +-3, mixup across participants, noise 0.2, voxel
+dropout 0.2, dropout 0.3, weight decay 0.1 -- did make the branch learn something: selection r
+rose **0.7405 → 0.7724** on held-out datasets and `alpha` held near 1 instead of collapsing to
+0.05. But it did not transfer: **every fold where the branch was adopted lost** (dsL01 −0.002,
+dsL02 −0.013, dsL03 −0.028, dsL05 −0.010) and every fold where it was not adopted landed
+exactly on the incumbent. So augmentation caused *more* bad adoptions, not fewer, and the
+augmented arm is 0.0202 **below** the unaugmented one.
+
+The cleanest statement of the result so far: **in 9/9 folds, adopting a learned voxel branch
+either did nothing or hurt. It never helped.**
+
+#### 4. It is not capacity, not optimisation, and not tuning -- the overfit test settles it
+
+A flat training loss has two readings that look identical on a curve: the model is
+over-regularised, or the target is unlearnable. Run without augmentation, without weight decay,
+without dropout and at `lr 3e-3`, the branch's training loss still did not fall (0.594, 0.606,
+0.618, ... 0.589), which rules out the first reading but not the second.
+
+The standard triage separates them. On **four participants of one dataset** (2008 rows), where
+a working model must simply memorise:
+
+| encoder | step 0 | 80 | 160 | 240 | 399 |
+|---|---|---|---|---|---|
+| low-rank linear, lr 1e-3 | 0.1978 | 0.0049 | 0.0016 | 0.0007 | **0.0002** |
+| low-rank linear, lr 1e-4 | 0.1978 | 0.0709 | 0.0281 | 0.0113 | 0.0038 |
+| 3-D CNN, lr 1e-3 | 0.1978 | 0.0139 | 0.0031 | 0.0016 | **0.0008** |
+
+**Both encoders drive the residual to essentially zero.** Capacity is ample and the
+optimisation works; the flat loss on the full corpus is the model finding nothing *systematic*
+across 400k rows and 8 datasets, not failing to train. The residual is memorisable
+participant-by-participant and carries no structure that crosses a dataset boundary.
+
+(On those four participants the linear branch already explains **80.2%** of target variance,
+which is the same fact from the other side.)
+
+#### 5. One architectural error worth recording
+
+The first CNN used `AdaptiveAvgPool3d(1)` before its head -- the default choice for a 3-D
+encoder, and **exactly wrong here**. Gaze *is* the spatial position of the eyeball, so averaging
+the spatial axes away discards the signal. The symptom was diagnostic once looked at: training
+loss flat at 0.46-0.49 and selection r pinned at the incumbent's 0.8265 to four decimals.
+Flattening the feature map instead (72 spatial positions x 64 channels) makes the metric move.
+DeepMReye 1.0 flattens into dense layers for the same reason.
+
+#### 6. Self-supervised pretraining on 3,318 unlabeled participants: the objective learns, the gaze does not improve
+
+`scripts/pretrain_voxelnet.py`, `results/subtr/pretrained_cnn.pt`,
+`results/subtr/voxelnet_cnn_ssl.json`. The one direction that does not need the residual to be
+predictable from labels: 1.09M TRs across 903 accessions, asserted disjoint from every `dsL*`
+participant at cache-build time.
+
+**Objective.** Band-matched temporal contrast -- anchor at `t`, positive at `t +- {1,2}`,
+negatives from the **same run** at `|delta| in [3,20]` TRs, so participant, anatomy, scanner and
+slow drift are constant by construction and cannot separate anchor from negative. Chosen
+against the measured next-TR failure, where the predictable part of an eye block is the
+nuisance.
+
+**It learns.** Loss falls from 2.2509 to **1.7987** against a chance of `ln(9) = 2.1972`, with
+positive-rank-1 around 0.33 against 0.111.
+
+**And it changes nothing downstream.** With the encoder initialised from that checkpoint and
+*every other setting identical* to the random-init CNN run -- same architecture, augmentation,
+selection rule, folds -- the result is **+0.0000 on 9 of 9 folds**, the same table as random
+initialisation. The pretrained features never clear the adoption margin on a held-out dataset.
+
+**Two things the ablation established on the way, both of which would otherwise have produced a
+misleading null:**
+
+| contrastive config | final-50 loss (chance 2.1972) |
+|---|---|
+| no augmentation, negatives 3-20 | **2.0761** |
+| noise 0.1 only, negatives 3-20 | 2.0785 |
+| shift +-2 + noise 0.1 | 2.1303 |
+| no augmentation, negatives 10-60 (far) | **1.7583** |
+
+- **Shift augmentation suppresses the objective.** Anchor and positive receive *independent*
+  +-2 voxel shifts, a displacement that exceeds the actual motion between adjacent TRs, so the
+  positive pair stops being similar. The first pretraining run sat at chance for 500 steps
+  because of it, and would have handed the probe a useless encoder.
+- **Far negatives learn much faster, and that is a reason to reject them.** 1.758 against 2.076
+  is distance-in-time being read off slow drift -- the CPC failure mode, i.e. the next-TR
+  result in contrastive clothing. The band-matched version is harder *because* it removes the
+  cue, which is the design intent.
+
+#### 7. What this settles
+
+The objection was correct and is now demonstrated: **a voxel network is at least as good as
+`lr-cca:32 + lags`**, exactly -- on 8 of 9 folds for the low-rank encoder and **9 of 9** for
+the CNN, with and without self-supervised pretraining. What it is not is *better*, and the reason is
+now pinned down by elimination rather than asserted -- not capacity (overfits to 0.0002), not
+optimisation (loss falls three orders of magnitude), not regularisation (unregularised is no
+better), not the readout (the branch is free to learn any projection). What remains is that the
+residual after a linear read of the canonical span holds no transferable gaze signal, which is
+the same conclusion Block B of the temporal gate reached from the frozen-basis side.
+
+---
+
+### The temporal non-linearity ceiling is flat too, and the incumbent's lag setting is wrong (2026-08-20)
+
+`deepmreye/temporal_probe.py`, `scripts/analyze_temporal_ceiling_supervised.py`,
+`results/subtr/temporal_ceiling_supervised.json`, `results/subtr/temporal_ceiling_tcn.json`.
+
+`analyze_nonlinear_ceiling.py` closed the *spatial* non-linear program: no supervised
+non-linear readout beats ridge on the same per-bin features. It was silent on **time** --
+every arm there is a static map from one bin's canonical coordinates to that bin's gaze, and
+the incumbent (`lr-cca:32 + lags±2`) is itself a *linear temporal* model. This is the temporal
+sibling, run before building a network rather than after. Same logic, which is what makes it a
+ceiling: the probe readout is linear, so a temporal encoder can only pay if gaze depends on the
+window in a way a linear map cannot express, and that is upper-bounded by what a **supervised**
+model gets on the same window.
+
+#### 1. The gate: nothing clears, and nothing is close
+
+9-fold LODO, 337 participants, `basis_n2000`, one process. Gate was > +0.02 median **and**
+≥ 6/9 folds over the best linear arm.
+
+| arm | block | sub-TR | 1-TR | vs `ridge-L1` | folds won |
+|---|---|---|---|---|---|
+| **`ridge-L1`** | A | **0.7678** | 0.8380 | — | — |
+| `ridge-L2` *(the shipped arm)* | A | 0.7585 | 0.8230 | −0.0093 | 2/9 |
+| `banded-L2` | A | 0.7563 | 0.8237 | −0.0116 | 3/9 |
+| `poly-time-L2` | C | 0.7504 | 0.8140 | −0.0175 | 0/9 |
+| `ridge-k64-L2` | B | 0.7501 | 0.7979 | −0.0178 | 1/9 |
+| `banded-L4` | A | 0.7456 | 0.8033 | −0.0223 | 2/9 |
+| `ridge-lr-concat32-L2` | B | 0.7455 | 0.8113 | −0.0223 | 1/9 |
+| `ridge-L0` | A | 0.7421 | **0.8406** | −0.0257 | 1/9 |
+| `banded-k128-L2` | B | 0.7418 | 0.7949 | −0.0260 | 2/9 |
+| `mlp-L2` | C | 0.7377 | 0.7833 | −0.0301 | 0/9 |
+| `tcn-L2` | C | 0.7370 | 0.7745 | −0.0309 | 0/9 |
+| `ridge-k256-L2` | B | 0.7301 | 0.7898 | −0.0378 | 1/9 |
+| `mlp-L4` | C | 0.7191 | 0.7722 | −0.0487 | 0/9 |
+| `tcn-L4` | C | 0.5424 | 0.6529 | −0.2254 | 0/9 |
+
+**A linear ridge on a 3-TR window is the best supervised model tested.** Nothing else beats it
+on more than 3 of 9 folds.
+
+#### 2. Three separate refutations, and two of them cannot be blamed on tuning
+
+The non-linear arms (`mlp`, `poly-time`, `tcn`) all land 0.02–0.05 below ridge, which is the
+spatial result reproduced in time. Those are trained models and a sceptic can always say they
+were under-tuned. **Blocks A and B cannot be answered that way -- they are convex, solved to
+optimality, with the penalty chosen by inner CV:**
+
+- **Longer linear windows lose, and per-lag penalties do not rescue them.** The suspicion was
+  that the decline past ±1 was a shared-alpha artifact (the earlier within-subject sweep used a
+  *fixed* `alpha=10.0`). `BandedRidge` with one penalty per lag recovers only **+0.006** of the
+  0.028 drop from L=1 to L=4. If lags ±3..±5 carried gaze that a shared penalty was suppressing,
+  that is where it would have shown up.
+- **More of the voxel space loses, monotonically.** k = 32 → 64 → 128 → 256 gives
+  0.759 → 0.750 → 0.745 → 0.730, and `banded-k128` (a penalty per rank block) is *worse* than
+  plain `ridge-k128`. Keeping the two orbits separate instead of averaging them also loses
+  (0.746 against 0.759).
+
+That second one is the direct answer to "a voxel model isn't restricted to 256 frozen
+directions, so it has room the ceiling analysis never tested". The room is there; **the gaze is
+not in it**. The extra directions are noise, and a network with access to them starts from a
+worse position, not a better one.
+
+#### 3. The weight-sharing hypothesis, tested and refuted
+
+The one mechanism-level argument for a temporal network was that a lag stack pays `k` new ridge
+columns per lag while a conv reuses one kernel at every offset, so it can afford a window the
+linear model cannot. Measured with a small weight-shared 1-D conv over the lag axis, scored
+through the identical protocol: **`tcn-L2` 0.737, `tcn-L4` 0.542.** It gets *worse* with the
+longer window -- the opposite of the prediction. (`tcn-L4`'s collapse is probably an
+optimisation failure rather than a clean ceiling statement; the load-bearing number is
+`tcn-L2` at 0.737, which sits alongside `mlp-L2`'s 0.738.)
+
+#### 4. What is worth keeping: the shipped lag setting is wrong
+
+**`lags±1` beats `lags±2` at sub-TR by +0.0093 (0.7678 against 0.7585), and `lags±0` beats both
+at 1-TR (0.8406).** The optimal temporal context depends on the target resolution -- context
+helps interpolate within-TR motion and blurs the 1-TR mean. Two independent protocols agree on
+the sub-TR peak (this LODO sweep, and the earlier within-subject sweep at fixed alpha), which
+is why it is worth adopting despite sitting inside the ~0.02 noise floor. It costs one integer.
+
+#### 5. Infrastructure this required, which was a finding in itself
+
+**`eval_probe.py` cannot score sub-TR gaze and never could.** `evaluate.probe.temporal_targets`
+nanmeans `[B, W, 10, 2] → [B, n_t, 2]`, so every number it has produced is 1-TR mean gaze at
+5-TR bins. The sub-TR headline existed only inside `scripts/benchmark_all_11_datasets.py`, with
+a different basis (`n2000` vs `n1039`), alpha grid and NaN rule from everything else.
+`deepmreye/temporal_probe.py` is now the single audited implementation; it reproduces the
+benchmark to **0.0001 / 0.0005** on `lr-cca:32` / `+lags±2` from an independently built cache,
+and refuses to load a cache whose **corpus fingerprint** differs -- the guard the existing
+labeled cache lacks, which is why a 285-participant, 7-dataset, pre-repair cache still loads
+there without complaint.
+
+#### 6. Verdict
+
+The gate was set in advance as a hard stop and it failed on every block. **The temporal
+non-linearity ceiling is as flat as the spatial one**, more voxel rank is actively harmful, and
+weight sharing across time buys nothing. Together with the six prior arms (JEPA, Orbit-JEPA,
+next-TR GRU, `xorb`, `xrot`, `ocon`) this closes representation learning on this corpus for
+temporal objectives as well, and it closes it *before* a network was built rather than after.
+
+The standing explanation is unchanged and now covers both axes: gaze is **linearly accessible**
+from these features, and what limits decoding is the acquisition, not the model -- the temporal
+envelope (`decoded_r ≈ 1.03·lag1 + 0.085`) that `fold-pca:64` already achieves everywhere.
+
+---
+
+### `dsL12_rest` retired, and a low-variance dataset in the *training* pool costs a fold 0.11 (2026-08-20)
+
+`scripts/retire_labeled_dataset.py`, `results/dsL12_rest_labels.npz`,
+`results/scaling/benchmark_all_11_datasets.json` (the 10-dataset run kept beside
+it as `benchmark_10ds_with_dsL12.json`).
+
+`dsL12_rest` is retired: labels archived, 20 eye blocks folded back into
+`ds004158` as unlabeled corpus data, 5 QA-sample duplicates deduped on the way.
+The corpus is **337 labeled participants across 9 datasets**.
+
+**Its labels were never the problem, and that is worth stating plainly** --
+timing verified (17/20 peak at lag 0), registration the corpus's best (pairwise
+SD-map r 0.987), units documented. Resting state with a central fixation dot
+gives per-participant gaze SD **0.26-1.3 deg** against 2.3-2.7 for the pursuit
+and movie sets, so there is nothing to decode and the fold measured the
+paradigm. It was already excluded from the headline median; retiring makes that
+structural rather than a footnote.
+
+#### The result that was not a formality
+
+Excluding a fold from a median changes only the median. **Removing it from the
+corpus also removes it from every other fold's training pool**, and that is
+where the movement was:
+
+| fold | `fold-pca:64` 1-TR | delta vs. `dsL12` in the pool |
+|---|---|---|
+| **`dsL06_sequences`** | **0.756** | **+0.109** |
+| `dsL07_deepmreye_calib` | 0.830 | +0.013 |
+| `dsL11_backtothefuture` | 0.835 | +0.007 |
+| every other fold | — | within +-0.008 |
+
+**This is the second time the same thing has happened, on the same fold.**
+Retiring `dsL09` moved `dsL06` by +0.08; retiring `dsL12` moves it by +0.109.
+Both times the retired dataset was one nobody scored the fold on.
+
+The mechanism is `--standardize-targets dataset`, and it is worth understanding
+before adding any dataset to the corpus. Pooled training z-scores **each
+dataset's** gaze separately, precisely so a 595-unit dataset cannot drown a
+21-unit one. For `dsL12` that rescales a 0.26-1.3 deg wobble -- which is mostly
+measurement noise -- up to unit variance, so the readout sees it as
+full-amplitude signal and fits it. A low-variance dataset is therefore not
+merely uninformative in the training pool, it is actively harmful, and the
+standardisation that makes pooling possible is what makes it so. `dsL06` is the
+6-participant fold, hence the most sensitive to a worse readout.
+
+#### 9-fold LODO on the final corpus
+
+| arm | 1-TR | sub-TR |
+|---|---|---|
+| `fold-pca:64` (supervised reference) | 0.835 | 0.746 |
+| **`lr-cca:32`** | **0.841** | 0.742 |
+| Super-Basis (96) | 0.839 | 0.739 |
+| **`lr-cca:32 + lags±2`** | 0.823 | **0.759** |
+
+`lr-cca:32` is now the best 1-TR arm and the Super-Basis's advantage over it has
+gone (0.841 vs 0.839, having been 0.834 vs 0.841 with `dsL12` in the pool) --
+which is itself a reminder of the noise floor: **+0.005 over the supervised
+reference at 1-TR and +0.013 at sub-TR are ties**, and the ordering among the
+unsupervised arms is not stable across a corpus change of one dataset. Quote the
+deployment claim, not a winner.
+
+Within-dataset 5-fold is unchanged for the 9 remaining datasets, as it must be
+-- each dataset is scored independently there, so retiring `dsL12` only removes
+its own row (`dsL08` 0.5040, `dsL01` 0.7842, `dsL02` 0.9151, identical to the
+previous run).
+
+---
+
+### Benchmarks re-run on the repaired corpus: 357 participants, 10 datasets (2026-08-20)
+
+`scripts/benchmark_all_11_datasets.py`, `scripts/eval_within_dataset.py`,
+`results/scaling/benchmark_all_11_datasets.json`,
+`results/scaling/within_dataset_benchmark.json` (pre-repair copies kept beside
+them as `*_prerepair.json`).
+
+The first full benchmark on the corpus as it now stands: vertical convention
+repaired, `dsL09` retired, `dsL11` at 37 participants instead of 4, `ds004283`
+rejected. Basis is `basis_n2000`; targets are z-scored per training dataset.
+
+#### 1. Leave-one-dataset-out
+
+| fold | N | `fold-pca:64` | `lr-cca:32` | Super-Basis (96) |
+|---|---:|---|---|---|
+| `dsL01_guided_fixations` | 170 | 0.767 | 0.776 | 0.773 |
+| `dsL02_pursuit` | 9 | 0.898 | **0.912** | 0.907 |
+| `dsL03_pursuit` | 24 | **0.854** | 0.846 | 0.840 |
+| `dsL04_pursuit` | 34 | **0.879** | 0.860 | 0.870 |
+| `dsL05_free_viewing` | 27 | **0.846** | 0.834 | 0.841 |
+| `dsL06_sequences` | 6 | 0.647 | 0.677 | **0.709** |
+| `dsL07_deepmreye_calib` | 15 | 0.816 | 0.829 | **0.850** |
+| `dsL08_studyforrest_movie` | 15 | 0.214 | **0.361** | 0.293 |
+| `dsL11_backtothefuture` | 37 | 0.828 | 0.853 | **0.855** |
+| `dsL12_rest` *(reported, not in the median)* | 20 | 0.053 | 0.004 | 0.032 |
+| **median, 9 folds (excl. `dsL12`)** | | **0.828** | **0.834** | **0.841** |
+| median, all 10 | | 0.822 | 0.831 | 0.841 |
+
+Sub-TR (10 pts/TR), same folds: `lr-cca:32 + lags±2` takes it at **0.761**
+against `fold-pca:64`'s 0.749 (medians excl. `dsL12`; 0.754 against 0.735 over
+all ten).
+
+**Read both margins as ties.** +0.013 (1-TR) and +0.012 (sub-TR) sit inside the
+~0.02 noise floor this file documents for a 7-to-9-fold median. The claim that
+survives is the deployment one, and it is not small: a **frozen** basis that
+needs no data at all from the target study matches a fold-local supervised one.
+
+#### 2. What moved, and why
+
+- **`dsL08` is the big change: -0.031 -> +0.214** (`fold-pca:64`) and **+0.361**
+  (`lr-cca:32`). That is the sign repair, not a modelling change.
+- **`dsL06` gains +0.018 to +0.098** without anyone touching it -- `dsL09` left
+  the *training* pool. Same effect recorded in the repair entry, reproduced here.
+- **`dsL11` went slightly *down* (-0.007 to -0.016) while going from 4
+  participants to 37.** This is the healthy direction: the old figure was a
+  median over four subjects. At 37 it is an estimate, and it is still the best
+  non-original fold.
+- Per-fold deltas against the pre-repair run are meaningful; **the median rows
+  are not like-for-like**, because the fold set itself changed (`dsL09` gone).
+
+#### 3. Within-dataset 5-fold, and an honest correction
+
+The superseded entry claimed DeepMReye 2.0 "beats supervised within-dataset
+baselines on 9 of 11 datasets". On the repaired corpus that splits by
+resolution, and only one half holds:
+
+- **Sub-TR: `+lags±2` wins 7 of 10**, and by margins that are not noise --
+  `dsL03` **+0.073** (0.845), `dsL01` **+0.059** (0.843), `dsL05` +0.028,
+  `dsL02` +0.026. Temporal context is doing real work at the resolution that is
+  the whole point of MR-based eye tracking.
+- **1-TR: the supervised reference wins 6 of 10.** The Super-Basis takes only
+  `dsL01`, `dsL02` and `dsL05`, each by <0.006. At 1-TR resolution within a
+  single dataset, a fold-local PCA is the better feature set.
+
+Best within-dataset numbers: `dsL06` 0.953, `dsL02` 0.915, `dsL04` 0.901,
+`dsL11` **0.890** (37 subjects). `dsL08` reaches 0.504 within dataset against
+0.214 across -- the gap that its 7T registration consistency already explains.
+
+---
+
+### Repair: the vertical convention was inverted in three ingested datasets, and dsL12's gaze columns were transposed (2026-08-20)
+
+`deepmreye/eyetracking.py`, `scripts/fetch_eyetracking.py`,
+`scripts/verify_gaze_sync.py --convention`,
+`results/label_backup_pre_signfix/`, `results/repair_after.json`.
+
+**The three "bad" datasets were not hard, they were mislabelled.** `dsL08`,
+`dsL09` and `dsL12` all shipped with the vertical axis **negated** relative to
+the corpus, and `dsL12` additionally had **x and y transposed**. A frozen
+readout trained on `dsL01`..`dsL07` -- which decodes `dsL11` at r_x +0.73 /
+r_y +0.67, so it is a working instrument -- read all three with a **positive
+r_x and a negative r_y**:
+
+| fold | pred_x vs true_x | pred_y vs true_y | after repair |
+|---|---|---|---|
+| `dsL08_studyforrest_movie` | +0.277 | **-0.237** | +0.277 / +0.098 |
+| `dsL09_fearlearning` | +0.139 | **-0.109** | +0.122 / +0.109 |
+| `dsL12_rest` | -0.016 | **-0.132** | +0.024 / +0.129 |
+| `dsL11_backtothefuture` (control) | +0.725 | **+0.670** | unchanged |
+
+(`dsL08`'s repaired r_y is +0.098 rather than +0.237 because the repair also
+added a valid box, and the participant sitting at the median of 15 is `sub-05`
+-- 73% track loss, the worst-tracked in the dataset. The other 14 negate
+exactly.)
+
+#### 1. Root cause: one inverted sentence
+
+`center_and_scale`'s docstring said "the tracker's y grows downward while the
+corpus's grows upward, which `flip_y` corrects". **The corpus's y grows
+downward.** Every EyeLink is top-left origin, so anyone reading that sentence
+sets `flip_y=True` and inverts the dataset. Three did. The sentence is now
+corrected, with the measurement attached and a warning not to revert it.
+
+#### 2. The convention is established from anatomy, not from another dataset
+
+Checking a new dataset's sign against the corpus is fine; checking the *corpus's*
+sign that way is circular. `verify_gaze_sync.py --convention` does not:
+
+- the template is stored **L, A, S**, so axis 2 grows superior and axis 1 anterior;
+- the eyeball is a bright vitreous sphere with a **dark lens at its anterior
+  pole**, so looking up rotates that dark lens to higher z;
+- therefore corr(voxel, label y) must be a **dipole along z in the anterior half
+  of the orbit**, and its sign says which way y points -- from one dataset alone.
+
+It is computed per participant and reported as a **vote**, which is what makes
+it readable. On six datasets the participants agree overwhelmingly, and they
+agree with each other:
+
+| dataset | n | median dipole | fraction positive |
+|---|---|---|---|
+| `dsL02_pursuit` | 9 | +0.075 | **1.00** |
+| `dsL11_backtothefuture` | 4 | +0.104 | **1.00** |
+| `dsL01_guided_fixations` | 30 | +0.153 | **0.97** |
+| `dsL03_pursuit` | 24 | +0.134 | **0.96** |
+| `dsL07_deepmreye_calib` | 15 | +0.106 | **0.93** |
+| `dsL04_pursuit` | 30 | +0.070 | **0.83** |
+
+Six independent acquisitions, unanimously positive: **the corpus's y grows
+downward.**
+
+**It is a corpus-level instrument, not a per-dataset gate**, and the tool now
+says so. On the other five datasets the participants split 33-65% and the
+dipole is measuring noise. `dsL05` is the warning: it splits 41/59 here while
+its vertical axis decodes at r 0.83. A minority-negative vote is not evidence of
+a flip -- go to a cross-dataset readout for that, which is how these three were
+actually caught.
+
+#### 3. Why the original verification passed all three
+
+**A lag sweep is blind to a sign error.** Negate y and every lag scores the same
+magnitude, so the peak stays at 0 and the verdict stays PASS. `verify_gaze_sync.py`
+was measuring the time origin, which really was right -- 15/15 of `dsL08` and
+17/20 of `dsL12` still peak at lag 0 in a per-subject sweep. Nothing in the
+harness looked at the sign until a cross-dataset readout was pointed at it.
+
+#### 4. `dsL12_rest`: the TSV is (y, x, pupil, time)
+
+`ds004158` has no root sidecar and its per-run JSON carries only calibration
+fields, so the `columns=` override in `fetch_eyetracking.py` was the only column
+information there was -- and it had x and y the wrong way round. The dataset's
+own README settles it: participants "keep fixation to a fixation dot at the
+screen center".
+
+| read as | 20-subject median lands at | off a 1920x1080 centre by |
+|---|---|---|
+| shipped `(x, y)` | (538, 970) | **-422 px, +430 px** |
+| swapped `(y, x)` | (970, 538) | **+10 px, -2 px** |
+
+The sidecar's own mean calibration error is 0.65 deg = 35 px. Read the swapped
+way the labels sit inside it; read the shipped way no fixation task could
+produce them. After the repair every participant's mean gaze is within +-1 deg
+of screen centre.
+
+**No sub-TR offset is warranted**, checked now that the columns are right:
+re-binning the raw gaze at fractional offsets peaks at +0.25 s with r 0.448
+against +0.00 s at 0.440 -- **+0.008**, inside the noise -- and the four
+participants' own optima scatter over 0.00 / 0.25 / 0.25 / 0.75 s. The
+configured +0.00 s stands. Contrast `dsL08`, where the same sweep found a real
+half-TR shift worth +0.12 r with 15/15 participants agreeing on the sign: that
+is what a genuine offset looks like.
+
+#### 5. `dsL09_fearlearning` is retired -- the labels, not the model
+
+Repaired (sign, valid box) it still decodes at **0.16 within subject**, and
+cleaning does not help: restricted to the 31 participants passing coverage,
+off-grid *and* the authors' own exclusion list, the median is **0.128**. Three
+independent disqualifications:
+
+- **Per-subject timing.** In a within-subject lag sweep only **21 of 48**
+  participants peak at lag 0 and **12 peak at -3**. That is the `ds007532`
+  signature, and the same verdict follows -- one offset per subject would fix it
+  and would be circular.
+- **37-40% of all samples are the tracker's `(0,0)` track-loss code**, and
+  values run to +-3276, past any screen. Four participants are >90% lost.
+- **The dataset says so itself.** Its sidecar reads "Reliability would not be
+  guaranteed", "more than 25% data loss", and names the 8 of 52 participants its
+  own authors excluded (08 31 41 43 44 45 48 52).
+
+**Retired**, following the `ds007532` precedent. Its config is parked as
+`_ds001242_excluded` with the evidence; the corpus folder is now
+`dsX09_fearlearning_unaligned`, its 52 label arrays are archived at
+`results/dsX09_fearlearning_unaligned_labels.npz`, and the labels are gone from
+the files -- which is what actually retires it, since `ProbeDataset._discover()`
+finds a dataset by its `labels` and not by its name. The eye blocks stay: what
+failed is the gaze recording, not the imaging, and they are perfectly good
+unlabeled corpus data.
+
+`scripts/retire_labeled_dataset.py` does this, because `dsX10` was retired by
+hand and that is how the rename-without-stripping trap was set the first time.
+It archives before it strips, defaults to a dry run, and marks the registry
+`LBL_DATASET_SKIPPED`.
+
+#### 6. `dsL08_studyforrest_movie`: labels are good, the 7T acquisition is the limit
+
+Repaired, it goes from **-0.03 to +0.19** (`fold-pca:64`) and **+0.07 to +0.34**
+(`lr-cca:32`) on LODO. What remains is not a label problem, and four
+measurements say so:
+
+- **The labels are as good as `dsL11`'s.** Inter-subject gaze correlation --
+  everyone watching the same movie at the same time, computed without touching
+  the BOLD -- is **0.55 / 0.40** against `dsL11`'s **0.56 / 0.50**.
+- **The gaze is in the eye blocks.** Within subject it decodes at **0.73**
+  (r_x 0.77, r_y 0.69), and 15/15 participants peak at lag 0.
+- **It degrades with every step away from the subject**: 0.73 within subject,
+  **0.52** leave-one-subject-out inside the dataset, **0.19-0.34** across
+  datasets. `dsL11`, same paradigm, runs 0.85 / 0.79 / 0.70.
+- **It has the worst within-dataset registration consistency in the corpus**:
+  pairwise temporal-SD-map r **0.915** and centroid scatter 0.30/0.43/0.13 vox,
+  against 0.99 and 0.03-0.08 for `dsL05`/`dsL07`/`dsL11`/`dsL12`.
+
+Ruled out: a mirrored registration (flipping the block along x, y or z rescues
+no subject), and a truncated FOV (per-slice dead-voxel profiles are within 5%
+of every other dataset's). It is 7T EPI in the orbits, and the honest statement
+is that its gaze is recoverable within study and only partly across studies.
+
+#### 6b. Retirement, and what it cost to have kept `dsL09` around
+
+`scripts/retire_labeled_dataset.py`. Two things came out of doing this properly
+rather than by hand:
+
+- **There is no `dsX##_*_unaligned` category any more.** A dataset whose gaze
+  recording failed is not a third kind of thing -- what is left is eye blocks
+  with no labels, which is exactly what every other unlabeled participant in the
+  corpus is, and the naming rule already says to keep the real accession because
+  that is the provenance. `dsX09` and `dsX10` are now `ds001242` and `ds007532`.
+  The old prefix read as a *status* rather than a source and nothing in the
+  pipeline understood it.
+- **Folding back deduplicated 11 participants the corpus had been carrying
+  twice.** The QA sample extracted 5 subjects of `ds001242` and 6 of `ds007532`
+  long before the eye-tracking ingest extracted all of them under a `dsL##`
+  name, so those 11 were counted twice in every unlabeled basis fit. The two
+  copies are the same source run and **not bit-identical** -- voxelwise r 0.83
+  and 0.99 -- which is a small standing result in itself: **ANTs `SyNAggro` is
+  not reproducible run to run**, so "re-extract it" is not a null operation. The
+  QA-sampled copy is kept (a human looked at its thumbnail, and its `approved`
+  label is keyed to it) with the gaze provenance attrs merged onto it.
+
+  **Any future ingest hits this collision by construction.** Check the accession
+  folder before writing a new `dsL##` one.
+
+#### 7. `dsL11_backtothefuture` was never broken -- it is just 4 of 39 participants
+
+Its labels verify at lag 0 with margin +0.55 and it is the **best** non-original
+fold (`lr-cca:32` 0.848, above `fold-pca:64`'s 0.813).
+
+A dry run over the whole accession confirms the other 35 are ready:
+**39/39 participants resolve at coverage 1.00** through the `indexed_message`
+anchor, NaN fraction median 0.031 (max 0.287), 2 eye-tracking runs dropped for
+having no paired BOLD (`results/eyetracking_ingest_ds006642.json`). Nothing
+about the alignment is unresolved -- what is left is 39 BOLD downloads at a
+~1.8 GB median (~70 GB) and one ANTs run each:
+
+```bash
+python scripts/fetch_eyetracking.py --dataset ds006642 --data-dir $DATA
+```
+
+`s3_get` retries now, because a single-shot read of one of these EyeLink ASCII
+exports times out often enough to kill a 39-subject run partway through. Worth
+doing: independent acquisitions are the scarce resource here, and this is the
+only place in the corpus where 35 more of them on a *verified* acquisition are
+available for nothing but bandwidth.
+
+#### 8. LODO after the repair (10 folds, 1-TR targets, `basis_n2000`, 1000 train windows)
+
+`results/repair_final_10fold.json`, measured on the final corpus with `dsL09`
+retired:
+
+| fold | `fold-pca:64` r_x / r_y / mean | `lr-cca:32` r_x / r_y / mean |
+|---|---|---|
+| `dsL01_guided_fixations` | +0.794 / +0.726 / 0.764 | +0.792 / +0.753 / **0.772** |
+| `dsL02_pursuit` | +0.928 / +0.868 / 0.898 | +0.932 / +0.903 / **0.917** |
+| `dsL03_pursuit` | +0.840 / +0.801 / **0.795** | +0.841 / +0.786 / 0.794 |
+| `dsL04_pursuit` | +0.901 / +0.874 / **0.883** | +0.847 / +0.868 / 0.855 |
+| `dsL05_free_viewing` | +0.829 / +0.852 / **0.832** | +0.850 / +0.825 / 0.828 |
+| `dsL06_sequences` | +0.902 / +0.549 / **0.713** | +0.856 / +0.481 / 0.664 |
+| `dsL07_deepmreye_calib` | +0.861 / +0.786 / 0.817 | +0.834 / +0.817 / **0.825** |
+| `dsL08_studyforrest_movie` | +0.262 / +0.121 / 0.207 | +0.503 / +0.091 / **0.353** |
+| `dsL11_backtothefuture` | +0.872 / +0.769 / 0.811 | +0.910 / +0.790 / **0.852** |
+| `dsL12_rest` *(reported, not in the median)* | +0.030 / +0.103 / 0.075 | +0.046 / +0.090 / **0.087** |
+| **median, 9 folds (excl. `dsL12`)** | **0.811** | **0.825** |
+| median, all 10 | 0.803 | 0.809 |
+
+Every previously negative fold is positive.
+
+**Retiring `dsL09` improved a fold it was never scored on.** `dsL06_sequences`
+goes 0.639 -> **0.713** with `fold-pca:64`, almost all of it vertical (r_y 0.415
+-> 0.549). `dsL09` was not just a bad fold, it was a bad *training* dataset:
+52 participants of sign-flipped, 40%-track-loss labels pooled into every other
+fold's training set. That is the clearest argument for retiring rather than
+merely excluding-from-the-median -- a broken dataset in the training pool costs
+you on folds where nobody was looking.
+
+**`dsL12_rest` is reported but excluded from the headline median.** Its labels
+are correct and it is a legitimate acquisition; it is a central-fixation
+resting-state task with per-participant gaze SD 0.26-1.3 deg, so its fold
+measures the paradigm rather than the method. Note which way the exclusion cuts:
+it *helps* the unsupervised arm (0.809 -> 0.825 against 0.803 -> 0.811), so
+keeping it in would flatter the supervised reference rather than being
+conservative.
+
+---
+
+
+### Experiment: Unsupervised Scaling to $N=2000$ Subjects, DeepMReye 2.0 Super-Basis, and Full 11-Dataset LODO & Within-Dataset Benchmark (2026-08-20)
+
+> **The LODO and within-dataset tables in sections 3 and 4 below are
+> superseded.** They were measured *before* the vertical-convention repair, with
+> `dsL09` still in the corpus and `dsL11` at 4 participants. Their `dsL08`
+> (-0.031) and `dsL12` (-0.047) numbers are the sign bug, not the method. The
+> corpus-scaling results in sections 1 and 2 are unaffected. Current numbers:
+> "Benchmarks re-run on the repaired corpus" at the top of this file.
+
+
+`scripts/sweep_corpus_scaling.py`, `scripts/expand_corpus_5subs.py`, `scripts/benchmark_1tr_hybrid_scaling.py`, `scripts/benchmark_multi_resolution_scaling.py`, `scripts/benchmark_all_11_datasets.py`, `scripts/eval_within_dataset.py`, `results/scaling/`.
+
+#### 1. Corpus Scale Expansion ($N=2000$ Participants, 655 OpenNeuro Datasets, 96,000 TRs)
+- **Unlabeled Pretraining Corpus**: Expanded to **2,009 eligible participants** across **655 distinct OpenNeuro datasets** (3,578 total `.h5` files on disk).
+- **Persistent Failed Extraction Bypass**: Implemented `.failed_extractions.json` in `scripts/expand_corpus_5subs.py` with automatic dataset-level wildcards (`f"{ds_name}/*"`), skipping protocol-incompatible datasets in 0.0001s.
+- **Incremental Snapshots**: Generated and saved all 10 basis checkpoints in `results/scaling/`:
+  `basis_n25.npz`, `basis_n50.npz`, `basis_n100.npz`, `basis_n200.npz`, `basis_n400.npz`, `basis_n800.npz`, `basis_n1200.npz`, `basis_n1500.npz`, `basis_n1800.npz`, `basis_n2000.npz`.
+
+#### 2. DeepMReye 2.0 Super-Basis Beats Supervised Reference on 1-TR Mean
+- **Discovery**: Fusing pure conjugate rotational canonical variates (`lr-cca:32`) with corpus-wide spatial covariance across 2,000 subjects (`corpus-pca:64`) creates the **DeepMReye 2.0 Super-Basis (96 features)**.
+- **1-TR Mean Scaling ($N=25 \to 2000$)**:
+  - `lr-cca:32` Core scales monotonically from $r = 0.6289 \to \mathbf{0.8329}$ ($+0.2040$ gain).
+  - **Super-Basis (`lr-cca:32 + corpus-pca:64`)** scales from $r = 0.7895 \to \mathbf{0.8429}$, **cleanly outperforming the supervised reference baseline (`fold-pca:64` at $0.8370$) by $+0.0059$** on 7-fold LODO cross-validation across 285 subjects.
+- **Sub-TR Continuous Trajectory (10 pts/TR)**:
+  - DeepMReye 2.0 (`lr-cca:32 + lags±2`) scales from $r = 0.592 \to \mathbf{0.768}$, **beating the supervised reference baseline ($0.747$) by $+0.021$**.
+
+#### 3. Complete 11-Dataset LODO Cross-Validation Matrix (376 Labeled Subjects)
+Downloaded all remaining labeled datasets (`dsL08_studyforrest_movie`, `dsL09_fearlearning`, `dsL12_rest`) from HuggingFace `DeepMReye/eyeballs`:
+
+| Held-out Dataset | Paradigm | Subjects | `fold-pca:64` (Supervised) | `lr-cca:32` (Core) | **DeepMReye 2.0 Super-Basis (96)** | Sub-TR `+lags±2` |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **`dsL01_guided_fixations`** | Guided Fixations | 170 | $0.7572$ | $0.7695$ | **$0.7627$** 🏆 | **$0.7597$** 🏆 |
+| **`dsL02_pursuit`** | Smooth Pursuit | 9 | $0.9007$ | **$0.9155$** | **$0.9018$** 🏆 | **$0.9142$** 🏆 |
+| **`dsL03_pursuit`** | Smooth Pursuit | 24 | $0.8525$ | **$0.8478$** | $0.8459$ | **$0.7705$** 🏆 |
+| **`dsL04_pursuit`** | Smooth Pursuit | 34 | $0.8832$ | $0.8519$ | $0.8735$ | **$0.8501$** 🏆 |
+| **`dsL05_free_viewing`** | Movie Watching | 27 | $0.8474$ | $0.8330$ | $0.8325$ | $0.7768$ |
+| **`dsL06_sequences`** | Rapid Sequences | 6 | $0.6294$ | **$0.6618$** | $0.6111$ | **$0.5814$** 🏆 |
+| **`dsL07_deepmreye_calib`** | Calibration Protocol | 15 | $0.8040$ | $0.8168$ | **$0.8259$** 🏆 | **$0.7278$** 🏆 |
+| **`dsL08_studyforrest_movie`** | Natural Movie | 15 | $-0.0306$ | **$0.0684$** | **$0.0461$** 🏆 | **$0.0464$** 🏆 |
+| **`dsL09_fearlearning`** | Fear Conditioning | 52 | $0.0204$ | $0.0119$ | **$0.0211$** 🏆 | $0.0032$ |
+| **`dsL11_backtothefuture`** | Natural Movie | 4 | $0.8439$ | **$0.8668$** | **$0.8624$** 🏆 | **$0.6577$** 🏆 |
+| **`dsL12_rest`** | Resting State (Fixation) | 20 | $-0.0473$ | $-0.0555$ | $-0.0518$ | $-0.0454$ |
+| **MEDIAN ACROSS 11 DATASETS** | — | **376** | **$0.8040$** | **$0.8168$** | **$0.8259$ (+0.0219 🏆)** | **$0.7278$ (+0.0145 🏆)** |
+
+#### 4. Within-Dataset 5-Fold Cross-Validation Breakdown
+- **`dsL08_studyforrest_movie` (N=15)**: Reaches within-dataset 1-TR mean **$r = 0.4679$** (vs $-0.03$ across datasets due to the $-0.75\,\text{s}$ movie clock offset).
+- **`dsL09_fearlearning` (N=52)** & **`dsL12_rest` (N=20)**: Controlled central fixation tasks with near-zero gaze variance ($\text{std} < 0.5^\circ$), where within-dataset $r \approx 0.03\text{--}0.16$.
+- **Sub-TR Dynamics Dominance**: DeepMReye 2.0 (`+lags±2`) beats supervised within-dataset baselines on **9 of 11 datasets**, reaching **$0.8448$ on `dsL03` ($+0.074$)** and **$0.6701$ on `dsL11` ($+0.090$)**.
+
+---
+
+### EyeLink EDF support, a self-validating anchor, and `dsL13_lokicat` (2026-08-20)
+
+`deepmreye/eyetracking.py` (`read_edf`, `ANCHOR_EVENTS`),
+`scripts/fetch_eyetracking.py`, `deepmreye/tests/test_eyetracking.py`.
+
+The survey's conclusion was that the remaining yield is gated on reading
+EyeLink's proprietary binary. It is not any more.
+
+#### 1. `read_edf` -- and it needs no SR Research SDK
+
+`eyelinkio` parses the binary directly, so this is a dependency (`uv add
+eyelinkio`, one package, no other resolution changes) rather than a manual
+`edf2asc` step outside the pipeline. Same contract as `read_asc` plus a fifth
+return value, because the binary header carries metadata an ASCII export does
+not: sampling rate, which eye, and **`screen_coords`**. That last one matters --
+not knowing the display resolution is what let ds004158 ship with x and y
+transposed, and here the file simply states it, so `build_labels` takes the
+centre from the header instead of from a number typed into a config.
+
+It refuses a file without the `SR_RESEARCH` magic, because EEG's **European
+Data Format shares the extension** and would otherwise parse into
+plausible-looking numbers with no relationship to gaze.
+
+#### 2. `ANCHOR_EVENTS`: the first anchor here that checks itself
+
+None of the three EDF datasets has a scanner pulse anywhere in the recording.
+What they have is stimulus messages on the tracker clock and a BIDS
+`events.tsv` whose onsets are already relative to volume 0. Fitting one against
+the other recovers the origin -- and unlike the other three strategies, which
+take one number from one place and trust it, this one is **overdetermined**: 60
+trials constraining 2 parameters. The fit reports whether the match is real:
+
+- the **slope** is the ratio of the two clock rates and must be ~1;
+- the **residual** must be small; scattered residuals with a slope of 1 mean the
+  two lists describe different events.
+
+Both are enforced, not just recorded. On `ds004283`: slope **1.000102**,
+residual SD **0.28 ms** over 60 trials, `t0` = **+267.886 s** -- and the three
+usable subjects agree to the fifth decimal, which is not something a wrong match
+produces.
+
+#### 3. `ds004283`: extracted, measured, and **rejected**
+
+Visual categorisation, EyeLink at 1 kHz, one `.EDF` per run beside the BOLD.
+The alignment is *fine* -- coverage 0.94-1.00, NaN 0.04-0.19, and the anchor
+above is the best-validated one in the corpus. The **eye blocks** are the
+problem, and this is the first dataset here rejected on the imaging rather than
+on the gaze.
+
+It was ingested as `dsL13_lokicat`, measured, and retired the same day with
+`scripts/retire_labeled_dataset.py`; labels are archived at
+`results/dsL13_lokicat_labels.npz` and the participants now sit in `ds004283`
+as ordinary unlabeled data.
+
+**Within-subject decoding, which cannot be blamed on transfer** -- train on the
+first half of a participant's own run, test on the second:
+
+| dataset | r_x | r_y | mean |
+|---|---|---|---|
+| `dsL11_backtothefuture` | +0.905 | +0.821 | **0.855** |
+| `dsL07_deepmreye_calib` | +0.799 | +0.841 | **0.792** |
+| **`ds004283`** | **+0.071** | +0.394 | **0.232** |
+
+Horizontal gaze -- the *easier* axis everywhere else in the corpus -- is
+**absent**, and `sub-04` scores 0.008, i.e. nothing at all.
+
+**Four things rule out the benign explanations**, which matters because each one
+would have been a cheap fix rather than a rejection:
+
+- **Not a flat-fixation paradigm.** Gaze spread is *large*: x SD **56.7 px**
+  against `dsL12_rest`'s 0.43 in its own units. There is plenty of horizontal
+  gaze to decode.
+- **Not an axis swap.** The (pred, true) cross-correlations are inconsistent
+  across participants (`sub-02`'s pred_x~true_y is +0.040), so nothing
+  systematic -- unlike `dsL12`, which really was transposed.
+- **Not an fMRIPrep artifact.** The corpus already held two of these
+  participants QA-sampled from `derivatives/` and labeled `approved = 2`, "no
+  eyes". The obvious story was that a brain-masked derivative had stripped the
+  orbits and the label was an artifact. **The raw BOLD is clipped the same
+  way**: zero-fraction 0.48-0.59 raw against 0.54-0.57 derivative, on a
+  **0.4197** baseline that is the eye mask itself and is identical in every
+  healthy participant. `sub-04` is **0.998** -- an essentially empty block.
+- **Not a preprocessing generalisation.** Over the 156 of 2096 registered
+  participants sourced from `derivatives/`, median zero-fraction is exactly the
+  0.4197 baseline, the same as raw; extra zeroing tracks the QA verdict, not the
+  source. A derivative is not brain-stripped by construction.
+
+So an independent human QA verdict, the raw imaging, and the decoder agree. The
+precedent is `ds007532` and `ds001242`: a labeled dataset nobody can trust is
+worse than one that is absent, and 4 participants is no reason to lower a bar
+that rejected 36 and 52.
+
+**The general lesson is that `register()` must not be allowed to settle this.**
+It enters any `dsL##` dataset as `LBL_EYES` -- gaze was recorded during the
+scan, so eyeballs are in frame *by construction* -- and that reasoning is sound
+for acquisition but says nothing about **coverage**. Ingesting under a new name
+would have silently overwritten a human's no-eyes judgement on the very same
+runs. Check the accession folder before writing a `dsL##` one; the collision is
+structural, not bad luck.
+
+**It also exposed a gap that had been open the whole time.** `sub-04`'s first
+*five* runs have 738 TRs of perfect temporal coverage and **zero finite gaze
+samples** -- the tracker recorded nothing. Coverage checks that a recording
+*spans* the run; nothing checked that it contains an eye, so an empty recording
+passed every gate and would have been written as a labeled participant with no
+labels. `MAX_NAN_FRACTION` now rejects those and moves to the subject's next
+run, which for `sub-04` finds one at NaN 0.19. Set at 0.95 deliberately: 50%
+track loss is a poor but usable recording (`dsL08`'s `sub-05` is at 73% and
+still decodes within subject), and what this excludes is the degenerate case.
+
+#### 4. `ds001840` (24) and `ds007305` (23) are read, but not anchored
+
+Both now *read* -- `read_edf` handles them and returns samples and messages. The
+time origin is the blocker, and in one case it is a hard one:
+
+- **`ds001840`: its `events.tsv` is the design, not the measurement.** Its 160
+  `TTL` messages segment cleanly into 4 blocks of 40, one per run, and matching
+  each block to its run's 40 clip onsets finds the right block every time. But
+  the fit's **slope is 0.975**, not 1 -- the stimulus ran ~2.5% faster than the
+  onset table says. Over an 859 s run that is **21 s of accumulated drift**, so
+  no single origin aligns it; this is not an offset problem. `TTL` is not a
+  rescue either: at 40 per run against 430 volumes it is a per-trial marker, not
+  a volume trigger. `ANCHOR_EVENTS` rejects it on the clock-ratio guard, which
+  is the guard doing its job.
+- **`ds007305`: no `events.tsv` at all.** Its README confirms the gaze is
+  simultaneous ("fMRI scanning with simultaneous eye-tracking", EyeLink 1000
+  Plus at 500 Hz), and its messages (`BASKET n, DRAW m START`) are rich enough
+  to anchor against *something* -- but the only candidate time base is the
+  behavioural `.mat`, whose own clock would then need establishing. Not attempted.
+
+Neither is ingested. The precedent is `ds007532`: a labeled dataset nobody can
+trust is worse than one that is absent, and 47 participants is not a reason to
+lower the bar that rejected 36.
+
+---
+
+### Extraction operations: one subject can starve a retry loop, and a killed run leaves the registry behind (2026-08-20)
+
+`scripts/fetch_eyetracking.py` (registration block).
+
+Two failures met while finishing `dsL11_backtothefuture`'s 39 participants on
+the laptop. Neither is about gaze, and both will recur on any long ingest.
+
+#### 1. A retry loop that restarts at the failure starves everything behind it
+
+ANTs was OOM-killed (`rc=137`) on `sub-24` -- **1522 TRs against every other
+participant's 1360** -- on a 48 GB machine with ~30 GB free. The wrapper
+retried, and because extraction resumes by skipping files already on disk,
+**every attempt restarted on `sub-24` and died there**: two attempts, ~4
+minutes apart, both ending at 22 participants. Eight attempts would have bought
+nothing and the 16 subjects behind it would never have been reached.
+
+**Within one acquisition, run length does predict the blowup.** `ds006642` has
+exactly two participants at 1522 TRs -- `sub-24` and `sub-36` -- and **both
+died**, while all 37 at 1360 TRs succeeded, several of them after the failures,
+so this is not drift in machine conditions. That is not in tension with
+`CLAUDE.md`'s "nothing about the input predicts it", which is a statement about
+comparing *across* datasets (a 0.10 GB input blew past 32 GB while a 1.16 GB
+one finished): dimensions, voxel size and protocol differ there. Held fixed,
+12% more volumes is the difference between finishing and being killed, which
+says the working set sits just under the machine rather than far below it.
+
+The fix is ordering, not memory: run the *rest* first (`--subjects`, which
+already existed), then the blocker alone at the end where it can only cost
+itself. Worth remembering as a shape -- a resume-by-skipping loop plus one
+deterministic failure is a livelock, and it looks exactly like slow progress.
+
+**Single-threading does not rescue them, and the number says why.** Re-run
+alone with `ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1`, both long subjects still
+died, at a measured **peak RSS of 28 GB** -- so the working set is in the image
+copies, not in per-thread buffers, and the one lever available short of a
+bigger machine does not reach. Note the kill came with ~38 GB nominally free:
+most of that is page cache, which counts toward memory pressure, so the usable
+headroom is well under what `vm_stat` suggests. This is the laptop equivalent
+of the cluster's deferred-subject path, and the resolution is the same one
+`slurm/README.md` already documents -- rerun the two on a bigger allocation
+(`sbatch --mem=240G`), where 100 GB per child is routine.
+
+**`dsL11_backtothefuture` therefore stands at 37 of 39 participants**, up from
+4. Coverage is **1.000 for all 37**, NaN median 0.031 (worst participant 0.29),
+one anchor (`indexed_message`) throughout. The two missing subjects are blocked
+by this machine, not by their data: both aligned cleanly (coverage 1.00, NaN
+0.02 and 0.15) and failed only in registration.
+
+#### 2. A killed run leaves participants extracted but unregistered
+
+`run_dataset` registered as its **last statement**, and only the subjects that
+*that* run wrote. So every kill discarded the registration for everything
+already on disk, and a fully-resumed run (`written == 0`) skipped registration
+altogether -- the exact state `dsL11` was found in: **22 participant files
+against 4 registry entries**. Nothing raises; the files are fine and simply
+invisible to `is_dataset_approved` and to anything reading the registry.
+
+It now registers **every intact participant on disk**, and runs even when it
+wrote none. `register()` only sets attributes, so re-running it over the full
+set repairs the registry rather than compounding it, and a resumed run heals it
+as a side effect.
+
+#### 3. "The QA sample used fMRIPrep derivatives, so its no-eyes labels are artifacts" -- measured, and false
+
+Worth recording because it is a plausible story that the data does not support.
+`ds004283` is in the corpus twice over: two participants QA-sampled from
+`derivatives/` (`space-T1w_desc-preproc`), both labeled **`approved = 2`, "no
+eyes / good transform"**, and the same subjects arriving now with gaze labels
+from the *raw* BOLD. Their blocks have **57% of eye-mask voxels exactly zero
+across all 738 TRs**, against a **0.4197** baseline that is the eye mask itself
+and is identical in every healthy participant -- so ~15 points of the orbit are
+cut away, and the thumbnail shows a skull-stripped brain with the red masks
+outside it and wedge-shaped crops where eyeballs should be.
+
+The tempting generalisation is that derivative-sourced participants are
+systematically brain-masked and their no-eyes labels are therefore wrong. Over
+the **156 of 2096 registered participants across 81 datasets** that came from
+`derivatives/`, that is not what happens:
+
+| source | n | median zero-frac | above the 0.4197 baseline |
+|---|---|---|---|
+| derivatives | 156 | **0.4197** | 28% |
+| raw (sample) | 80 | **0.4198** | 38% |
+
+The medians are the mask baseline on both sides, and extra zeroing tracks the
+**QA verdict** rather than the source in both groups (`approved=2` medians 0.90
+derivative / 0.75 raw; `approved=1` at baseline in both). A derivative is not
+skull-stripped by construction -- `ds001399`'s approved participants are
+derivative-sourced and show full heads with bright round eyeballs.
+
+So the human labels are consistent and `ds004283`'s derivative really is
+stripped. What that verdict cannot settle is whether the **raw** BOLD has eyes,
+which is what the `dsL13` ingest is extracting -- same subject, same session,
+same run, differing only in preprocessing. That comparison decides whether
+`dsL13_lokicat` is admitted, and it must be decided explicitly: `register()`
+enters labeled datasets as `LBL_EYES`, so ingesting under a `dsL##` name would
+otherwise silently overwrite a human's no-eyes judgement on the same runs.
+
+---
+
+### Survey: every OpenNeuro dataset that pairs gaze with BOLD, and why almost none are left (2026-08-20)
+
+`scripts/scan_eyetracking_datasets.py`, `results/eyetracking_scan_all.json`,
+`results/eyetracking_scan_corpus.json`, `deepmreye/tests/test_eyetracking_scan.py`.
+
+Over all **2443** accessions: **20 pair eye tracking with a functional run**,
+covering **410 participants**. Nine of the twenty are already ingested, retired
+or excluded. **None of the remaining eleven is ingestible today**, and the
+reasons are worth having on record, because "we might have missed a dataset" is
+now answered and the honest answer is that the bottleneck moved.
+
+#### What each remaining lead is
+
+| accession | paired | format | public? | verdict |
+|---|---|---|---|---|
+| `ds008366` | 32 | `.asc` | yes | **events only** -- 0 sample lines, even in the largest of its 942 files. No gaze trace to bin. |
+| `ds006039` | 31 | `.tsv` | yes | **a fixation table, not a sample stream** (`fix_x_pos`, `fix_start_time`, one row per fixation) and no scanner clock. |
+| `ds001840` | 24 | `.edf` | yes | **blocked on an EDF reader** |
+| `ds007305` | 23 | `.edf` | yes | **blocked on an EDF reader.** Its gaze sits in `/beh/`, but its README says "fMRI scanning with **simultaneous** eye-tracking" -- unlike `ds005166`, this one is worth converting. |
+| `ds008507` | 19 | `.tsv.gz` | **no** | every object `AccessDenied`, and it **overlaps `ds004158` (our `dsL12`) on 48% of its blobs** -- so even if it opened it could not be an independent fold. |
+| `ds001473` | 15 | `.tsv.gz` | **no** | **duplicate** -- 100% of its 2371 blobs are inside `ds000113` (`dsL08`). |
+| `ds004283` | 4 | `.EDF` | yes | **blocked on an EDF reader** |
+| `ds006578` | 3 | `.tsv.gz` | yes | continuous samples, ingestible -- but 3 participants, and 53% blob overlap with `ds006947`. |
+| `ds006947` | 3 | `.tsv.gz` | **no** | not public; overlaps `ds006578`. |
+| `ds001471` | 1 | `.tsv.gz` | **no** | not public; its one recording is inside `ds000113`. |
+| `ds006503` | 1 | `.tsv.gz` | yes | one participant, and its largest recording is against a `/dwi/` run. |
+
+**The bottleneck is EDF support, not discovery.** `ds001840` + `ds007305` +
+`ds004283` is **51 participants across 3 independent acquisitions**, all public,
+all real simultaneous gaze, all blocked on reading EyeLink's proprietary binary
+(`edf2asc`, or `eyelinkio` / `pyedfread`). That is the highest-yield engineering
+item left in the ingest and it is bounded work. Everything else in the survey is
+already ours, a duplicate, event-only, or embargoed.
+
+**The largest available win is still `dsL11`'s other 35 participants** -- a
+verified acquisition, no converter needed, blocked on nothing but bandwidth.
+
+#### Four traps the scan now instruments, each of which had already fired once
+
+- **Too narrow a pattern loses whole datasets silently.** The first version
+  matched `.tsv`/`.asc` only and missed `ds001840` (24 participants),
+  `ds007305` (23) and `ds004283` -- all real simultaneous gaze, all shipped as
+  `.edf`. `.edf` is now matched *and reported as blocked*: find it first, decide
+  whether to convert it second.
+- **Too broad a pattern invents datasets.** The 2026-08-03 survey listed
+  `ds004529` at 34 paired participants on the strength of 204 files named
+  `s001-fp_no_Eyelink.log` -- stimulus logs for the condition run *without* the
+  tracker. Matching on the extension rather than on "the key contains eye"
+  keeps it out. `test_eyetracking_scan.py` pins both directions against real
+  keys from the bucket.
+- **Listable is not readable.** `ds008507` reads as the most promising lead in
+  the survey -- 19 participants, BIDS physio in `/func/`, and `PurLoc` /
+  `SacLoc` / `pRF` tasks, which is the pursuit-and-saccade paradigm this method
+  scores highest on. Every object is `AccessDenied`, on three separate probes.
+  Four of the twenty hits are like this (`ds008507`, `ds001473`, `ds006947`,
+  `ds001471`). One HEAD per hit settles it.
+- **Re-releases are invisible to names and paths.** OpenNeuro carries the same
+  acquisition under several accessions, and ingesting two puts the same
+  participants on both sides of a leave-one-dataset-out split. `ds001107` was
+  caught in August; **`ds001473` was not**, and it is 100% contained in
+  `ds000113`. Paths do not detect this -- `ds001107` re-lays out its tree and
+  shares no relative path with `ds000113` while sharing every byte -- so the
+  check intersects `(size, ETag)`, which S3 returns for free.
+
+  It also found an overlap nobody was looking for: **`ds008507` shares 48% of
+  its blobs with `ds004158`, which is already in the corpus as `dsL12`**. Same
+  lab, overlapping acquisition. Had `ds008507` been public and ingested on the
+  strength of its `SacLoc`/`PurLoc` tasks, it would have put `dsL12`'s own runs
+  on both sides of a leave-one-dataset-out split.
+
+#### `--scope corpus`: the question worth asking first
+
+Of the **911 accessions already extracted here**, 11 pair gaze with BOLD and 8
+are resolved. Those participants already have coregistered eye blocks, so labels
+would cost one TSV download and a `--labels-only` relabel -- no BOLD download,
+no ANTs run. The three unresolved ones are `ds006039`, `ds006578` and
+`ds006503`, and the table above says why none of them pays.
+
+---
 
 ### Experiment: Complete `dsL03_pursuit` Benchmark & Resolution Discovery (2026-08-17)
 

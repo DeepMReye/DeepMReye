@@ -41,6 +41,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # sibling scripts
 from deepmreye.eyetracking import (  # noqa: E402
+    ANCHOR_EVENTS,
     ANCHOR_INDEXED_MESSAGE,
     ANCHOR_MESSAGE,
     ANCHOR_STARTTIME,
@@ -54,6 +55,7 @@ from deepmreye.eyetracking import (  # noqa: E402
     column_index,
     load_sidecar,
     read_asc,
+    read_edf,
     read_physio_events,
     read_tsv,
 )
@@ -107,7 +109,7 @@ DATASETS = {
         # a 1.5 s TR, and its count matches the volume count exactly (1608
         # pulses for a 1608-volume run), which validates the run pairing too.
         message_pattern=r"TTLPulse_(\d+)",
-        timestamp_col="asc",        # unused for .asc; times come from the samples
+        timestamp_col=None,         # .asc carries its own sample timestamps
         time_scale=1e-3,
         center=(960.0, 600.0),      # GAZE_COORDS 0 0 1919 1199
         flip_y=False,
@@ -124,16 +126,109 @@ DATASETS = {
         anchor=ANCHOR_INDEXED_MESSAGE,
         message_pattern=r"TR num (\d+) onset",
         timestamp_col="timestamp",
-        columns=["x_coordinate", "y_coordinate", "pupil_size", "timestamp"],
+        # The TSV is **y first**, and nothing in the dataset says so -- there is
+        # no root sidecar and the per-run one carries only calibration fields,
+        # so this override is the only column information there is. The README
+        # is what settles it: participants "keep fixation to a fixation dot at
+        # the screen center", and read this way the 20 subjects' medians land at
+        # (970, 538) against a 1920x1080 centre of (960, 540) -- 10 px and 2 px,
+        # inside the sidecar's own 0.65 deg (35 px) mean calibration error. Read
+        # the other way round they land 422 px and 430 px off centre, which no
+        # fixation task produces. An earlier version had these transposed, which
+        # put horizontal gaze on the vertical axis and cost the whole dataset.
+        columns=["y_coordinate", "x_coordinate", "pupil_size", "timestamp"],
         time_scale=1e-3,            # Milliseconds
         center=(960.0, 540.0),      # ScreenResolution: 1920x1080
-        flip_y=True,                # EnvironmentCoordinates: 'top-left'
+        flip_y=False,               # EyeLink is top-left origin, and so is the corpus
         degrees_per_unit=35.71 / 1920.0, # 35.71 dva horizontal extent
         label_units="degrees_visual_angle",
         valid_box=(-400.0, 2320.0, -400.0, 1480.0),
     ),
+    "ds000113": dict(
+        corpus_name="dsL08_studyforrest_movie",
+        # Hanke et al. 2016 (Scientific Data 3:160092), studyforrest: 7T,
+        # TR = 2.0 s, Forrest Gump. Only ses-movie run-1 is taken, one run per
+        # participant, matching what is already in the corpus.
+        et_pattern=r"/ses-movie/func/.*_task-movie_run-1_recording-eyegaze_physio\.tsv\.gz$",
+        anchor=ANCHOR_STARTTIME,
+        # No timestamp column -- the sidecar's SamplingFrequency is the clock,
+        # and its StartTime of 0.0 is a genuine offset rather than a tracker
+        # clock (see `anchor_seconds`'s `times_from_column` guard).
+        timestamp_col=None,
+        sampling_frequency=1000.0,
+        time_scale=1.0,
+        # Sidecar ContentDescription: "normalized to (0,0) at the top-left
+        # corner of the movie stimulus (already excluding the gray horizontal
+        # bars)", i.e. a 1280x720 movie area with a top-left origin.
+        center=(640.0, 360.0),
+        flip_y=False,               # top-left origin, and so is the corpus
+        degrees_per_unit=23.75 / 1280.0, # 23.75 x 13.5 dva movie extent, square px
+        label_units="degrees_visual_angle",
+        valid_box=(-320.0, 1600.0, -180.0, 900.0),
+        time_offset=-0.75,          # fitted by verify_gaze_sync.py --sub-tr
+    ),
+    "ds004283": dict(
+        corpus_name="dsL13_lokicat",
+        # Visual categorisation, TR = 0.75 s, EyeLink at 1 kHz. Gaze ships only
+        # as EyeLink's **binary** .EDF -- no ASCII, no BIDS physio -- so this
+        # dataset was invisible to the ingest until `read_edf` existed.
+        et_pattern=r"/func/.*_task-lokicat_run-\d+_recording-eyetracking_physio\.EDF$",
+        # One .EDF per run, side by side with the BOLD, so the default
+        # suffix rule reaches the volume once the extension is rewritten.
+        bold_rewrite=[(r"_recording-eyetracking_physio\.EDF$", "_bold.nii.gz")],
+        # There is no scanner pulse anywhere in the recording. What there is:
+        # 60 `stim_onset` messages on the tracker clock and 60 onsets in the
+        # run's events.tsv already relative to volume 0. Fitting one against
+        # the other recovers the origin *and* checks itself -- 60 constraints
+        # on 2 parameters. Measured on sub-01 ses-02 run-01: clock ratio
+        # 1.000102, residual SD 0.3 ms, t0 = +267.886 s.
+        anchor=ANCHOR_EVENTS,
+        message_pattern=r"^stim_onset$",
+        time_scale=1e-3,            # EyeLink clock is milliseconds
+        # `center` is deliberately absent: the .EDF header states
+        # DISPLAY_COORDS 0 0 1279 799, and build_labels takes the centre from
+        # there rather than from a number typed in here.
+        flip_y=False,               # top-left origin, and so is the corpus
+        degrees_per_unit=None,      # no documented viewing distance + screen size
+        label_units="pixel",
+        valid_box=(-640.0, 1920.0, -400.0, 1200.0),   # screen +- 50%
+    ),
+    "_ds001242_excluded": dict(
+        corpus_name="ds001242",   # retired: folded back into its own accession
+        # Lee et al. 2018 (Nature Human Behaviour), spatial detection / fear
+        # learning, TR = 2.0 s, 60 Hz tracker. Ingested as dsL09 and REJECTED on
+        # re-examination; kept here as the record of why, not to be re-run.
+        #
+        # Three failures, any one of which would be disqualifying:
+        #  - Timing is per subject, not per dataset. In a within-subject lag
+        #    sweep only 21 of 48 participants peak at lag 0 and 12 peak at -3.
+        #    That is the ds007532 signature, and the same verdict follows: one
+        #    offset per subject would "fix" it and would be circular.
+        #  - 37-40% of all samples are the tracker's (0,0) track-loss code, and
+        #    values run to +-3276 -- past PLAUSIBLE_ABS's reach and past any
+        #    screen. Four participants are >90% lost.
+        #  - The dataset's own sidecar says so: "Reliability would not be
+        #    guaranteed", "more than 25% data loss", and it names 8 of the 52
+        #    participants its authors excluded (08 31 41 43 44 45 48 52).
+        #
+        # And cleaning does not rescue it: restricted to the 31 participants
+        # that pass coverage, off-grid and the authors' own list, median
+        # within-subject decoding is 0.128 -- against 0.16 for all 52. There is
+        # no signal being masked by the noise.
+        et_pattern=r"/func/.*_task-fearlearning_recording-eye_physio\.tsv\.gz$",
+        anchor=ANCHOR_TRIGGER,
+        trigger_col="trigger",
+        timestamp_col="time",
+        time_scale=1.0,
+        center=(128.0, 100.0),      # the observed fixation cluster, not documented
+        flip_y=False,
+        degrees_per_unit=None,      # sidecar's degreePerPixel is for a pixel
+                                    # space this export is not in (see CLAUDE.md)
+        label_units="pixel",
+        valid_box=(-130.0, 777.0, -130.0, 615.0),  # 647x485 screen + 20% margin
+    ),
     "_ds007532_excluded": dict(
-        corpus_name="dsX10_visseq_unaligned",
+        corpus_name="ds007532",   # retired: folded back into its own accession
         et_pattern=r"/func/.*_recording-eye1_physio\.tsv\.gz$",
         # NOT `starttime`, despite every run having one. This dataset mixes both
         # conventions run by run -- sub-01 alone has proper offsets (-12.27,
@@ -171,6 +266,13 @@ ACTIVE = {k: v for k, v in DATASETS.items() if not k.startswith("_")}
 # with mostly-NaN labels.
 MIN_COVERAGE = 0.60
 
+# A run whose labels are almost entirely NaN carries no gaze, however well it
+# lines up in time. Set loosely on purpose: 50% track loss is a poor but usable
+# recording (dsL08's sub-05 sits at 73% and still decodes within subject), while
+# the case this excludes is the degenerate one -- a recording with no eye in it
+# at all.
+MAX_NAN_FRACTION = 0.95
+
 
 def s3_list(s3, prefix, pattern):
     pg = s3.get_paginator("list_objects_v2")
@@ -183,8 +285,23 @@ def s3_list(s3, prefix, pattern):
     return sorted(out)
 
 
-def s3_get(s3, key):
-    return s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
+def s3_get(s3, key, attempts=4):
+    """One object's bytes, retried.
+
+    ds006642's EyeLink ASCII exports are tens of MB gzipped and a single-shot
+    read of one times out often enough to kill a 39-subject run partway
+    through -- which then re-downloads everything it already had. The read is
+    idempotent, so retrying it costs nothing but time.
+    """
+    last = None
+    for i in range(attempts):
+        try:
+            return s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
+        except Exception as e:            # noqa: BLE001 - botocore raises many
+            last = e
+            if i + 1 < attempts:
+                time.sleep(2 ** i)
+    raise last
 
 
 def bold_for(et_key, cfg=None):
@@ -247,6 +364,10 @@ def build_labels(s3, cfg, et_key, n_trs, tr):
         re.sub(r"\.tsv$", ".json", et_key),
         f"{ds_root}/task-{task_name}_recording-{rec_name}_physio.json" if task_name and rec_name else None,
         f"{ds_root}/task-{task_name}_physio.json" if task_name else None,
+        # Root-level with no task entity: ds000113 puts every eyegaze sidecar's
+        # shared fields (Columns, SamplingFrequency, StartTime) in exactly this
+        # file, and without it the ingest has no column names at all.
+        f"{ds_root}/recording-{rec_name}_physio.json" if rec_name else None,
     ]
     for cand in cand_sidecars:
         if not cand:
@@ -263,7 +384,26 @@ def build_labels(s3, cfg, et_key, n_trs, tr):
     scale = float(cfg.get("time_scale", 1.0))
     trigger, events, from_column = None, None, True
 
-    if et_key.endswith((".asc", ".asc.gz")):
+    if et_key.lower().endswith((".edf", ".edf.gz")):
+        # EyeLink's binary. Samples and messages come from one file on one
+        # clock, exactly as for .asc -- the difference is only the container.
+        raw_t, x, y, messages, edf_info = read_edf(s3_get(s3, et_key),
+                                                   eye=cfg.get("eye", "auto"))
+        if not len(raw_t):
+            raise SyncError("no samples in the .edf")
+        times = raw_t * scale
+        events = [(t, m) for t, m in messages]
+        # The binary header states the display size, which no sidecar here
+        # does. Preferring it over a hand-written `center` removes the guess
+        # that ds004158's transposed columns hid behind for two months.
+        sc = edf_info.get("screen_coords")
+        if sc is not None and cfg.get("center") is None:
+            try:
+                w, h = (float(v) for v in np.asarray(sc).ravel()[:2])
+                cfg = {**cfg, "center": (w / 2.0, h / 2.0)}
+            except (TypeError, ValueError):
+                pass
+    elif et_key.endswith((".asc", ".asc.gz")):
         # EyeLink ASCII: samples and messages come from the same file, so the
         # anchor's events and the gaze are guaranteed to be on one clock.
         raw_t, x, y, messages = read_asc(s3_get(s3, et_key), eye=cfg.get("eye", "auto"))
@@ -311,10 +451,39 @@ def build_labels(s3, cfg, et_key, n_trs, tr):
         # is a 1000x error that looks like a wildly out-of-range anchor.
         events = [(t * scale, m) for t, m in events]
 
+    bids_onsets = None
+    if cfg["anchor"] == ANCHOR_EVENTS:
+        # The BOLD run's own events.tsv, whose onsets are already relative to
+        # volume 0. Derived from the *BOLD* key rather than the recording's, so
+        # the events always belong to the run being labelled.
+        ev_key = re.sub(r"_bold\.nii(\.gz)?$", "_events.tsv",
+                        bold_for(et_key, cfg))
+        try:
+            rows = s3_get(s3, ev_key).decode("utf8", "replace").splitlines()
+        except Exception as e:                   # noqa: BLE001
+            raise SyncError(f"events anchor needs {ev_key}: {str(e)[:60]}") from e
+        header = rows[0].split("\t") if rows else []
+        if "onset" not in header:
+            raise SyncError(f"no onset column in {ev_key}")
+        oi = header.index("onset")
+        keep = cfg.get("event_types")
+        ti = header.index("trial_type") if "trial_type" in header else None
+        bids_onsets = []
+        for r in rows[1:]:
+            f = r.split("\t")
+            if len(f) <= oi:
+                continue
+            if keep and ti is not None and f[ti] not in keep:
+                continue
+            try:
+                bids_onsets.append(float(f[oi]))
+            except ValueError:
+                continue
+
     t0, info = anchor_seconds(
         cfg["anchor"], sidecar=sidecar, times=times, trigger=trigger,
         events=events, message_pattern=cfg.get("message_pattern"), tr=tr,
-        times_from_column=from_column, n_trs=n_trs)
+        times_from_column=from_column, n_trs=n_trs, bids_onsets=bids_onsets)
     # `t0` needs no scaling here: the messages were converted to the same clock
     # as `times` before the anchor ran. Scaling again would multiply the origin
     # by 1000 for a millisecond tracker -- an error large enough that coverage
@@ -482,6 +651,19 @@ def run_dataset(ds, out_dir, limit=None, dry_run=False, force=False, subjects=No
                 info["status"] = "low_coverage"
                 report.append(info)
                 continue
+            if info["nan_fraction"] > MAX_NAN_FRACTION:
+                # Coverage says the recording *spans* the run; it says nothing
+                # about whether the tracker saw an eye. ds004283's sub-04 run-01
+                # has 738 TRs of perfect temporal coverage and **zero finite
+                # samples** -- an empty recording that satisfies every other
+                # check and would be written as a labeled participant with no
+                # labels. Where a subject has several runs, moving on finds one
+                # that actually recorded gaze.
+                info["status"] = "no_gaze"
+                report.append(info)
+                print(f"  [{i}/{len(subs)}] {sub}: {info['nan_fraction']:.0%} of "
+                      f"labels are NaN in {et_key.split('/')[-1]}; trying the next run")
+                continue
             chosen = (et_key, bold_key, labels, info, n_trs, tr)
             break
 
@@ -545,20 +727,35 @@ def run_dataset(ds, out_dir, limit=None, dry_run=False, force=False, subjects=No
                                "runs": report}, indent=1, default=str))
     print(f"\n[+] {written} written, {skipped} skipped -> {out}")
 
-    if written and not dry_run and register:
+    if not dry_run and register:
         # Same path the original six went through, so the new datasets are
         # registry citizens on identical terms: approved, flagged `labeled` so
         # the audit grid cannot mark ground truth as no-eyes, and mirrored into
         # labels.csv. Gaze was recorded during the scan, so the eyeballs are in
         # frame by construction -- this is a statement about the data, not a
         # model output gating anything.
+        #
+        # Registers **every intact participant on disk**, not the ones this run
+        # happened to write, and runs even when it wrote none. Registration is
+        # the last statement in the function, so anything that stops the loop
+        # early -- and ANTs getting OOM-killed on a long run is routine, not
+        # exceptional -- leaves participants extracted but invisible to the
+        # registry. dsL11 sat at 22 files against 4 registered entries for
+        # exactly this reason. `register` only sets attributes, so re-running it
+        # over the full set repairs that instead of compounding it, and a
+        # resumed run now heals the registry as a side effect.
         from convert_labeled_to_h5 import register as register_labeled  # noqa: E402
 
-        subs_written = [r["subject"] for r in report if r.get("status") == "written"]
+        on_disk = sorted(
+            q.stem for q in (Path(out_dir) / cfg["corpus_name"]).glob("*.h5")
+            if is_intact(q))
         registry = Path(out_dir) / "datasets.h5"
-        if registry.exists():
-            n = register_labeled(out_dir, {cfg["corpus_name"]: subs_written})
-            print(f"[+] registered {n} subjects in {registry.name}")
+        if not on_disk:
+            print("[!] nothing on disk -- skipped registration")
+        elif registry.exists():
+            n = register_labeled(out_dir, {cfg["corpus_name"]: on_disk})
+            print(f"[+] registered {n} subjects in {registry.name} "
+                  f"({written} written this run, {len(on_disk)} on disk)")
         else:
             print(f"[!] no registry at {registry} -- skipped registration")
     return report

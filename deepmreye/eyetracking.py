@@ -29,13 +29,22 @@ which is self-referential and carries no sync information at all. Taking it at
 face value would silently place volume 0 at the start of the recording -- which
 for ds006833 is 58.5 s early. :func:`anchor_seconds` raises rather than guess.
 
-Units are recorded, never invented. Only ds001242 ships a complete geometry
-(``degreePerPixel``); the rest give a viewing distance but no physical screen
-size, which is not enough to reach degrees of visual angle. Those datasets are
-stored in their native screen units with ``label_units`` saying so. Pearson r --
-the corpus's headline metric -- is invariant to that affine, and cross-dataset
-R^2 was already established to be unidentifiable, so nothing downstream is lost
-by refusing to fabricate a conversion.
+Units are recorded, never invented. A dataset is converted to degrees only when
+its own documentation determines the conversion; otherwise it is stored in its
+native screen units with ``label_units`` saying so. ds001242 is the trap here:
+it ships a ``degreePerPixel`` and a ``ScreenVisualAngle``, but its export is on
+a grid those numbers do not describe, so the apparently complete geometry is
+worth nothing. Pearson r -- the corpus's headline metric -- is invariant to that
+affine, and cross-dataset R^2 was already established to be unidentifiable, so
+nothing downstream is lost by refusing to fabricate a conversion.
+
+**What that invariance does not cover is the sign**, and the sign is the one
+thing here that is fatal. See :func:`center_and_scale`: the corpus's y grows
+*downward*, three datasets were ingested with it inverted, and no check in this
+module or in ``verify_gaze_sync.py``'s lag sweep could see it -- negating an
+axis leaves every lag's magnitude unchanged, so a flipped dataset verifies at
+lag 0 with a healthy margin and then decodes at a negative vertical correlation.
+``verify_gaze_sync.py --convention`` is the check that covers it.
 """
 import gzip
 import io
@@ -51,7 +60,9 @@ ANCHOR_STARTTIME = "starttime"
 ANCHOR_TRIGGER = "trigger"
 ANCHOR_MESSAGE = "message"
 ANCHOR_INDEXED_MESSAGE = "indexed_message"
-ANCHORS = (ANCHOR_STARTTIME, ANCHOR_TRIGGER, ANCHOR_MESSAGE, ANCHOR_INDEXED_MESSAGE)
+ANCHOR_EVENTS = "events"
+ANCHORS = (ANCHOR_STARTTIME, ANCHOR_TRIGGER, ANCHOR_MESSAGE,
+           ANCHOR_INDEXED_MESSAGE, ANCHOR_EVENTS)
 
 # EyeLink writes blinks and track loss as 0 or as a large sentinel; some exports
 # use the uint32 max. Anything outside a generous screen box is not a gaze
@@ -59,6 +70,12 @@ ANCHORS = (ANCHOR_STARTTIME, ANCHOR_TRIGGER, ANCHOR_MESSAGE, ANCHOR_INDEXED_MESS
 # genuine samples and the calibration can legitimately place gaze off-screen.
 SENTINELS = (0.0, 4294967295.0, -32768.0)
 PLAUSIBLE_ABS = 1e4
+
+# ANCHOR_EVENTS acceptance thresholds. The clock ratio is the tighter of the
+# two in practice: two independent crystals agree to ~1e-4, so anything past
+# 1e-3 is a mismatched event list rather than drift.
+EVENT_CLOCK_TOL = 1e-3
+EVENT_RESID_TOL = 0.050        # seconds
 
 
 class SyncError(ValueError):
@@ -150,7 +167,7 @@ def trigger_onsets(trigger, times):
 
 def anchor_seconds(strategy, *, sidecar=None, times=None, trigger=None,
                    events=None, message_pattern=None, tr=None,
-                   times_from_column=True, n_trs=None):
+                   times_from_column=True, n_trs=None, bids_onsets=None):
     """Tracker-clock time (in the units of ``times``) of the first volume's onset.
 
     Returns ``(t0, info)``. ``t0`` is subtracted from the sample times to put
@@ -249,6 +266,58 @@ def anchor_seconds(strategy, *, sidecar=None, times=None, trigger=None,
         info["first_vol_pulse_idx"] = float(first_vol_pulse_idx)
         return float(intercept + slope * first_vol_pulse_idx), info
 
+    if strategy == ANCHOR_EVENTS:
+        # No scanner pulse anywhere in the recording -- but the dataset ships a
+        # BIDS `events.tsv` whose onsets are already relative to volume 0, and
+        # the tracker logged the same stimulus events on its own clock. Fitting
+        # one against the other recovers the origin.
+        #
+        # This is the **only anchor here that validates itself**. The other
+        # three take one number from one place and trust it; this one is
+        # overdetermined -- 60 trials constraining 2 parameters -- so the fit
+        # reports whether the match is real. Two things have to hold, and both
+        # are checked rather than assumed:
+        #
+        #   - the **slope** must be ~1. It is the ratio of the two clock rates,
+        #     so anything else means the messages were matched to the wrong
+        #     events, in the wrong order, or against the wrong run.
+        #   - the **residual** must be small. Scattered residuals with a slope
+        #     of 1 mean the two lists describe different events.
+        #
+        # Measured on ds004283: slope 1.000102, residual SD 0.3 ms over 60
+        # trials. That is not a fit that could come out right by accident.
+        if events is None or message_pattern is None:
+            raise SyncError("events anchor needs tracker messages and a pattern")
+        if bids_onsets is None or not len(bids_onsets):
+            raise SyncError("events anchor needs the run's events.tsv onsets")
+        rx = re.compile(message_pattern)
+        hits = sorted(float(onset) for onset, msg in events if rx.search(str(msg)))
+        onsets = np.sort(np.asarray(bids_onsets, dtype=np.float64))
+        if len(hits) != len(onsets):
+            raise SyncError(
+                f"{len(hits)} tracker messages matching {message_pattern!r} "
+                f"against {len(onsets)} events.tsv onsets -- these are not the "
+                "same event list, so the fit would be meaningless")
+        if len(hits) < 5:
+            raise SyncError(f"only {len(hits)} events; too few to fit an origin")
+        t = np.asarray(hits, dtype=np.float64)
+        slope, intercept = np.polyfit(onsets, t, 1)
+        resid = t - (slope * onsets + intercept)
+        info = {"anchor": ANCHOR_EVENTS, "n_events": len(t),
+                "clock_ratio": float(slope),
+                "residual_sd": float(resid.std()),
+                "max_residual": float(np.max(np.abs(resid)))}
+        if not np.isclose(slope, 1.0, atol=EVENT_CLOCK_TOL):
+            raise SyncError(
+                f"tracker/scanner clock ratio {slope:.5f} is not 1 -- the "
+                "messages do not correspond to these events")
+        if resid.std() > EVENT_RESID_TOL:
+            raise SyncError(
+                f"event fit residual SD {resid.std() * 1000:.0f} ms exceeds "
+                f"{EVENT_RESID_TOL * 1000:.0f} ms -- the two lists are not the "
+                "same events")
+        return float(intercept), info
+
     if strategy == ANCHOR_MESSAGE:
         if events is None or message_pattern is None:
             raise SyncError("message anchor needs events and a pattern")
@@ -328,11 +397,25 @@ def center_and_scale(labels, *, degrees_per_unit=None, center=None, flip_y=False
     """Centre gaze on the screen middle and optionally convert to degrees.
 
     ``center`` is the screen-centre coordinate in the tracker's own units; it is
-    subtracted so 0 is straight ahead, matching the corpus convention. With
-    ``EnvironmentCoordinates: top-left`` the tracker's y grows downward while the
-    corpus's grows upward, which ``flip_y`` corrects -- get this wrong and the
-    vertical axis decodes at a *negative* correlation, which is the one sign
-    error that still looks like a working model.
+    subtracted so 0 is straight ahead, matching the corpus convention.
+
+    **The corpus's y grows DOWNWARD**, like a screen with a top-left origin, so
+    a top-left tracker needs ``flip_y=False`` and the flip is the exception
+    rather than the rule. An earlier version of this docstring said the
+    opposite, and three ingested datasets (ds000113, ds001242, ds004158) were
+    flipped on the strength of it -- each then decoded with a *negative*
+    vertical correlation, which is the one sign error that still looks like a
+    working model. Do not "correct" this back without redoing the measurement.
+
+    The convention is established from anatomy, not from another dataset. The
+    template is stored L, A, S, so axis 2 grows superior and axis 1 grows
+    anterior; the eyeball is a bright vitreous sphere with a dark lens at its
+    anterior pole, so looking up rotates that dark lens to higher z. The
+    correlation between voxel signal and label y is therefore a dipole along z
+    in the anterior half of the orbit, and its sign says which way y points.
+    Measured on dsL01, dsL02, dsL04, dsL05, dsL07 and dsL11, superior-minus-
+    inferior runs +0.05 to +0.14 -- positive on all six, i.e. **y grows
+    downward**. ``scripts/verify_gaze_sync.py --convention`` re-runs it.
     """
     out = np.asarray(labels, dtype=np.float64).copy()
     if center is not None:
@@ -449,6 +532,106 @@ def read_asc(blob, eye="auto"):
             x, y = left if np.isfinite(left[0]).sum() >= np.isfinite(right[0]).sum() else right
 
     return np.asarray(times, dtype=np.float64), x, y, messages
+
+
+def read_edf(blob, eye="auto"):
+    """Parse an EyeLink **binary** EDF into ``(times, x, y, messages, info)``.
+
+    Same contract as :func:`read_asc` plus a fifth element, because unlike an
+    ASCII export the binary header carries metadata worth having: ``sfreq``,
+    which eye was recorded, and -- the useful one -- ``screen_coords``. Not
+    having the display resolution is what made ds004158's transposed gaze
+    columns hard to spot; here the file states it.
+
+    Three datasets ship gaze only in this form (ds001840, ds004283, ds007305),
+    so without a reader they are simply invisible to the ingest. The reader is
+    `eyelinkio`, which parses the binary itself -- it does **not** need SR
+    Research's closed-source `edfapi`, which is what makes this a dependency
+    rather than a manual conversion step.
+
+    Times are returned in **milliseconds** to match :func:`read_asc` and
+    :func:`read_physio_events`, so a caller scales all three the same way.
+    `eyelinkio` hands back seconds; converting here rather than at the call site
+    keeps the ``time_scale`` in a dataset config meaning one thing.
+    """
+    import tempfile
+
+    try:
+        import eyelinkio
+    except ImportError as e:                     # pragma: no cover
+        raise SyncError(
+            "reading .edf needs `eyelinkio` (uv add eyelinkio). It parses the "
+            "binary directly and does not require SR Research's edfapi.") from e
+
+    if isinstance(blob, (bytes, bytearray)):
+        if blob[:2] == b"\x1f\x8b":
+            blob = gzip.decompress(blob)
+        if not blob.startswith(b"SR_RESEARCH"):
+            # European Data Format (EEG) uses the same extension and would
+            # otherwise be parsed as gaze and produce plausible nonsense.
+            raise SyncError("not an EyeLink EDF (no SR_RESEARCH magic); "
+                            "note that EEG's European Data Format shares the "
+                            "extension")
+        with tempfile.NamedTemporaryFile(suffix=".edf", delete=False) as fh:
+            fh.write(blob)
+            path = fh.name
+        cleanup = True
+    else:
+        path, cleanup = str(blob), False
+
+    try:
+        edf = eyelinkio.read_edf(path)
+    finally:
+        if cleanup:
+            import os
+            os.unlink(path)
+
+    times = np.asarray(edf["times"], dtype=np.float64) * 1000.0   # -> ms
+    samples = np.asarray(edf["samples"], dtype=np.float64)
+    fields = edf["info"].get("sample_fields")
+    if isinstance(fields, str):
+        fields = [f.strip(" '\"") for f in fields.strip("[]").split(",")]
+    fields = list(fields or [])
+
+    def column(*names):
+        for n in names:
+            if n in fields:
+                return samples[fields.index(n)]
+        return None
+
+    # Binocular files expose per-eye columns; monocular ones just xpos/ypos.
+    # As in `read_asc` the two eyes are never averaged -- during track loss on
+    # one eye they disagree wildly and the mean is neither.
+    left = (column("xpl", "lxpos"), column("ypl", "lypos"))
+    right = (column("xpr", "rxpos"), column("ypr", "rypos"))
+    if left[0] is not None and right[0] is not None:
+        if eye == "left":
+            x, y = left
+        elif eye == "right":
+            x, y = right
+        else:
+            x, y = (left if np.isfinite(left[0]).sum() >= np.isfinite(right[0]).sum()
+                    else right)
+    else:
+        x, y = column("xpos"), column("ypos")
+        if x is None or y is None:
+            x, y = samples[0], samples[1]
+
+    messages = []
+    disc = edf.get("discrete", {}) or {}
+    msg = disc.get("messages")
+    if msg is not None and len(msg):
+        names = getattr(getattr(msg, "dtype", None), "names", None) or ()
+        tkey = "stime" if "stime" in names else ("onset" if "onset" in names else names[0])
+        mkey = "msg" if "msg" in names else names[-1]
+        for row in msg:
+            raw = row[mkey]
+            text = (bytes(raw).decode("latin1") if isinstance(raw, (bytes, bytearray, np.void))
+                    else str(raw)).strip("\x00").strip()
+            messages.append((float(row[tkey]) * 1000.0, text))
+
+    info = dict(edf.get("info", {}) or {})
+    return times, np.asarray(x, float), np.asarray(y, float), messages, info
 
 
 def load_sidecar(blob):
