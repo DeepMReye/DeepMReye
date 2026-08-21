@@ -4,8 +4,11 @@ Written because the trial log was being maintained by hand, which does not survi
 run MANY more". Every run writes `{"args": ..., "results": {fold: {...,"history":[...]}}}`,
 so the record already exists in machine-readable form; this reads all of them and emits
 
-  results/subtr/trials.csv        one row per (trial, fold) -- config knobs, outcome, shape
-  results/subtr/trials_epochs.csv one row per (trial, fold, epoch) -- the full curves
+  docs/voxelnet_trials.csv        one row per (trial, fold) -- config knobs, outcome, shape
+  docs/voxelnet_trials_epochs.csv one row per (trial, fold, epoch) -- the full curves
+
+They land in `docs/` rather than beside the JSONs because `results/` is gitignored, and a
+record that does not survive a clone is not a record.
 
 and prints a ranked summary. Nothing here re-runs or re-scores anything: if a number is not
 in a JSON it is not in the table, so the table cannot drift from what was actually run.
@@ -89,7 +92,8 @@ def rows_for(path):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--glob", default="results/subtr/trial*.json")
-    p.add_argument("--out-dir", default="results/subtr")
+    p.add_argument("--out-dir", default="docs",
+                   help="results/ is gitignored, so the rolled-up tables default to docs/ -- otherwise the record does not survive a clone.")
     args = p.parse_args()
 
     flat, curves = [], []
@@ -102,13 +106,13 @@ def main():
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    with (out / "trials.csv").open("w", newline="") as fh:
+    with (out / "voxelnet_trials.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(flat[0].keys()))
         w.writeheader()
         w.writerows(flat)
     if curves:
         keys = sorted({k for c in curves for k in c})
-        with (out / "trials_epochs.csv").open("w", newline="") as fh:
+        with (out / "voxelnet_trials_epochs.csv").open("w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=keys)
             w.writeheader()
             w.writerows(curves)
@@ -116,8 +120,8 @@ def main():
     def fmt(v, n=4):
         return "--" if v is None else (f"{v:.{n}f}" if isinstance(v, float) else str(v))
 
-    print(f"{len(flat)} (trial, fold) rows -> {out/'trials.csv'}")
-    print(f"{len(curves)} epoch rows -> {out/'trials_epochs.csv'}\n")
+    print(f"{len(flat)} (trial, fold) rows -> {out/'voxelnet_trials.csv'}")
+    print(f"{len(curves)} epoch rows -> {out/'voxelnet_trials_epochs.csv'}\n")
     hdr = (f"{'trial':<34} {'fold':<24} {'test':>7} {'inc':>7} {'delta':>7} "
            f"{'val*':>7} {'fit*':>7} {'gap':>7} {'ep':>7} {'stop':>6}")
     print(hdr)

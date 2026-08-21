@@ -192,3 +192,9 @@ paper/
 # TensorFlow-only env for the DeepMReye 1.0 baseline (scripts/eval_dme1.py).
 # Kept apart from .venv because TF pins numpy against the sklearn/torch stack.
 .venv-tf/
+
+# Voxelnet trial record. `*.csv` above exists to keep corpus labels out of git; these are
+# generated summaries of what was run, and a record that does not survive a clone is not a
+# record. Regenerate with scripts/summarize_voxelnet_trials.py.
+!docs/voxelnet_trials.csv
+!docs/voxelnet_trials_epochs.csv

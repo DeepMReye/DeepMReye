@@ -132,7 +132,8 @@ Files that matter for this arm:
 | `slurm/train_voxelnet.sbatch` | GPU job; array mode = one fold per task |
 | `deepmreye/temporal_probe.py` | the audited sub-TR LODO protocol + `--calibrate` |
 | `deepmreye/voxelnet.py` | cache builder, `cca_matrix`, augmentations |
-| `results/subtr/VOXELNET_TRIALS.md` | the narrative trial log |
+| `docs/VOXELNET_TRIALS.md` | the narrative trial log (rationale + epoch tables) |
+| `docs/voxelnet_trials.csv` | generated: one row per trial x fold |
 | `scripts/train_voxelnet.py` | **the warm-start version — superseded, do not use for new work** |
 
 ---
@@ -289,4 +290,8 @@ python scripts/summarize_voxelnet_trials.py
 **Conventions.** Next `trialNN_` prefix; `--out results/subtr/trialNN_<slug>.json`; a
 `--note`. Screen on `dsL07` (cheap) and only promote to nine folds once a config beats the
 incumbent there. Append the rationale and the epoch table to
-`results/subtr/VOXELNET_TRIALS.md` — the CSVs carry the numbers, that file carries the *why*.
+`docs/VOXELNET_TRIALS.md` — the CSVs carry the numbers, that file carries the *why*.
+
+> `results/` is gitignored, so the trial log and the rolled-up tables live in `docs/`. A
+> record that does not survive a clone is not a record. `.gitignore` carries two explicit
+> negations for the CSVs, because `*.csv` is otherwise excluded to keep corpus labels out.
