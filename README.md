@@ -1,356 +1,200 @@
-# DeepMReye 2.0: fMRI Eye Tracking
+# DeepMReye 2.0
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
+Decode eye gaze from fMRI without an eye tracker.
 
-Decode eye gaze from fMRI without an eye tracker. The BOLD signal around the
-eyeballs carries gaze position; DeepMReye 1.0 decoded it with a supervised CNN.
-This branch (`pytorch`) is the data ingestion/QA/HuggingFace pipeline plus a
-classic-regressor baseline: read gaze straight off downsampled raw voxels with
-sklearn readouts (ridge, PCA→ridge, PLS, random forest, gradient boosting, SVR,
-LightGBM, MLP), reproducing the regressor comparison from
-`media/deepmreye_benchmarks.ipynb` on the current corpus.
+The signal in the voxels around the eyeballs in a BOLD volume carries gaze
+position. Version 1 read it out with a supervised 3-D CNN trained on gaze
+labels. This version reads it out with a **frozen linear basis learned from
+unlabeled fMRI** plus a ridge readout, and matches the supervised reference
+while needing **no data from the target study**.
 
-A self-supervised JEPA pretraining approach was tried on this codebase and set
-aside (see `CLAUDE.md`); it is preserved on the **`pytorch-jepa`** branch.
+The method, in full:
 
-![Logo](media/deepmreye_logo.png)
+1. Fit a linear basis on ~1900 unlabeled OpenNeuro participants by canonical
+   correlation between the **left and right orbit** (`lr-cca`). Both eyes rotate
+   together, so a direction in left-orbit voxel space that predicts the right
+   orbit is a direction driven by conjugate gaze; anything local to one eye is
+   suppressed. No gaze labels are involved.
+2. Project a new participant's eye-mask voxels onto the leading 32 directions
+   and stack them at lags -1, 0, +1.
+3. Fit a ridge on the gaze-labeled datasets and read gaze out.
 
-## Installation
+That is the whole model. It is linear end to end and takes seconds to fit.
 
-Requires Python 3.9–3.11. Dependencies are managed with `uv` (`pyproject.toml` +
-`uv.lock`).
+## Results
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-uv pip install -e .
-```
+Leave-one-dataset-out over 337 gaze-labeled participants in 9 datasets: the
+readout is fitted on 8 datasets and scored on the 9th, so every number answers
+"does this transfer to a study it has never seen".
 
-## Running the pipeline
+| | Pearson r | r_x | r_y | R² * | error * |
+|---|---|---|---|---|---|
+| **sub-TR** (10 samples per TR) | **0.770** | 0.814 | 0.749 | 0.543 | 2.87° |
+| **1-TR** (mean gaze per TR) | **0.838** | 0.862 | 0.817 | 0.616 | 2.34° |
 
-Everything runs through a single CLI. `--data-dir` goes after the command.
+Median over the 9 folds, of the median over participants within a fold. Mean
+over folds is **0.721** (sub-TR) and **0.777** (1-TR) -- report it beside the
+median, because two folds are genuinely hard and a median alone hides them.
 
-```bash
-python -m deepmreye compile --data-dir data --limit 5     # 1. sample subjects from OpenNeuro
-python -m deepmreye qa --data-dir data                    # 2. label datasets in the browser
-python -m deepmreye preprocess --data-dir data             # 3. extract all subjects of approved datasets
-python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp  # 4. read out gaze
-```
+`*` R² and error are **calibrated** -- see "About the metrics" below. Error is
+in degrees of visual angle.
 
-`run_pipeline.sh <command>` is a thin `.venv` wrapper around the pipeline calls.
+The noise floor on a 9-fold median here is about **0.02**, so differences below
+that are ties regardless of their direction.
 
-### The three pipeline stages
+Per fold, sub-TR / 1-TR Pearson r:
 
-1. **compile** — Samples a few subjects per OpenNeuro dataset, coregisters them
-   to the eye template, extracts the eye bounding box, and builds the
-   `data/datasets.h5` registry with a small QA thumbnail per subject.
-2. **qa** — A local Flask web app for manual quality control. For each subject
-   you mark eyes (`1` clean, `4` faint, `3` cut off) vs no-eyes (`0` bad transform, `2` good transform). A dataset is used for training only if all of its
-   labeled subjects show eyes (one bad subject drops the dataset, since scanner
-   or experiment failures tend to be shared across subjects). Labels are stored
-   in `data/datasets.h5` and mirrored to `data/labels.csv`.
-3. **preprocess** — Downloads and extracts every subject of the approved
-   datasets into per-participant HDF5 files.
+| dataset | n | sub-TR | 1-TR | |
+|---|---|---|---|---|
+| `dsL02_pursuit` | 9 | 0.920 | 0.929 | |
+| `dsL04_pursuit` | 34 | 0.851 | 0.864 | |
+| `dsL05_free_viewing` | 27 | 0.803 | 0.839 | |
+| `dsL03_pursuit` | 24 | 0.776 | 0.808 | resolution-limited, see `FINDINGS.md` |
+| `dsL01_guided_fixations` | 170 | 0.770 | 0.786 | |
+| `dsL07_deepmreye_calib` | 15 | 0.744 | 0.837 | |
+| `dsL06_sequences` | 6 | 0.673 | 0.734 | vertical axis barely sampled |
+| `dsL11_backtothefuture` | 37 | 0.671 | 0.848 | |
+| `dsL08_studyforrest_movie` | 14 | 0.283 | 0.348 | 7T, worst registration in the corpus |
 
-From there, `scripts/eval_probe.py` reads gaze out of the labeled subset
-(`dsL01`-`dsL06`) — see "Evaluation" below.
+**Read `FINDINGS.md` before proposing an improvement.** It records what was
+tried, what the controls said, and which directions are closed. The short
+version: gaze is *linearly* accessible from these features, so a non-linear
+encoder in front of a linear readout has nothing to add, and eight separate
+attempts confirmed it.
 
-Note the ordering constraint: QA labeling needs the thumbnails, and those are
-produced by coregistration. So `compile` registers a sample of subjects to give
-you something to look at, you label, and only then does `preprocess` fetch the
-remaining subjects of the datasets that passed.
+### About the metrics
 
-### Where the data lives
+Pearson r is the headline and needs no calibration -- it is invariant to gain
+and offset. R² and Euclidean error are **not**, and the protocol makes that
+unavoidable: it z-scores gaze per training dataset before pooling (the
+per-dataset scale spans 21 to 595, and without it the pooled ridge follows
+whichever dataset has the largest target variance), so predictions come out in
+z-units. `deepmreye/metrics.py` fixes this with the smallest honest amount of
+supervision: one gain and one offset per axis, fitted on the **other
+participants of the same held-out dataset**. No participant sees its own labels,
+and the scenario is the realistic one -- calibrate a new study on a few subjects
+with an eye tracker, decode the rest without one. Quote R² and error as
+*calibrated*; quote r as it stands.
 
-No stage needs a path. The corpus is resolved in this order, so the same
-commands work on a laptop and on a cluster:
-
-1. `--data-dir` if you pass one;
-2. `$DEEPMREYE_DATA`;
-3. `./data`, if it holds a registry;
-4. otherwise it is downloaded from HuggingFace into `~/.cache/deepmreye` on
-   first use.
-
-```bash
-python -m deepmreye qa                    # laptop: pulls what it needs, then labels
-DEEPMREYE_DATA=/scratch/.../data \
-  python -m deepmreye qa                  # cluster: uses the local copy, no network
-python -m deepmreye qa --no-download      # never reach for HuggingFace
-```
-
-Each stage pulls only what it reads. `qa` takes the registry plus every QA
-thumbnail — ~20 KB per subject, ~30 MB in total, so it arrives in one go and you
-can start labeling immediately. `eval_probe.py` only needs `dsL*/*.h5`, the
-gaze-labeled subset. A directory you point at is never topped up from the
-network; only the cache is.
-
-To download up front instead — before a flight, or to work offline:
+## Install
 
 ```bash
-python -m deepmreye fetch                 # blocks + registry (~29 GB)
-python -m deepmreye fetch --reports       # add the full HTML reports too (~37 GB)
-python -m deepmreye fetch --labels-only   # just the registry and index (MB)
+uv sync
 ```
 
-### On a cluster
+`ants` is needed for ingestion only; evaluation is pure numpy/sklearn.
 
-If compute nodes have no outbound network, or login sessions are memory-capped,
-`compile` and `preprocess` cannot run as single commands — they need network and
-memory in the same process. Everything SLURM-specific lives in [`slurm/`](slurm/)
-with its own README; the rest of the repo is portable.
+## Use
 
-## Evaluation
-
-`scripts/eval_probe.py` reads gaze out of downsampled raw fMRI voxels, crossing
-two axes.
-
-**Generalization level** (`--protocol`), in increasing strictness:
-
-| | train / test |
-|---|---|
-| `within` | same participant, early timepoints vs late |
-| `subject` | held-out participants, same scanner and paradigm |
-| `dataset` | leave one dataset out, each in turn |
-| `paradigm` | leave one paradigm out (`dsL02/03/04` are all pursuit) |
-
-**Readout** (`--readouts`): `mean`, `linear`, `ridge`, `ridge-cv`, `pca-ridge`,
-`pls`, `rf`, `gbt`, `svr`, `lgbm`, `mlp` — see `deepmreye/evaluate/baselines.py`.
-The last three reproduce the regressor comparison in
-`media/deepmreye_benchmarks.ipynb`.
+Everything runs through one entry point.
 
 ```bash
-python scripts/eval_probe.py --protocol dataset --readouts ridge-cv svr lgbm mlp
+# Fit the basis on the unlabeled corpus (one streaming pass, ~1.3 GB of
+# accumulators). Excludes every gaze-labeled dataset by construction.
+python -m deepmreye fit-basis --out results/basis.npz --k 256
+
+# Leave-one-dataset-out decoding: r, R2 and error at both resolutions.
+python -m deepmreye evaluate --basis results/basis.npz --build-cache
+
+# Refuse to report unless the protocol reproduces its known headline numbers.
+python -m deepmreye evaluate --basis results/basis.npz --calibrate
 ```
 
-SVR is O(n²)-O(n³) in the number of training rows — `--protocol dataset` pools
-five datasets' worth per fold, which may be slow; `--max-windows` subsamples if
-so.
-
-Two things about how the numbers are reported. Metrics are aggregated **per
-participant, then median across participants** — pooling every row together lets
-a model score well by predicting only which subject it is looking at (`--pooled`
-prints that number for comparison). And **Pearson r is the headline rather than
-R²**, because cross-dataset predictions are mis-calibrated in gain, which
-destroys R² while leaving the correlation intact; `scripts/analyze_calibration.py`
-measures exactly that and shows why no unsupervised correction fixes it.
-
-`scripts/analyze_identifiability.py` is an **analysis, not a baseline**: it fits
-CCA between the left and right orbit of a single run and recovers gaze without
-labels. It cannot be deployed (it is fitted on the run it scores), but it
-separates "the representation cannot carry gaze" from "the readout does not
-transfer".
-
-## QA triage
-
-Labeling every sampled subject across ~2400 OpenNeuro datasets is the slow part.
-A small scikit-learn model over the extracted eyeball voxels (occupancy,
-centre/edge contrast, temporal SNR) helps in two places:
+To extend the corpus (see "Extending the data" below):
 
 ```bash
-python scripts/train_qa_classifier.py --data-dir data --rank   # label uncertain subjects first
-python scripts/train_qa_classifier.py --data-dir data --flag   # screen the full download
+python -m deepmreye compile --limit 5      # sample subjects for QA
+python -m deepmreye qa                     # browser UI: mark eyes / no eyes
+python -m deepmreye preprocess             # extract every subject of approved datasets
 ```
 
-`--rank` orders unlabeled subjects by model uncertainty so labeling effort goes
-where it changes the model most. `--flag` lists likely no-eyes participants among
-the subjects that full extraction pulls in — QA only ever samples 2 subjects per
-dataset, so those are otherwise never inspected.
+`--data-dir` goes **after** the command. Unset, it resolves `$DEEPMREYE_DATA`,
+then `./data`, then downloads from HuggingFace.
 
-**The model never approves anything.** It ranks and flags for your review;
-dataset approval stays manual. Accuracy is reported as ROC-AUC cross-validated
-with datasets held out, since subjects within a dataset share a scanner and
-failure mode.
+## What is in the package
 
-## QA thumbnails
+```
+deepmreye/
+  unsupervised.py   The two linear bases and the streaming accumulator they
+                    come from. `lr-cca` is what ships; `corpus-pca` is the
+                    variance-ordered reference it is compared against.
+  probe.py          The evaluation protocol, written down once: leave-one-
+                    dataset-out, scored at sub-TR and 1-TR, with a cache whose
+                    guard includes a corpus fingerprint.
+  metrics.py        Pearson r, R2, Euclidean error, and the per-dataset affine
+                    calibration that makes the last two mean something.
 
-Every participant gets a `<subject>.png` beside its HDF5: the z=-30 brain slice
-with the eye mask in red, then the extracted eye block from two sides. That is
-enough to answer the only question QA asks — are the eyeballs in there.
+  pipeline.py       Ingestion: S3 download, coregistration, extraction, write.
+  preprocess.py     Coregistration and eye-mask extraction (ANTs).
+  eyetracking.py    Gaze ingest for OpenNeuro datasets that ship eye tracking.
+                    The time origin is *recovered*, never assumed.
+  storage.py        The per-participant HDF5 layout. Every read and write of an
+                    eye block goes through here.
+  registry.py       Worker sidecars, so parallel extraction never writes the
+                    registry directly.
+  datasource.py     Finds the corpus and decides what each stage downloads.
+  labels.py         CSV backup of the QA labels.
+  validation.py     TR extraction and validation from NIfTI headers.
+  thumbnail.py      The ~20 KB QA image every participant gets.
+  qa_classifier.py  Triage model: ranks unlabeled subjects so the uncertain ones
+                    get labeled first, and pre-selects a label in the UI. It
+                    never approves anything.
 
-It replaced the 5 MB Plotly report as the default artifact. Measured over the QA
-sample, 1773 reports came to 9.1 GB and the same 1773 thumbnails to 29 MB, and a
-full extraction would have put the reports over 100 GB. Pass `--report html` (or
-`both`) to `slurm/extract_staged.py` when you want the histogram and timecourses
-for a specific subject.
-
-For a corpus extracted before thumbnails existed:
-
-```bash
-python scripts/backfill_thumbnails.py --data-dir data --workers 8
+scripts/            Portable stages: basis fitting, the QA UI, gaze ingest and
+                    its verification, corpus indexing, HuggingFace sync.
+slurm/              Cluster-specific staging and extraction, plus run.sbatch.
 ```
 
-This reads each subject's report where one exists, and falls back to the stored
-block otherwise — so the gaze-labeled participants, which never had a report,
-get one too. Do it before deleting any reports: they are the only surviving
-record of the pre-normalization volumes.
+## Data
 
-## Label backup
+`data/<dataset>/<subject>.h5`, one file per participant: `eye_block [47, 29, 18, T]`
+float32, plus `labels [T, 10, 2]` when gaze was recorded. Ten gaze samples per
+TR is what makes the sub-TR resolution possible. `data/datasets.h5` is the
+registry that carries the manual QA label per subject.
 
-Manual QA labels are the expensive part. Every save in the QA UI is appended to
-`data/labels.csv`, and re-running `compile` or `preprocess` never deletes labels.
-If the registry is ever rebuilt or corrupted:
+Dataset names carry the subset: `ds######` is an OpenNeuro accession (keep the
+real accession -- it is the provenance), `dsL##_<name>` is gaze-labeled. So
+`dsL*/*.h5` selects the evaluation set without opening a file.
 
-```bash
-python -m deepmreye export-labels --data-dir data     # snapshot current labels to CSV
-python -m deepmreye restore-labels --data-dir data    # replay CSV back into datasets.h5
-```
+Current corpus:
 
-Labels live with the corpus, not in git — the data directory is on scratch or in
-the HuggingFace cache. They are versioned by pushing them to the Hub; see
-*Working across machines*.
+- **337 gaze-labeled participants across 9 datasets** -- `dsL01` 170, `dsL11` 37,
+  `dsL04` 34, `dsL05` 27, `dsL03` 24, `dsL07` 15, `dsL08` 15, `dsL02` 9,
+  `dsL06` 6. All in degrees of visual angle.
+- **~1,880 unlabeled participants across 915 OpenNeuro accessions**, almost all
+  contributing exactly 2 participants each.
 
-## Repository layout
+### Extending the data
 
-- `deepmreye/__main__.py` — the CLI entry point.
-- `deepmreye/pipeline.py` — shared OpenNeuro download / coregistration / extraction.
-- `deepmreye/data/probe_dataset.py` — the windowed HDF5 dataloader over the
-  gaze-labeled subset, with its train/test split protocols.
-- `deepmreye/evaluate/probe.py` — gaze probe metrics and per-subject aggregation.
-- `deepmreye/evaluate/baselines.py` — the readout zoo `eval_probe.py` scores voxel features with.
-- `deepmreye/labels.py` — CSV label backup.
-- `deepmreye/storage.py` — the per-participant HDF5 layout (all block I/O).
-- `deepmreye/registry.py` — worker sidecar records and their merge into the registry.
-- `deepmreye/datasource.py` — finds the corpus (local dir, `$DEEPMREYE_DATA`, or
-  HuggingFace) so no command needs a path.
-- `deepmreye/qa_classifier.py` — eye-detection triage features and model.
-- `deepmreye/thumbnail.py` — the QA thumbnail every participant gets.
-- `scripts/` — portable stages: labeling UI, `eval_probe.py` (the baseline
-  table), `analyze_identifiability.py`, `analyze_calibration.py`,
-  `build_index.py`, `train_qa_classifier.py`, `upload_to_hf.py`,
-  `sync_labels.py`, `convert_labeled_to_h5.py`, `backfill_thumbnails.py`.
-- `results/` — evaluation output.
-- `slurm/` — everything cluster-specific (staging, extraction array). Has its
-  own README. Nothing outside this folder needs SLURM.
-- `overview.md` — detailed method reference.
+Two directions, and they are worth very different amounts.
 
-Self-supervised JEPA pretraining (`deepmreye/models/`, `jepa_dataset.py`,
-`train_jepa.py`) lives on the `pytorch-jepa` branch, not here.
+**More unlabeled participants: probably not worth it.** The corpus-size curve
+saturates. `lr-cca` gains +0.15 going from 25 to 800 participants and then
+flattens; going from 1039 to 2000 buys nothing measurable. The mechanism is that
+a 64-dimensional linear subspace of a 14236-voxel eye mask is simply easy to
+estimate, so more data approaches a ceiling that is set by the target being easy.
+If you want to try anyway, `slurm/stage_downloads.py --sample 5` stages five
+subjects per dataset instead of two, and `slurm/submit_extraction.sh` extracts
+them; the split exists because Leonardo's compute nodes have no network and its
+login nodes have a 32 GB cap. See `slurm/README.md`.
 
-## Data formats
+**More labeled datasets: this is the scarce resource.** Every claim here rests
+on nine leave-one-dataset-out folds, and independent *acquisitions* -- not
+participants -- are what a fold is. `scripts/scan_eyetracking_datasets.py` finds
+OpenNeuro accessions that already ship gaze; `scripts/fetch_eyetracking.py`
+ingests one; `scripts/verify_gaze_sync.py` proves the alignment before it counts.
+Do not skip the verification: three datasets passed a lag sweep with healthy
+margins while their vertical axis was inverted, and two were retired only after
+a cross-dataset readout caught it.
 
-One HDF5 file per participant, foldered by dataset:
-
-```text
-data/
-├── ds000001/                    # an OpenNeuro accession — unlabeled
-│   ├── sub-01.h5
-│   │   ├── eye_block   # [47, 29, 18, T] float32, gzip, chunked over time
-│   │   └── labels      # [T, 10, 2] float32 — only when gaze is known
-│   ├── sub-01.png      # ~20 KB QA thumbnail
-│   └── sub-02.h5
-├── dsL01_guided_fixations/      # a gaze-labeled dataset
-│   └── sub-NDARAA948VFH.h5
-├── datasets.h5         # QA registry
-└── index.parquet       # one row per participant
-```
-
-Labeled and unlabeled participants use the identical container; `labels` is
-simply absent when gaze is unknown. The `dsL` prefix is the only thing that
-distinguishes them by path, which makes `dsL*/*.h5` the glob for the probe set.
-Blocks are normalized at extraction (z-scored per voxel and per volume, clipped
-at 5 SD), so every file in the corpus is directly comparable. Per-participant
-files are what make extraction parallelisable and keep one corrupt write from
-costing a whole dataset.
-
-Build the index (and validate every file) with:
-
-```bash
-python scripts/build_index.py --data-dir data --deep
-```
-
-`--deep` reads every voxel, catching interior corruption, all-zero blocks, and
-values outside the claimed normalization range. Anything it flags is excluded
-from the index rather than shipped.
-
-## Working across machines
-
-Extraction needs a cluster; labeling needs your eyes and a browser. The Hub is
-what joins them. The corpus goes up once, then only labels travel — a few MB
-against ~29 GB of blocks.
-
-Authenticate once per machine (`hf auth login`, or set `$HF_TOKEN`), and set
-`DEEPMREYE_HF_REPO` so no command needs `--repo-id`:
-
-```bash
-export DEEPMREYE_HF_REPO=DeepMReye/eyeballs
-```
-
-**1. Cluster — push the working copy** (blocks + thumbnails + registry; runs
-for hours, so detach it. `--reports` adds the ~5 MB HTML reports, which is only
-worth it if you want to inspect subjects in depth off-cluster):
-
-```bash
-export DATA=/leonardo_scratch/fast/AIFAC_S07_154/mfrey/dme/data
-python scripts/upload_to_hf.py --data-dir $DATA --repo-id $DEEPMREYE_HF_REPO \
-    --reports --private --dry-run          # check the tally first
-python scripts/upload_to_hf.py --data-dir $DATA --repo-id $DEEPMREYE_HF_REPO \
-    --reports --private
-```
-
-This is a *working copy*: every subject, including ones already labeled
-no-eyes. That is deliberate — you cannot revise a label on a subject that was
-filtered out of the copy you are labeling from. `--publish` applies the QA
-filter, and belongs to the final artifact only.
-
-**2. Laptop — label.** Nothing to configure; the registry and every thumbnail
-come down in seconds:
-
-```bash
-python -m deepmreye qa                     # UI on http://localhost:5050
-```
-
-**3. Laptop — push the labels back.** Small and quick, so do it often:
-
-```bash
-python scripts/sync_labels.py push
-```
-
-**4. Cluster — collect them**, then stage and extract the approved datasets in
-full (see [`slurm/`](slurm/)):
-
-```bash
-python scripts/sync_labels.py pull --data-dir $DATA
-```
-
-`pull` **merges**: it fills unlabeled slots, leaves anything already labeled on
-this machine alone, and reports conflicts instead of resolving them silently. So
-labeling in two places cannot lose work, and pulling twice changes nothing the
-second time.
-
-## Publishing
-
-The final artifact, once labeling and full extraction are done:
-
-```bash
-python scripts/build_index.py --data-dir $DATA --deep
-python scripts/upload_to_hf.py --data-dir $DATA --repo-id $DEEPMREYE_HF_REPO \
-    --publish --dry-run
-```
-
-The dry run reports exactly what would be uploaded and why anything was left
-out. Two independent gates apply: technical validation (above), and — with
-`--publish` — QA status: subjects labeled no-eyes are dropped even though their
-files are perfectly valid, since the corpus exists for eye-region signal.
-Subjects not yet labeled are kept, but called out in the summary.
-`--labeled-only` publishes just the gaze-labeled subset.
-
-Manual QA labels live as `approved` attributes in `data/datasets.h5`:
-`1` eyes, `3` eyes but clipped by the bounding box (also approved), `0` no eyes
-or bad transform, `2` no eyes with a good transform, `-1` unlabeled, `-99` whole
-dataset skipped.
-
-## Testing
+## Development
 
 ```bash
 pytest deepmreye/tests/ -q
 ```
 
-Covers the readout zoo, the gaze probe metrics, the label backup round-trip, TR
-validation, the on-disk storage format (atomic writes, truncation detection,
-label alignment), registry merging under parallel workers, the windowed
-dataloader and its train/test splits, and the manifest sharding that
-partitions work across the extraction array.
-
-## Correspondence
-
-Questions about the implementation: contact the primary developers.
+The tests worth knowing about are the ones guarding failures that are otherwise
+*silent*: the covariance accumulator that returns zeros without raising
+(`test_unsupervised.py`), the cache that loads a retired corpus without
+complaint (`test_probe.py`), and the R² that produces a plausible number from
+mismatched units (`test_metrics.py`).

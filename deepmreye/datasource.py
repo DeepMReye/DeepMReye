@@ -41,13 +41,13 @@ LABELED_GLOB = "dsL*/*.h5"
 THUMBNAIL_GLOB = "*/*.png"
 
 # What each stage actually needs, so a laptop is not made to download the whole
-# corpus before it can do anything. Labeling reads thumbnails, which now come
-# down with the registry; training reads blocks and no images at all. Stages
-# absent from here get everything.
+# corpus before it can do anything. Labeling reads thumbnails, which come down
+# with the registry; `evaluate` reads only the gaze-labeled blocks, while
+# `fit-basis` needs the unlabeled ones and so takes everything. Stages absent
+# from here get everything.
 STAGE_PATTERNS = {
     "qa": REGISTRY_FILES + [THUMBNAIL_GLOB],
-    "train": REGISTRY_FILES + ["*/*.h5"],
-    "probe": REGISTRY_FILES + [LABELED_GLOB],
+    "evaluate": REGISTRY_FILES + [LABELED_GLOB],
 }
 
 

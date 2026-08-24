@@ -20,10 +20,13 @@ The labeling UI also mirrors every save into labels.csv automatically, so
 manual labels survive a corrupted or rebuilt registry. Both files travel
 between machines with scripts/sync_labels.py.
 
+fit-basis   Fit the unsupervised feature basis on the unlabeled corpus.
+evaluate    Leave-one-dataset-out gaze decoding: r, R-squared, error in degrees.
+
 The stages are ordered: compile produces the registry, qa approves datasets,
-preprocess extracts the full data. From there, scripts/eval_probe.py reads out
-gaze against the classic regressors (see baselines.py) -- there is no training
-stage in this branch; see the pytorch-jepa branch for the self-supervised model.
+preprocess extracts the full data, fit-basis learns the projection from the
+unlabeled half, evaluate reads gaze out of the labeled half. Nothing here is
+trained on gaze except the final ridge readout.
 """
 import argparse
 import sys
@@ -95,6 +98,32 @@ def cmd_fetch(args):
     print(f"[+] corpus at {path}")
 
 
+def cmd_fit_basis(args):
+    from fit_corpus_basis import main as fit_main
+    sys.argv = ["fit_corpus_basis.py", "--data-dir", str(args.data_dir),
+                "--out", args.out, "--k", str(args.k),
+                "--trs-per-subject", str(args.trs_per_subject)]
+    if args.max_subjects:
+        sys.argv += ["--max-subjects", str(args.max_subjects)]
+    fit_main()
+
+
+def cmd_evaluate(args):
+    from deepmreye import probe
+    recs = probe.load_or_build(args.data_dir, args.basis, args.cache, args.m,
+                               args.build_cache)
+    print(f"[*] {len(recs)} participants, {len({r['dataset'] for r in recs})} datasets")
+    if args.calibrate and not probe.calibrate(recs):
+        raise SystemExit("[!] calibration failed -- do not trust this run")
+    res = probe.lodo(recs, probe.incumbent(args.k, args.lags))
+    probe.report(res, f"lr-cca:{args.k} + lags{args.lags}")
+    if args.json:
+        import json as _json
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.json).write_text(_json.dumps(res, indent=2, default=float))
+        print(f"[+] wrote {args.json}")
+
+
 def cmd_all(args):
     cmd_compile(args)
     input(
@@ -164,6 +193,27 @@ def build_parser():
                          help="Registry, label backup and index only (a few MB).")
     p_fetch.set_defaults(func=cmd_fetch)
 
+    p_basis = sub.add_parser("fit-basis", parents=[common],
+                             help="Fit the unsupervised basis on the unlabeled corpus.")
+    p_basis.add_argument("--out", default="results/basis.npz")
+    p_basis.add_argument("--k", type=int, default=256, help="Components kept per basis.")
+    p_basis.add_argument("--trs-per-subject", type=int, default=48)
+    p_basis.add_argument("--max-subjects", type=int, default=None)
+    p_basis.set_defaults(func=cmd_fit_basis)
+
+    p_eval = sub.add_parser("evaluate", parents=[common],
+                            help="Leave-one-dataset-out gaze decoding.")
+    p_eval.add_argument("--basis", default="results/basis.npz")
+    p_eval.add_argument("--cache", default="results/labeled_cache.npz")
+    p_eval.add_argument("--m", type=int, default=256, help="Directions kept in the cache.")
+    p_eval.add_argument("--k", type=int, default=32, help="Directions the readout uses.")
+    p_eval.add_argument("--lags", type=int, default=1)
+    p_eval.add_argument("--build-cache", action="store_true")
+    p_eval.add_argument("--calibrate", action="store_true",
+                        help="Reproduce the known headline numbers before reporting.")
+    p_eval.add_argument("--json", default=None)
+    p_eval.set_defaults(func=cmd_evaluate)
+
     p_all = sub.add_parser("all", parents=[common], help="Run the whole pipeline, pausing for QA.")
     p_all.add_argument("--limit", type=str, default="5", help="Datasets to sample in compile.")
     p_all.add_argument("--force", action="store_true", help="Force reprocessing in preprocess.")
@@ -183,7 +233,7 @@ def main():
         from deepmreye.datasource import resolve
         # Stages that *produce* the corpus must never try to download it, and
         # must not fail when it does not exist yet -- they are what creates it.
-        creates_data = args.command in ("compile", "preprocess", "all")
+        creates_data = args.command in ("compile", "preprocess", "all", "fit-basis")
         if creates_data and args.data_dir is None:
             try:
                 args.data_dir = str(resolve(None, download=False, quiet=True))

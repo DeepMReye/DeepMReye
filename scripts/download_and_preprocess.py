@@ -16,7 +16,6 @@ from deepmreye.pipeline import (
     process_subject,
     DEFAULT_REPORT,
 )
-import deepmreye.config as cfg
 
 # Trim large datasets rather than skipping them; see the note in
 # scripts/stage_downloads.py for why the old skip-at-100 was costly.
@@ -77,9 +76,9 @@ def run_preprocess(data_dir, force=False, report=DEFAULT_REPORT):
 
 
 def main():
-    config = cfg.DeepMReyeConfig()
+    default_data_dir = "./data"
     parser = argparse.ArgumentParser(description="Download and preprocess approved datasets.")
-    parser.add_argument("--data-dir", type=str, default=config.data_dir, help="Central data storage directory.")
+    parser.add_argument("--data-dir", type=str, default=default_data_dir, help="Central data storage directory.")
     parser.add_argument("--force", action="store_true", help="Reprocess all subjects, overwriting existing extractions.")
     args = parser.parse_args()
     run_preprocess(args.data_dir, force=args.force)

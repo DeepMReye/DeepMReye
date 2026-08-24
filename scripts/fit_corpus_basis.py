@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Fit the unsupervised feature bases on the unlabeled corpus.
+"""Fit the two unsupervised feature bases on the unlabeled corpus.
 
-One streaming pass over the 1773 unlabeled participants accumulates a mean and
-a 14236x14236 second moment over the masked voxels (and the same over temporal
-differences); every basis is then a decomposition of those accumulators. See
-``deepmreye/unsupervised.py`` for what each basis is and why.
+One streaming pass over the unlabeled participants accumulates a mean and a
+14236x14236 second moment over the masked voxels; both bases are decompositions
+of that. See ``deepmreye/unsupervised.py`` for what each is and why.
 
 The gaze-labeled datasets (``dsL*``) are excluded outright -- this must not see
 the evaluation set -- as are participants whose eye mask is not fully covered,
@@ -15,7 +14,7 @@ whose zeros would otherwise steer the basis toward their missingness.
 
 Cost is dominated by the rank-k update: ~14236^2 * T flops over the TRs kept,
 so ``--trs-per-subject`` is the runtime dial. The default (48 TRs from each of
-~1500 subjects) is a few minutes on a laptop and ~2.5 GB of accumulators.
+~1900 subjects) is a few minutes on a laptop and ~1.3 GB of accumulators.
 """
 import argparse
 import json
@@ -89,13 +88,12 @@ def main():
           f"in {time.time() - t0:.0f}s")
 
     bases = {}
-    for kind, diff in (("corpus-pca", False), ("diff-pca", True)):
-        t = time.time()
-        bases[kind] = fit_pca(moments, args.k, diff=diff, seed=args.seed)
-        ev = bases[kind]["eigenvalues"]
-        share = ev.sum() / float(bases[kind]["total_variance"][0])
-        print(f"[*] {kind}: {ev.shape[0]} components, "
-              f"top-{args.k} variance share {share:.3f} ({time.time() - t:.0f}s)")
+    t = time.time()
+    bases["corpus-pca"] = fit_pca(moments, args.k, seed=args.seed)
+    ev = bases["corpus-pca"]["eigenvalues"]
+    share = ev.sum() / float(bases["corpus-pca"]["total_variance"][0])
+    print(f"[*] corpus-pca: {ev.shape[0]} components, "
+          f"top-{args.k} variance share {share:.3f} ({time.time() - t:.0f}s)")
 
     t = time.time()
     bases["lr-cca"] = fit_lr_cca(moments, mask, args.k, args.cca_reduce, seed=args.seed)

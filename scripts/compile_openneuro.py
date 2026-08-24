@@ -28,7 +28,6 @@ from deepmreye.pipeline import (
     DEFAULT_REPORT,
 )
 from deepmreye import registry
-import deepmreye.config as cfg
 
 GRAPHQL_URL = "https://openneuro.org/crn/graphql"
 SUBJECTS_PER_DATASET = 2  # sample size per dataset for the manual QA step
@@ -168,10 +167,10 @@ def run_compile(data_dir, limit=5, workers=4, force=False, report=DEFAULT_REPORT
 
 
 def main():
-    config = cfg.DeepMReyeConfig()
+    default_data_dir = "./data"
     parser = argparse.ArgumentParser(description="Compile OpenNeuro dataset samples to HDF5.")
     parser.add_argument("--limit", type=str, default="5", help="Number of datasets to sample. Use 'None' for all.")
-    parser.add_argument("--data-dir", type=str, default=config.data_dir, help="Central data storage directory.")
+    parser.add_argument("--data-dir", type=str, default=default_data_dir, help="Central data storage directory.")
     parser.add_argument("--workers", type=int, default=4, help="Parallel download/registration workers.")
     parser.add_argument("--force", action="store_true", help="Re-extract subjects that are already on disk.")
     args = parser.parse_args()

@@ -12,17 +12,25 @@ classifiers = [
     "Programming Language :: Python :: 3"
 ]
 dependencies = [
-    "plotly",
+    # Evaluation: pure numpy/sklearn, no GPU and no deep-learning stack.
+    "numpy",
     "scipy",
     "scikit-learn",
-    "lightgbm",
-    "torch",
-    "pydantic",
+    "h5py",
+    "pandas",
+    "joblib",
+    # Ingestion: S3, coregistration, gaze parsing, QA images.
+    "antspyx",
+    "nibabel",
+    "boto3",
+    "requests",
     "tqdm",
-    "nbmake",
-    "ipywidgets>=7.0.0",
-    "anywidget",
     "eyelinkio>=0.3.0",
+    "pillow",
+    "plotly",
+    # QA labeling UI, and the HuggingFace mirror of the corpus.
+    "flask",
+    "huggingface-hub",
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
@@ -33,19 +41,7 @@ readme = "README.md"
 requires-python = ">=3.9.0,<3.12"
 
 [project.optional-dependencies]
-all = ["deepmreye[doc,test,style]"]
-# also stored in docs/requirements.txt
-# to speed up readthedocs build
-doc = [
-    "sphinx >=2.0",
-    "sphinx-argparse",
-    "sphinx_rtd_theme"
-]
-docs = ["deepmreye[doc]"]
-streamlit = ["streamlit"]
-style = ["tox"]
 test = ["pytest>6", "pytest-cov"]
-tests = ["deepmreye[test]"]
 
 [project.urls]
 home = "https://github.com/DeepMReye/DeepMReye"
@@ -74,10 +70,10 @@ profile = "black"
 skip_gitignore = true
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-config --strict-markers --doctest-modules --showlocals -s -vv --durations=0"
+addopts = "-ra --strict-config --strict-markers --showlocals --durations=5"
 doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
 junit_family = "xunit2"
 log_cli_level = "INFO"
 minversion = "6.0"
-testpaths = ["tests"]
+testpaths = ["deepmreye/tests"]
 xfail_strict = true

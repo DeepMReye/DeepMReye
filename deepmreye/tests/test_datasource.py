@@ -75,7 +75,7 @@ def test_cached_download_is_reused(tmp_path, monkeypatch):
 
 
 def test_cache_is_topped_up_for_the_stage_that_needs_more(tmp_path, monkeypatch):
-    """Labeling pulls only the registry, so `train` must not find an empty cache."""
+    """Labeling pulls only the registry, so `evaluate` must not find an empty cache."""
     monkeypatch.chdir(tmp_path)
     cache = _make_corpus(tmp_path / "cache")
     monkeypatch.setenv("DEEPMREYE_CACHE", str(cache))
@@ -111,18 +111,16 @@ def test_stage_patterns_keep_labeling_small(tmp_path):
     assert not any("html" in p for p in qa)
     assert datasource.THUMBNAIL_GLOB in qa
 
-    assert any(p.endswith("*.h5") for p in datasource.STAGE_PATTERNS["train"])
-    assert not any("html" in p for p in datasource.STAGE_PATTERNS["train"])
-    assert not any("png" in p for p in datasource.STAGE_PATTERNS["train"])
 
-
-def test_probe_stage_takes_only_the_labeled_datasets():
-    """`dsL*` is what makes fitting a probe cheap: labels without the corpus."""
-    probe = datasource.STAGE_PATTERNS["probe"]
-    assert datasource.LABELED_GLOB in probe
+def test_evaluate_stage_takes_only_the_labeled_datasets():
+    """`dsL*` is what makes evaluation cheap: labels without the corpus."""
+    stage = datasource.STAGE_PATTERNS["evaluate"]
+    assert datasource.LABELED_GLOB in stage
     assert datasource.LABELED_GLOB.startswith("dsL")
-    # A bare `*/*.h5` here would pull the whole pretraining corpus instead.
-    assert "*/*.h5" not in probe
+    # A bare `*/*.h5` here would pull the whole unlabeled corpus instead.
+    assert "*/*.h5" not in stage
+    assert not any("html" in p for p in stage)
+    assert not any("png" in p for p in stage)
 
 
 def test_no_download_raises_with_a_useful_message(tmp_path, monkeypatch):

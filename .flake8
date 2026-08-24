@@ -4,7 +4,6 @@ show-source = True
 statistics = True
 exclude=
     *build/
-    media
     tests
 select = C,B,D,E,F,W
 max-complexity = 11

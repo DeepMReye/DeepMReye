@@ -338,7 +338,7 @@ def bin_to_subtr(times, x, y, n_trs, tr, n_sub=N_SUBTR, min_samples=1):
     ``t`` covers ``[(t + j/n_sub) * tr, (t + (j+1)/n_sub) * tr)`` and holds the
     **mean** of the samples falling in it -- non-overlapping, so a sample is
     counted exactly once and the mean over the 10 is the mean gaze during that
-    volume. That last property is what ``evaluate.probe.temporal_targets``
+    volume. That last property is what ``probe._resolutions``
     assumes when it averages them.
 
     Bins with fewer than ``min_samples`` valid samples become NaN; the evaluation

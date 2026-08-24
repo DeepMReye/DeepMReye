@@ -12,17 +12,15 @@ from flask import (Flask, Response, jsonify, redirect, render_template_string, r
 
 # Add deepmreye to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import deepmreye.config as cfg
 from deepmreye import thumbnail
 from deepmreye.labels import append_label_events
 from deepmreye.pipeline import thumbnail_path
-from scripts.auto_label_datasets import auto_label_corpus
 
 app = Flask(__name__)
-config = cfg.DeepMReyeConfig()
+
 
 # Fallback H5 PATH based on config, overridden by args later
-H5_PATH = str(Path(config.data_dir).resolve() / "datasets.h5")
+H5_PATH = str(Path("./data").resolve() / "datasets.h5")
 # Set by run_labeler; when true the UI never reaches for HuggingFace.
 NO_DOWNLOAD = False
 
@@ -1064,7 +1062,7 @@ def api_toggle_dataset_approval():
     return jsonify({"status": "ok", "dataset": ds_name, "approved": approved})
 
 
-def run_labeler(h5_path=None, data_dir=None, port=5050, no_download=False, auto_label=False):
+def run_labeler(h5_path=None, data_dir=None, port=5050, no_download=False):
     """Launch the Flask labeling UI against the given registry."""
     global H5_PATH, NO_DOWNLOAD
     NO_DOWNLOAD = no_download
@@ -1073,15 +1071,7 @@ def run_labeler(h5_path=None, data_dir=None, port=5050, no_download=False, auto_
     elif data_dir is not None:
         H5_PATH = str(Path(data_dir).resolve() / "datasets.h5")
 
-    target_data_dir = Path(H5_PATH).parent
     load_model()
-
-    if auto_label:
-        try:
-            print("[+] Auto-labeling corpus with triage model prior to UI launch...")
-            auto_label_corpus(data_dir=target_data_dir)
-        except Exception as e:
-            print(f"[-] Auto-labeling skipped: {e}")
 
     print("Starting Flask server for dataset labeling...")
     print(f"Target HDF5: {H5_PATH}")
@@ -1094,7 +1084,6 @@ if __name__ == '__main__':
     parser.add_argument("--h5", type=str, default=None, help="Path to HDF5 Datastore")
     parser.add_argument("--data-dir", type=str, default=None, help="Central data directory (uses <data-dir>/datasets.h5)")
     parser.add_argument("--port", type=int, default=5050, help="Port to run the app on")
-    parser.add_argument("--auto-label", action="store_true", help="Run auto-labeling sweep prior to launching UI")
     args = parser.parse_args()
 
-    run_labeler(h5_path=args.h5, data_dir=args.data_dir, port=args.port, auto_label=args.auto_label)
+    run_labeler(h5_path=args.h5, data_dir=args.data_dir, port=args.port)
