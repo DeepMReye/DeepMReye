@@ -18,7 +18,9 @@ out, per-training-dataset target z-scoring, selection on held-out training *data
 by the reported metric (sub-TR r), median over test participants.
 """
 import argparse
+import contextlib
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -29,8 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deepmreye.temporal_probe import (ALPHAS, MAX_TRAIN_ROWS, fold_median, make_lags,
                                       subject_scores)
-from deepmreye.voxelnet import (cca_matrix, load_voxel_cache, make_lags_torch, mixup,
-                                shift_augment)
+from deepmreye.voxelnet import (cca_matrix, load_voxel_cache, make_lags_torch, mirror_index,
+                                mirror_rows, mixup, shift_augment)
 
 
 def device_for(name="auto"):
@@ -134,18 +136,61 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-2)
     p.add_argument("--cosine", action="store_true", help="Cosine-decay lr over --epochs.")
+    p.add_argument("--warmup", type=int, default=0,
+                   help="Linear lr warmup over the first N epochs, before --cosine decays "
+                        "the remainder. 0 is the old behaviour exactly.")
+    p.add_argument("--clip", type=float, default=1.0,
+                   help="Global grad-norm clip; 0 disables. Was hardcoded at 1.0.")
+    p.add_argument("--loss", default="mse", choices=("mse", "huber"),
+                   help="Sub-TR gaze carries blinks and track-loss excursions, which MSE "
+                        "chases and Huber does not.")
+    p.add_argument("--huber-delta", type=float, default=1.0)
+    p.add_argument("--ema", type=float, default=0.0,
+                   help="Decay of an exponential moving average of the weights, evaluated "
+                        "and SELECTED on in place of the raw ones (0 disables). The val "
+                        "curve swings +-0.05 epoch to epoch; averaging the weights attacks "
+                        "that at its source rather than smoothing the metric after the fact.")
     p.add_argument("--patience", type=int, default=8)
+    p.add_argument("--save-preds", default=None,
+                   help="Write per-test-participant predictions (net, incumbent, labels) to "
+                        "this .npz. Lets net-vs-incumbent ensembling and multi-seed "
+                        "ensembling be measured offline, without retraining.")
+    p.add_argument("--val-smooth", type=int, default=1,
+                   help="Select on a trailing mean of the last K validation scores "
+                        "instead of the raw per-epoch value. 1 = previous behaviour.")
     p.add_argument("--val-datasets", type=int, default=3)
     p.add_argument("--val-subjects", type=int, default=8)
     p.add_argument("--noise", type=float, default=0.0)
     p.add_argument("--vox-dropout", type=float, default=0.0)
     p.add_argument("--shift", type=int, default=0)
     p.add_argument("--mixup", type=float, default=0.0)
+    p.add_argument("--mirror", type=float, default=0.0,
+                   help="Probability of left-right mirroring a chunk, with horizontal gaze "
+                        "negated. A physically exact symmetry (see voxelnet.mirror_index), "
+                        "so unlike noise/mixup it adds data without degrading the label.")
+    p.add_argument("--tta-mirror", action="store_true",
+                   help="At scoring time, average the prediction over the input and its "
+                        "mirror (horizontal outputs negated back). Exact under the same "
+                        "symmetry as --mirror, so it reduces variance without bias.")
+    p.add_argument("--mirror-roll", type=int, default=1,
+                   help="Voxel offset applied after the x-flip to align the two orbits. "
+                        "+1 maximises mask self-overlap on this corpus (IoU 0.910).")
     p.add_argument("--folds", nargs="*", default=None)
     p.add_argument("--fold-index", type=int, default=None,
                    help="Run only the Nth dataset (0-based, sorted). For SLURM array tasks: "
                         "--fold-index $SLURM_ARRAY_TASK_ID. Mutually exclusive with --folds.")
     p.add_argument("--init-encoder", default=None)
+    p.add_argument("--init-basis", action="store_true",
+                   help="Initialise a `lowrank` encoder at the frozen unsupervised lr-cca basis "
+                        "instead of at random, then train everything end to end. This is NOT the "
+                        "rejected warm start: that froze a fitted RidgeCV head and trained a "
+                        "zero-initialised residual branch, so it could only decorate the "
+                        "incumbent and reported the incumbent whenever the gate rejected. Here the "
+                        "head is random, nothing is frozen, there is no gate, and a fold can score "
+                        "below the incumbent. What transfers is the UNSUPERVISED prior (a basis "
+                        "fitted on 2000 unlabeled participants, no gaze involved), which the "
+                        "incumbent enjoys and a from-scratch net otherwise has to rediscover from "
+                        "eight labeled datasets.")
     p.add_argument("--device", default="auto")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--note", default="", help="Free-text label for this run, stored in the "
@@ -173,6 +218,7 @@ def main():
 
     z_all = np.load(Path(args.voxels) / f"z_cca_k{args.k}.npy")
     mask_idx = np.flatnonzero(mask.reshape(-1))
+    mirror_src = mirror_index(mask, roll=args.mirror_roll)
     if args.fold_index is not None:
         if args.folds:
             raise SystemExit("[!] pass --folds or --fold-index, not both")
@@ -182,6 +228,7 @@ def main():
     else:
         folds = args.folds or datasets
     results = {}
+    saved = {}          # accumulates across folds; keys are per participant
 
     for held in folds:
         t_fold = time.time()
@@ -209,11 +256,12 @@ def main():
             idx = np.random.default_rng(args.seed).choice(len(x_tr), MAX_TRAIN_ROWS, replace=False)
             x_tr, y_tr = x_tr[idx], y_tr[idx]
         ridge = RidgeCV(alphas=ALPHAS).fit(x_tr, y_tr)
-        base = []
+        base, inc_pred = [], {}
         for m in test_parts:
             sl = slice(m["start"], m["start"] + m["n"])
-            base.append(subject_scores(ridge.predict(
-                make_lags(z_all[sl].astype(np.float64), args.lags)), np.asarray(lab[sl]))[0])
+            p_inc = ridge.predict(make_lags(z_all[sl].astype(np.float64), args.lags))
+            inc_pred[m["subject"]] = p_inc
+            base.append(subject_scores(p_inc, np.asarray(lab[sl]))[0])
         base_r = fold_median(base)
 
         stats = zscore_targets(train_parts, lab,
@@ -235,14 +283,52 @@ def main():
                                 width=args.width, dropout=args.dropout, hidden=args.hidden,
                                 seed=args.seed).to(dev)
         net.mask_idx_aug = torch.as_tensor(mask_idx, dtype=torch.long, device=dev)
+        if args.init_basis:
+            if args.encoder != "lowrank":
+                raise SystemExit("[!] --init-basis needs --encoder lowrank (the basis IS a "
+                                 "rank-k linear map; there is nothing to copy into a conv)")
+            with torch.no_grad():
+                kk = min(args.rank, w_cca.shape[1])
+                net.enc.weight[:kk] = torch.as_tensor(w_cca[:, :kk].T, dtype=torch.float32,
+                                                      device=dev)
+            # `cca_matrix` centres by `mu` before projecting; the encoder has no bias, so that
+            # offset is dropped. It is a per-feature constant, which the head's own bias
+            # absorbs exactly -- it costs the initialisation nothing.
+            print(f"    encoder initialised at lr-cca ({kk}/{args.rank} directions), head random",
+                  flush=True)
         if args.init_encoder:
             ck = torch.load(args.init_encoder, map_location="cpu", weights_only=False)
             net.load_state_dict(ck["encoder"], strict=False)
             print(f"    encoder initialised from {args.init_encoder}", flush=True)
 
         opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
-                 if args.cosine else None)
+        def _lr_factor(e):
+            if args.warmup > 0 and e < args.warmup:
+                return (e + 1) / args.warmup
+            if args.cosine:
+                span = max(1, args.epochs - args.warmup)
+                return 0.5 * (1 + math.cos(math.pi * min(1.0, (e - args.warmup) / span)))
+            return 1.0
+
+        sched = (torch.optim.lr_scheduler.LambdaLR(opt, _lr_factor)
+                 if (args.cosine or args.warmup > 0) else None)
+
+        # Evaluated and selected on in place of the raw weights when --ema > 0.
+        ema = ({k: v.detach().clone().float() for k, v in net.state_dict().items()}
+               if args.ema > 0 else None)
+
+        @contextlib.contextmanager
+        def eval_weights():
+            """Swap the EMA weights in for the duration of a scoring pass."""
+            if ema is None:
+                yield
+                return
+            backup = {k: v.detach().clone() for k, v in net.state_dict().items()}
+            net.load_state_dict({k: v.to(dtype=backup[k].dtype) for k, v in ema.items()})
+            try:
+                yield
+            finally:
+                net.load_state_dict(backup)
 
         long_fit = [m for m in fit_parts if m["n"] > args.chunk] or fit_parts
 
@@ -256,8 +342,17 @@ def main():
                     continue
                 sl = slice(m["start"] + off, m["start"] + off + n_)
                 y = np.asarray(lab[sl]).reshape(n_, 20)
+                xr = vox[sl].astype(np.float32)
+                # The mirror is applied to the RAW label, before per-dataset z-scoring.
+                # Negating the z-scored value instead would be wrong by 2*mean/sd: the
+                # physical symmetry is gaze_x -> -gaze_x in the centred coordinates the
+                # labels are stored in, not in the standardised ones.
+                if args.mirror > 0 and gen.random() < args.mirror:
+                    xr = mirror_rows(xr, mirror_src)
+                    y = y.copy()
+                    y[:, 0::2] *= -1               # even columns are horizontal, odd vertical
                 mn, sd = stats.get(m["dataset"], (np.zeros(20), np.ones(20)))
-                xs_.append(vox[sl].astype(np.float32))
+                xs_.append(xr)
                 ys_.append((y - mn) / sd)          # the FULL target, not a residual
             if not xs_:
                 return None, None
@@ -282,12 +377,47 @@ def main():
             ok = torch.isfinite(tgt).all(dim=-1)
             if ok.sum() < 5:
                 return None
-            loss = torch.nn.functional.mse_loss(pred[ok], tgt[ok])
+            if args.loss == "huber":
+                loss = torch.nn.functional.huber_loss(pred[ok], tgt[ok], delta=args.huber_delta)
+            else:
+                loss = torch.nn.functional.mse_loss(pred[ok], tgt[ok])
             opt.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            if args.clip > 0:
+                torch.nn.utils.clip_grad_norm_(net.parameters(), args.clip)
             opt.step()
+            if ema is not None:
+                with torch.no_grad():
+                    for k, v in net.state_dict().items():
+                        if ema[k].is_floating_point():
+                            ema[k].mul_(args.ema).add_(v.detach().float(), alpha=1 - args.ema)
+                        else:
+                            ema[k].copy_(v)
             return float(loss.detach())
+
+        def predict_slice(sl, n_):
+            """Model predictions for one participant slice, honouring --tta-mirror.
+
+            Used by BOTH the per-epoch scoring and the final test scoring. They were separate
+            loops before, so an inference-time option added to one silently did not apply to
+            the other -- which measures the option on SELECTION only and reports it as a test
+            result.
+            """
+            outs = []
+            for i in range(0, n_, 512):
+                rows = vox[sl][i:i + 512].astype(np.float32)
+                pred_i = net(torch.as_tensor(rows, device=dev)[None]).cpu().numpy()[0]
+                if args.tta_mirror:
+                    xm = torch.as_tensor(mirror_rows(rows, mirror_src), device=dev)[None]
+                    pm = net(xm).cpu().numpy()[0]
+                    pm[:, 0::2] *= -1
+                    # Recovering the un-mirrored horizontal prediction exactly would also
+                    # subtract 2*mean/sd, which is unknown for a held-out dataset -- but it
+                    # is CONSTANT across a participant's rows and Pearson r is translation
+                    # invariant, so it cannot move the score.
+                    pred_i = 0.5 * (pred_i + pm)
+                outs.append(pred_i)
+            return np.concatenate(outs)
 
         def score_parts(part_list, cap=4000):
             out = []
@@ -295,12 +425,7 @@ def main():
                 for m in part_list:
                     n_ = min(m["n"], cap)
                     sl = slice(m["start"], m["start"] + n_)
-                    outs = []
-                    for i in range(0, n_, 512):
-                        xt = torch.as_tensor(vox[sl][i:i + 512].astype(np.float32),
-                                             device=dev)[None]
-                        outs.append(net(xt).cpu().numpy()[0])
-                    a, _ = subject_scores(np.concatenate(outs), np.asarray(lab[sl]))
+                    a, _ = subject_scores(predict_slice(sl, n_), np.asarray(lab[sl]))
                     if np.isfinite(a):
                         out.append(a)
             return fold_median(out)
@@ -319,17 +444,25 @@ def main():
             losses = [q for q in losses if q is not None]
             tr_loss = float(np.mean(losses)) if losses else float("nan")
             net.eval()
-            v = score_parts(val_parts)
-            f = score_parts(probe_fit, cap=2000)
+            with eval_weights():
+                v = score_parts(val_parts)
+                f = score_parts(probe_fit, cap=2000)
             if sched:
                 sched.step()
             history.append({"epoch": ep, "train": tr_loss, "val_r": float(v),
                             "fit_r": float(f), "lr": opt.param_groups[0]["lr"]})
             print(f"    ep{ep:>3} loss {tr_loss:.4f}  fit r {f:.4f}  val r {v:.4f}"
                   f"  (best {max(best_val, -1):.4f})", flush=True)
-            if v > best_val + 1e-4:
-                best_val, bad = v, 0
-                best_state = {k: t.detach().clone() for k, t in net.state_dict().items()}
+            # `val r` swings +-0.05 epoch to epoch, so selecting on its raw argmax
+            # cherry-picks a noisy peak and patience fires on noise. A trailing mean is the
+            # fix the handoff proposes; --val-smooth 1 is the old behaviour exactly.
+            sel = float(np.mean([h["val_r"] for h in history[-args.val_smooth:]]))
+            history[-1]["val_sel"] = sel
+            if sel > best_val + 1e-4:
+                best_val, bad = sel, 0
+                # Snapshot what was actually SCORED -- the EMA weights when --ema is on.
+                with eval_weights():
+                    best_state = {k: t.detach().clone() for k, t in net.state_dict().items()}
             else:
                 bad += 1
                 if bad >= args.patience:
@@ -343,11 +476,12 @@ def main():
         with torch.no_grad():
             for m in test_parts:
                 sl = slice(m["start"], m["start"] + m["n"])
-                outs = []
-                for i in range(0, m["n"], 512):
-                    xt = torch.as_tensor(vox[sl][i:i + 512].astype(np.float32), device=dev)[None]
-                    outs.append(net(xt).cpu().numpy()[0])
-                a, b = subject_scores(np.concatenate(outs), np.asarray(lab[sl]))
+                p_net = predict_slice(sl, m["n"])
+                if args.save_preds:
+                    saved[f"{m['subject']}|net"] = p_net.astype(np.float32)
+                    saved[f"{m['subject']}|inc"] = inc_pred[m["subject"]].astype(np.float32)
+                    saved[f"{m['subject']}|lab"] = np.asarray(lab[sl], dtype=np.float32)
+                a, b = subject_scores(p_net, np.asarray(lab[sl]))
                 if np.isfinite(a):
                     r_sub.append(a)
                 if np.isfinite(b):
@@ -358,6 +492,11 @@ def main():
                          "n_test": len(test_parts)}
         print(f"[{held}] incumbent {base_r:.4f} -> scratch net {got:.4f} "
               f"({got - base_r:+.4f})  ({time.time() - t_fold:.0f}s)", flush=True)
+        if args.save_preds:
+            Path(args.save_preds).parent.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(args.save_preds, **saved)
+            print(f'[+] predictions -> {args.save_preds}', flush=True)
+
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps({"args": vars(args), "results": results}, indent=1))
 

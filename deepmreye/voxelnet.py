@@ -369,6 +369,43 @@ def shift_augment(x, mask_idx, grid_shape, max_shift, gen, per_sample=False):
     return grid.reshape(b * t_n, n_grid)[:, mask_idx].view(b, t_n, -1)
 
 
+def mirror_index(mask, roll=1):
+    """Gather index mapping each masked voxel to its left-right mirror partner.
+
+    The eye crop holds both orbits, which are approximate mirror images about the midline
+    (voxel counts peak at x~9 and x~38 with the trough at x=24). Reflecting the crop in x
+    therefore maps the left orbit onto the right and vice versa, and because both eyes rotate
+    conjugately, horizontal gaze simply changes sign while vertical gaze is untouched -- an
+    x-reflection leaves the superior-inferior axis alone. That makes (mirrored voxels,
+    negated horizontal gaze) another *physically valid* sample rather than a distortion, so
+    unlike noise or mixup it adds data without trading away label fidelity.
+
+    The crop is not centred on the midline, so a bare `flip` misaligns the two lobes. `roll`
+    corrects that: measured on the corpus mask, `flip + roll +1` maximises self-overlap at
+    IoU 0.910 and keeps 95.3% of masked voxels, against 0.855 / 92.2% for the bare flip.
+
+    Returns an int array `src` of length `n_voxels`: masked voxel `j` takes its mirrored value
+    from masked voxel `src[j]`, or is zeroed where `src[j] < 0` (the 4.7% whose mirror image
+    falls outside the mask).
+    """
+    mask = np.asarray(mask)
+    flat = mask.reshape(-1)
+    mask_idx = np.flatnonzero(flat)
+    ids = np.full(flat.size, -1, dtype=np.int64)
+    ids[mask_idx] = np.arange(mask_idx.size)
+    grid = ids.reshape(mask.shape)
+    mirrored = np.roll(np.flip(grid, axis=0), roll, axis=0)
+    return mirrored.reshape(-1)[mask_idx].copy()
+
+
+def mirror_rows(x, src):
+    """Apply `mirror_index` to masked voxel rows `[T, V]`; unmatched voxels become 0."""
+    out = np.zeros_like(x)
+    ok = src >= 0
+    out[:, ok] = x[:, src[ok]]
+    return out
+
+
 def mixup(x, y, gen, alpha=0.2):
     """Convex combination of two samples, applied to voxels and targets alike.
 

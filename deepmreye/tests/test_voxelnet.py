@@ -182,3 +182,144 @@ def test_shift_augment_per_sample_gives_each_chunk_its_own_shift():
     # Still a permutation of the same voxels, per chunk.
     for i in range(2):
         assert torch.allclose(apart[i].sort(dim=-1).values, x[i].sort(dim=-1).values)
+
+
+# --------------------------------------------------------------------------
+# Mirror augmentation
+# --------------------------------------------------------------------------
+def test_mirror_index_is_an_involution_and_reflects_in_x():
+    """Mirroring twice returns the original, and a left-lobe voxel lands in the right lobe.
+
+    The augmentation's whole claim is that it maps a real sample to another *physically
+    valid* one. If the index were an arbitrary permutation rather than a reflection it would
+    still round-trip, so the reflection itself is asserted separately.
+    """
+    from deepmreye.voxelnet import mirror_index, mirror_rows
+
+    shape = (47, 29, 18)
+    mask = np.zeros(shape, dtype=bool)
+    mask[3:22, 5:24, 2:16] = True        # left lobe
+    mask[26:45, 5:24, 2:16] = True       # right lobe
+    src = mirror_index(mask, roll=1)
+    n_vox = int(mask.sum())
+    assert src.shape == (n_vox,)
+
+    rng = np.random.default_rng(0)
+    x = rng.standard_normal((4, n_vox)).astype(np.float32)
+    twice = mirror_rows(mirror_rows(x, src), src)
+    ok = src >= 0
+    doubly = np.flatnonzero(ok)[src[src[ok]] >= 0]
+    assert np.allclose(twice[:, doubly], x[:, doubly])
+
+    # a single voxel in the left lobe must reappear in the right lobe, same y and z
+    flat_idx = np.flatnonzero(mask.reshape(-1))
+    grid = np.zeros(shape, dtype=np.float32)
+    grid[10, 12, 8] = 1.0
+    row = grid.reshape(-1)[flat_idx][None, :]
+    out = np.zeros(int(np.prod(shape)), dtype=np.float32)
+    out[flat_idx] = mirror_rows(row, src)[0]
+    i, j, k = np.unravel_index(int(np.argmax(out)), shape)
+    assert i > shape[0] // 2, "left-lobe voxel did not reflect into the right lobe"
+    assert (j, k) == (12, 8), "reflection must leave the y and z axes alone"
+
+
+def test_mirror_negates_horizontal_gaze_only():
+    """Even columns of the flattened `[T, 10, 2]` label are horizontal, odd are vertical."""
+    labels = np.arange(2 * 10 * 2, dtype=np.float64).reshape(2, 10, 2)
+    flat = labels.reshape(2, 20).copy()
+    flat[:, 0::2] *= -1
+    back = flat.reshape(2, 10, 2)
+    assert np.allclose(back[..., 0], -labels[..., 0]), "horizontal gaze must flip sign"
+    assert np.allclose(back[..., 1], labels[..., 1]), "vertical gaze must be untouched"
+
+
+def test_warmup_cosine_matches_cosineannealinglr_when_there_is_no_warmup():
+    """`--warmup 0 --cosine` must be the OLD schedule to the last decimal.
+
+    The scheduler was replaced by a hand-written LambdaLR so warmup could be prefixed to it.
+    Every trial already on record ran under `CosineAnnealingLR`, so if the replacement is off
+    by even a fraction those runs stop being comparable to the new ones -- and the difference
+    would show up as a hyperparameter effect rather than as a bug.
+    """
+    import math
+
+    import torch
+
+    epochs, warmup = 40, 0
+
+    def lr_factor(e):
+        if warmup > 0 and e < warmup:
+            return (e + 1) / warmup
+        span = max(1, epochs - warmup)
+        return 0.5 * (1 + math.cos(math.pi * min(1.0, (e - warmup) / span)))
+
+    par = [torch.nn.Parameter(torch.zeros(1))]
+    ref = torch.optim.lr_scheduler.CosineAnnealingLR(
+        torch.optim.SGD(par, lr=1e-3), T_max=epochs)
+    got = torch.optim.lr_scheduler.LambdaLR(torch.optim.SGD(par, lr=1e-3), lr_factor)
+    for _ in range(epochs):
+        assert abs(ref.get_last_lr()[0] - got.get_last_lr()[0]) < 1e-12
+        ref.step()
+        got.step()
+
+
+def test_warmup_ramps_linearly_and_then_decays():
+    import math
+
+    epochs, warmup = 40, 5
+
+    def lr_factor(e):
+        if warmup > 0 and e < warmup:
+            return (e + 1) / warmup
+        span = max(1, epochs - warmup)
+        return 0.5 * (1 + math.cos(math.pi * min(1.0, (e - warmup) / span)))
+
+    ramp = [lr_factor(e) for e in range(warmup)]
+    assert ramp == sorted(ramp) and abs(ramp[-1] - 1.0) < 1e-12
+    assert abs(lr_factor(warmup) - 1.0) < 1e-12          # continuous at the handover
+    tail = [lr_factor(e) for e in range(warmup, epochs)]
+    assert tail == sorted(tail, reverse=True)
+    assert lr_factor(epochs - 1) < 0.01
+
+
+def test_ema_swap_restores_the_training_weights_exactly():
+    """The EMA is what gets SCORED and SNAPSHOTTED; the raw weights are what keep training.
+
+    If the swap leaked -- restoring the averaged weights into the optimiser's parameters --
+    training would silently continue from the average and `--ema` would stop being an
+    evaluation-time option. That reads as a hyperparameter effect, not as a bug, which is
+    exactly the failure mode this file exists to catch.
+    """
+    import contextlib
+
+    import torch
+
+    net = torch.nn.Sequential(torch.nn.Linear(4, 3), torch.nn.GELU(), torch.nn.Linear(3, 2))
+    decay = 0.9
+    ema = {k: v.detach().clone().float() for k, v in net.state_dict().items()}
+
+    @contextlib.contextmanager
+    def eval_weights():
+        backup = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        net.load_state_dict({k: v.to(dtype=backup[k].dtype) for k, v in ema.items()})
+        try:
+            yield
+        finally:
+            net.load_state_dict(backup)
+
+    opt = torch.optim.SGD(net.parameters(), lr=0.5)
+    for _ in range(5):
+        opt.zero_grad()
+        net(torch.ones(2, 4)).sum().backward()
+        opt.step()
+        with torch.no_grad():
+            for k, v in net.state_dict().items():
+                ema[k].mul_(decay).add_(v.detach().float(), alpha=1 - decay)
+
+    raw = {k: v.detach().clone() for k, v in net.state_dict().items()}
+    assert not all(torch.allclose(raw[k], ema[k]) for k in raw), "EMA never diverged from raw"
+    with eval_weights():
+        inside = {k: v.detach().clone() for k, v in net.state_dict().items()}
+    for k in raw:
+        assert torch.allclose(inside[k], ema[k]), "scoring did not see the EMA weights"
+        assert torch.allclose(net.state_dict()[k], raw[k]), "swap leaked into training"

@@ -37,7 +37,15 @@ from pathlib import Path
 KNOBS = ("note", "encoder", "rank", "width", "hidden", "dropout", "lags", "chunk",
          "batch_chunks", "epochs", "steps_per_epoch", "lr", "weight_decay", "cosine",
          "patience", "val_datasets", "val_subjects", "noise", "vox_dropout", "shift",
-         "mixup", "init_encoder", "seed")
+         "mixup", "mirror", "mirror_roll", "tta_mirror", "val_smooth", "init_basis",
+         "init_encoder", "warmup", "clip", "loss", "huber_delta", "ema", "seed")
+
+# Knobs added after the first trials were run. A run predating a flag used its default, so
+# the column is filled with that rather than left blank -- an empty cell would read as
+# "unknown" when it is in fact known.
+KNOB_DEFAULTS = {"mirror": 0.0, "mirror_roll": 1, "tta_mirror": False, "val_smooth": 1,
+                 "init_basis": False, "warmup": 0, "clip": 1.0, "loss": "mse",
+                 "huber_delta": 1.0, "ema": 0.0}
 
 
 def rows_for(path):
@@ -84,7 +92,7 @@ def rows_for(path):
             "es_fired": es_fired,
             "hit_cap": hit_cap,
             "n_test": r.get("n_test"),
-            **{k: args.get(k) for k in KNOBS},
+            **{k: args.get(k, KNOB_DEFAULTS.get(k)) for k in KNOBS},
         })
     return flat, curves
 

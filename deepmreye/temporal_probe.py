@@ -207,7 +207,7 @@ def fold_median(scores):
 
 
 def lodo_subtr(recs, feature_fn, seed=0, alphas=ALPHAS, max_train_rows=MAX_TRAIN_ROWS,
-               readout=None):
+               readout=None, balance_rows=None):
     """Leave-one-dataset-out, scored at sub-TR **and** 1-TR resolution.
 
     Reproduces `scripts/benchmark_all_11_datasets.py:115-200` exactly: targets z-scored per
@@ -222,6 +222,12 @@ def lodo_subtr(recs, feature_fn, seed=0, alphas=ALPHAS, max_train_rows=MAX_TRAIN
     `readout` is a zero-argument factory returning a fresh unfitted estimator, so a
     non-linear readout is scored through *this* function rather than a second copy of the
     protocol. Default is the incumbent's `RidgeCV(alphas)`.
+
+    `balance_rows` caps how many rows each *training dataset* may contribute. Left `None` the
+    pooling is unchanged, which is deliberately lopsided: `dsL04` supplies 37% of the valid
+    rows and `dsL06` 0.2%, so one pooled ridge is fitted mostly on a single paradigm. A cap
+    equalises the datasets that have rows to spare while leaving the small ones whole, and is
+    applied BEFORE the global `max_train_rows` subsample so the two compose predictably.
     """
     from sklearn.linear_model import RidgeCV
 
@@ -252,6 +258,13 @@ def lodo_subtr(recs, feature_fn, seed=0, alphas=ALPHAS, max_train_rows=MAX_TRAIN
             ys.append((y - y.mean(axis=0)) / sd)
         if not xs:
             continue
+
+        if balance_rows:
+            rng_b = np.random.default_rng(seed)
+            keep = [rng_b.choice(len(a), balance_rows, replace=False)
+                    if len(a) > balance_rows else np.arange(len(a)) for a in xs]
+            xs = [a[i] for a, i in zip(xs, keep)]
+            ys = [b[i] for b, i in zip(ys, keep)]
 
         x_tr, y_tr = np.concatenate(xs), np.concatenate(ys)
         if len(x_tr) > max_train_rows:

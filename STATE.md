@@ -4,9 +4,300 @@ What exists right now, how it was made, and what is next. For the method see
 `overview.md`; for design decisions and cluster constraints see `CLAUDE.md`;
 for how to run anything see `README.md` and `slurm/README.md`.
 
-Last updated **2026-08-20**.
+Last updated **2026-08-22**.
 
 ## Recent Accomplishments
+
+### PUBLICATION NUMBERS, with no training-row subsampling (2026-08-22)
+
+`scripts/publication_table.py`, `results/scaling/publication_table.json`.
+
+`MAX_TRAIN_ROWS = 20000` is a bare constant in `temporal_probe.py` -- no comment, no
+docstring, no justification in git history -- copied into **eight** scripts (plus a `15000`
+variant in `benchmark_full_corpus_scaling.py`). It discarded ~93% of the 303,733 valid labeled
+rows before every ridge fit on this branch. An unexplained subsample has no place in a
+published number, whatever it measures. This run sets the cap to 1e9 so the branch cannot fire
+on any fold, and is the table to quote.
+
+| fold | sub-TR capped | **sub-TR ALL ROWS** | 1-TR capped | **1-TR ALL ROWS** |
+|---|---|---|---|---|
+| dsL01_guided_fixations | 0.7678 | 0.7703 | 0.7744 | 0.7754 |
+| dsL02_pursuit | 0.9169 | 0.9196 | 0.9119 | 0.9146 |
+| dsL03_pursuit | 0.7751 | 0.7764 | 0.8457 | 0.8457 |
+| dsL04_pursuit | 0.8488 | 0.8509 | 0.8581 | 0.8627 |
+| dsL05_free_viewing | 0.8039 | 0.8029 | 0.8406 | 0.8382 |
+| dsL06_sequences | 0.6760 | 0.6729 | 0.7334 | 0.7192 |
+| dsL07_deepmreye_calib | 0.7471 | 0.7438 | 0.8284 | 0.8251 |
+| dsL08_studyforrest_movie | 0.2859 | 0.2828 | 0.3616 | 0.3549 |
+| dsL11_backtothefuture | 0.6693 | 0.6712 | 0.8540 | 0.8502 |
+| **median** | 0.7678 | **0.7703** | 0.8406 | **0.8382** |
+| **mean** | 0.7212 | **0.7212** | 0.7787 | **0.7762** |
+
+**Quote `lr-cca:32 + lags+-1`, all rows: sub-TR median r = 0.7703, 1-TR median r = 0.8382.**
+Report the mean beside the median -- they differ by 0.05-0.06 because `dsL08` (0.28) and
+`dsL06` (0.67) are genuinely hard folds, and a median alone hides that.
+
+**Removing the cap changes nothing measurable**, which is the reassuring half: sub-TR mean d
+**+0.0000** (5/9 folds, p = 0.820), 1-TR **-0.0024** (4/9, p = 0.359). Every conclusion drawn
+under the cap therefore stands -- `k`, corpus scaling, readout structure, nuisance projection,
+pool composition. The 1-TR figure moves *down* slightly, so the 0.8406 previously quoted was
+marginally flattered by the subsample.
+
+**RETRACTION: the Savitzky-Golay result was measured on the capped pool and does not hold on
+the full data.** It was reported as +0.0014 mean, **9/9 folds, p = 0.004**; uncapped it is
+**+0.0011 mean, 6/9 folds, p = 0.250** at sub-TR and **-0.0006, 4/9, p = 0.820** at 1-TR. That
+is a tie, not a significant win, and the earlier entry in this file should be read with this
+correction. The mechanism is still the one described -- more training rows produce a
+better-fitted ridge, so the residual the smoother was removing is smaller -- and the
+**dose-response** finding survives untouched (per-dataset gain against sub-TR-axis lag-1
+autocorrelation, Pearson +0.885, p = 0.019), because that was measured across datasets rather
+than against the noise floor.
+
+So on the full labeled data there is **no arm that beats `lr-cca:32 + lags+-1` significantly**,
+and the temporal filter joins the list of measured ties.
+
+**Action for the manuscript:** every figure on this branch was produced under the cap. The cap
+is now shown to be worth <= 0.0024 anywhere tested, so the conclusions are safe, but any number
+that goes into text should be regenerated with `max_train_rows` disabled rather than quoted
+from the capped runs.
+
+### The training pool is not a lever either -- and balancing it slightly hurts (2026-08-22)
+
+`scripts/sweep_training_pool.py`, `results/scaling/training_pool.json`,
+`deepmreye/temporal_probe.py` (`lodo_subtr(..., balance_rows=)`).
+
+Two constants behind every LODO number in this project had never been swept:
+**`MAX_TRAIN_ROWS = 20000`** out of **303,733** valid rows -- 93% of the labeled data thrown
+away before the ridge sees it -- and **unbalanced pooling**, in which `dsL04` supplies
+**37.4%** of the rows and `dsL06` **0.2%**. Note `--standardize-targets dataset` equalises
+each dataset's target *scale* and does nothing about its *count*, so this is a separate axis.
+Crossed rather than swept separately, because a per-dataset cap lowers the total and can put
+it under the global cap.
+
+| max rows | per-dataset cap | sub-TR | d |
+|---|---|---|---|
+| 20000 (incumbent) | none | 0.7678 | - |
+| 300000 | none | 0.7703 | +0.0025 |
+| 20000 | 20000 | 0.7702 | +0.0023 |
+| 100000 | 10000 | 0.7699 | +0.0020 |
+| any | 2000 | 0.7656 | **-0.0023** |
+
+**All 20 cells sit within +-0.005, and the paired tests say nothing is happening**: using all
+300k rows scores mean d **-0.0001**, 5/9 folds, p = 0.820. Ridge on 96 features converges long
+before 20,000 rows, so the discarded 93% carries no information the fit was missing.
+
+**The balancing prediction was wrong, and worth recording as wrong.** The expectation was that
+a ridge fitted 37% on one paradigm would transfer badly and that equalising the datasets would
+help. The tightest cap is the *worst* arm in the table (-0.0023), and no cap beats leaving the
+pool alone. Dataset dominance in the row count is simply not what limits cross-dataset
+transfer here -- the target z-scoring already removes the part of it that mattered.
+
+**Composing the bigger pool with the temporal filter makes it worse, not better.** Filter
+alone on the incumbent pool is mean +0.0014, **9/9 folds, p = 0.004**; on the 300k pool it is
+mean +0.0010, 6/9, p = 0.301. A higher median (0.7723) and weaker evidence -- the same median
+trap documented in the temporal-prior entry, one level up.
+
+**So the best arm on this corpus is `lr-cca:32 + lags+-1 -> RidgeCV`, default pool, with a
+Savitzky-Golay w=9 filter on the unfolded sub-TR trajectory**: +0.0014 mean, +0.0027 median,
+9/9 folds, p = 0.004.
+
+### A temporal prior on the sub-TR trajectory (2026-08-22) -- SUPERSEDED
+
+> **The headline of this entry does not survive the removal of the training-row
+> subsample.** Everything below was measured with `MAX_TRAIN_ROWS = 20000`. On the full
+> 303,733 rows the filter is +0.0011, 6/9 folds, p = 0.250 -- a tie. See the
+> publication-numbers entry at the top of this file. The dose-response result
+> (Pearson +0.885, p = 0.019) is unaffected and still stands.
+
+`scripts/sweep_temporal_prior.py`, `scripts/sweep_temporal_prior_refine.py`,
+`results/scaling/temporal_prior.json`, `results/scaling/temporal_prior_refine.json`.
+
+**The spatial half of a "viewing prior" cannot help and that is a theorem.** Pearson r is
+invariant to any affine map of the prediction, and a per-dataset gaze mean and scale IS an
+affine map -- the same fact that makes mis-calibration destroy R^2 while leaving r intact.
+Only a *non-affine* spatial prior could help (dsL01's labels are a 9-point fixation grid) and
+that needs the held-out dataset's paradigm, which LODO forbids.
+
+**The temporal half is exploitable with no labels.** Gaze is autocorrelated and the readout's
+error is far whiter, because each TR is predicted from its own voxels. Filtering the predicted
+trajectory keeps the correlated part and suppresses the white part. Crucially it runs on the
+**unfolded sub-TR axis** -- predictions are `[T, 10, 2]`, which is a `[T*10, 2]` trajectory at
+10x the resolution the lag stack sees, and nothing in this project had operated on it. On that
+axis gaze lag-1 autocorrelation is **0.84-0.99 in every dataset**, including `dsL03` at 0.924
+where the per-TR value is 0.145.
+
+**The mechanism is confirmed by dose-response, which is the evidence that matters here.**
+Per-dataset gain against lag-1 on the sub-TR axis: Pearson **+0.885**, Spearman +0.753,
+**p = 0.019**. Against lag-1 *per TR*: +0.491, p = 0.170, not significant. The filter acts on
+the fine axis, so fine-axis smoothness is what should predict who benefits -- and it is. The
+two datasets that lose (`dsL08` -0.0025, `dsL11` -0.0047) are the two least smooth on that
+axis (0.837, 0.849).
+
+**The filter REPLACES the lag stack rather than complementing it.** Both are temporal mixing:
+
+| | unfiltered | + best filter |
+|---|---|---|
+| lags 0 | 0.7421 | **0.7856** |
+| lags +-1 | 0.7678 | 0.7759 |
+| lags +-2 | 0.7585 | 0.7699 |
+
+The lag stack buys +0.0257 with `k x 2L` fitted coefficients; the filter buys **+0.0435** with
+one parameter over a 13-sample support, and stacking them is monotonically worse. Savitzky-
+Golay beats a Gaussian of matched support, which the DCT result predicts: the model's
+within-TR prediction is a mean plus a slope, and a polynomial filter preserves a slope where a
+Gaussian attenuates it. (`poly` 2 and 3 give identical output, as they must for a symmetric
+window -- a free implementation check.)
+
+**But 0.7856 is a MEDIAN ARTIFACT, and this is the part to carry forward.** Ranking the 63
+configurations two ways disagrees completely:
+
+| ranking | config | median | folds won | mean d | Wilcoxon |
+|---|---|---|---|---|---|
+| highest median | lags0 poly1 w13 | **0.7856** | **4/9** | +0.0001 | **1.000** |
+| most robust | lags1 poly2 **w9** | 0.7705 | **9/9** | +0.0014 | **0.004** |
+
+The wide filter wins big on whichever fold sits at the median while losing five of nine. A
+**narrow** filter improves every fold at p = 0.004 and is worth +0.0014 mean / +0.0027 median.
+And nested selection settles it: choosing width, order and lags on the eight *other* folds and
+reading the ninth gives median +0.0070 but **4/9 folds and mean -0.0006** (p = 1.000), with
+four different configurations chosen across the nine fits -- inner selection chasing noise.
+
+So the honest statement is **a real, significant, small effect: +0.0014 to +0.0027, 9/9
+folds, p = 0.004**, free to apply. Not the +0.018 the median suggested.
+
+The methodological lesson generalises past this arm: **a 9-fold median is a poor instrument
+for an effect under 0.01, and the paired fold-level test is far more sensitive.** Every arm in
+this file ranked by median alone should be re-read with that in mind -- a median can move 0.018
+while the mean moves 0.0001.
+
+### The `lr-cca` readout is already optimal, and the nuisance cannot be removed (2026-08-22)
+
+`scripts/sweep_cca_readout.py`, `scripts/sweep_nuisance_projection.py`,
+`results/scaling/cca_readout_sweep.json`, `results/scaling/nuisance_projection.json`.
+
+With `k` and corpus size both closed the same day, the remaining question was the *structure*
+of the linear readout, which had always been a plain `RidgeCV` on `0.5 * (z_L + z_R)`. Four
+structured alternatives, all linear, all leaving the frozen basis untouched. Sub-TR and 1-TR
+only, each at its own optimal lag; calibration gated every run.
+
+| arm | sub-TR | d | 1-TR | d |
+|---|---|---|---|---|
+| baseline `lr-cca:32` | **0.7678** | - | **0.8406** | - |
+| avg+diff (2x32) | 0.7573 | **-0.0105** | 0.8182 | **-0.0224** |
+| rho-weighted p=1 / p=2 / p=-1 | 0.7677 / 0.7678 / 0.7674 | -0.000 | 0.8406 / 0.8405 / 0.8409 | +-0.000 |
+| reduced-rank r=2 / r=4 / r=8 | 0.7161 / 0.7676 / 0.7679 | -0.052 / -0.000 / +0.000 | 0.8407 | +0.000 |
+| dct-smooth c=2 / c=4 | 0.7690 / 0.7680 | +0.0012 | 0.8406 | +0.000 |
+
+**Nothing beats the baseline**; the best arm is +0.0012, which is noise. Two of the negatives
+are informative rather than flat:
+
+- **The orbit difference is nuisance, measured.** `avg+diff` is *worse*, not neutral, on both
+  resolutions. CCA's averaging is not discarding usable signal -- the antisymmetric mode is
+  noise and feeding it to the readout costs real accuracy.
+- **The readout has ~4 effective output dimensions, not 20.** Reduced-rank r=4 reproduces the
+  baseline exactly and r=6/8 are identical to it, so the coefficient matrix is *already* rank
+  ~4 and the constraint has nothing to bite on. The DCT arm agrees from the other side: c=2
+  matches the full 10 coefficients, and two DCT coefficients per axis is **DC plus one
+  cosine**. What the model predicts inside a TR is a mean and a slope; everything finer is
+  unrecoverable. Two independent structured regularisers converging on the same number is a
+  real characterisation of the ceiling.
+- The rho-weighting *control* behaves as a null must: p=-1 (down-weighting the reliable
+  directions) is as harmless as p=+1, so ridge's own alpha-CV already absorbs that structure.
+
+**And the nuisance projection -- the escape `CLAUDE.md` names twice -- is closed.** `ocon`
+showed what the two orbits share is dominated by within-run global signal, motion and drift,
+and `lr-cca` is the linear form of that constraint, so it inherits the contamination by
+construction. Removing it first, at two strengths:
+
+| arm | sub-TR | d | 1-TR | d |
+|---|---|---|---|---|
+| baseline | 0.7678 | - | 0.8406 | - |
+| motion-regressed | 0.7670 | -0.0008 | 0.8403 | -0.0003 |
+| drop corpus-pca 1 | 0.7662 | -0.0017 | 0.8444 | +0.0038 |
+| drop corpus-pca 4 | 0.7545 | -0.0134 | 0.8160 | -0.0246 |
+| drop corpus-pca 16 | 0.7028 | **-0.0650** | 0.7558 | **-0.0848** |
+
+**Monotonically harmful.** The motion proxy does nothing at all (-0.0008) and dropping
+variance directions degrades smoothly to -0.065/-0.085. The leading directions do not merely
+*contain* the nuisance, they carry the gaze -- there is no separation to exploit. This is the
+same verdict `nuis-pca8`/`nuis-pca32` returned for the *variance* basis, now established for
+the *cross-orbit* one, which is where `ocon` predicted the damage was being done. Note this
+was tested at the feature stage, ahead of the CCA projection, which is the version that had
+never been run.
+
+So `lr-cca:32 + lags+-1` is optimal in `k`, in corpus size, in readout structure and against
+nuisance removal. The remaining headroom on this corpus is the temporal-envelope budget
+(~0.06-0.10 r on a couple of cells), not the representation.
+
+### The unlabeled corpus saturates at N~800; 1005 -> 2000 buys 0.0000 (2026-08-22)
+
+`scripts/sweep_probe_scaling_subtr.py`, `slurm/corpus_scaling_ext.sbatch`,
+`results/scaling_curve/probe_curve_subtr.json`.
+
+The corpus-scaling law had only ever been measured **at 1-TR resolution through `eval_probe`**,
+which `temporal_probe`'s docstring establishes cannot score sub-TR gaze at all -- so every
+scaling number on record answered the non-headline question. `CLAUDE.md` also warned that
+`lr-cca` looked saturated between N=800 and N=1039 but that an earlier extrapolation past it
+had been wrong. Measured at both resolutions, 9-fold LODO, `k=32`, one basis per checkpoint
+with the labeled cache rebuilt per basis:
+
+| N | 100 | 200 | 400 | 800 | 1005 | 2000 |
+|---|---|---|---|---|---|---|
+| sub-TR | 0.5904 | 0.6657 | 0.7364 | 0.7657 | 0.7678 | **0.7678** |
+| delta | - | +0.0752 | +0.0707 | +0.0293 | +0.0022 | **-0.0000** |
+| 1-TR | 0.6074 | 0.7005 | 0.7933 | 0.8386 | 0.8392 | 0.8406 |
+
+**Going from 1005 to 2000 participants is worth 0.0000 at sub-TR and +0.0014 at 1-TR.** The
+saturation `CLAUDE.md` suspected is real and it holds all the way to the full corpus: 90% of
+the total +0.177 gain is delivered by the first 800 participants, and the last 1200 deliver
+0.002. The scaling story is "a few hundred unlabeled participants are enough", not "more data
+keeps helping" -- and the two are opposite papers.
+
+**Do not read the 1005 and 2000 points as a nested increment.** The Hub mirror holds 2214
+participant files against the 3578 the corpus is documented to have, so this machine tops out
+at **1104 eligible** participants (613 datasets) after fetching everything available, against
+the 2000 (655 datasets) behind `basis_n2000`. The two bases are therefore fitted on
+*different pools* at the same shuffle seed, not on a prefix relation. That they agree **to
+four decimals** across a 2x size difference and a different sample is stronger evidence for
+saturation than a nested step would have been, but the comparison should be stated as what it
+is.
+
+Two practical consequences. Uploading the ~1360 missing participant files is **not** worth
+doing for basis quality -- it would not move this curve. And Leonardo is now self-sufficient:
+a locally fitted `basis_n1005` reproduces the hand-carried `basis_n2000` on the headline
+metric, so the analysis no longer depends on an artifact that exists on one laptop.
+
+### `lr-cca:32` is confirmed optimal at N=2000 -- the falling-k law stops (2026-08-22)
+
+`scripts/sweep_k_at_n2000.py`, `results/scaling/k_sweep_n2000.json`.
+
+`CLAUDE.md` records that the optimal component count **falls** as the unlabeled corpus grows
+(`corpus-pca` 256 at N=25 -> 64 at N=800; `lr-cca` 64 at N=800 -> 32 at N=1039) and instructs
+that `k` be retuned whenever the corpus size changes. `lr-cca:32` was tuned at N=1039 and is
+in use at N=2000, so the law predicted it was now too wide. **It is not.** Nine-fold LODO,
+337 participants, 12 values of `k` x 3 lag settings, calibration passed first (0.7421 against
+0.7420; 0.7585 against 0.7590):
+
+| k | 8 | 12 | 16 | 20 | 24 | 28 | **32** | 40 | 64 | 96 | 128 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| sub-TR, lags1 | 0.467 | 0.497 | 0.499 | 0.709 | 0.764 | 0.767 | **0.768** | 0.763 | 0.761 | 0.758 | 0.757 |
+| 1-TR, lags0 | 0.421 | 0.483 | 0.479 | 0.735 | **0.843** | 0.838 | 0.841 | 0.825 | 0.820 | 0.825 | 0.828 |
+
+**k = 32 is exactly optimal at sub-TR (0.7678, the incumbent value to four decimals) and there
+is no gain anywhere.** The 1-TR optimum moves to k=24 for +0.0028, which is inside the ~0.02
+noise floor and is a tie. The cheap-and-obvious win is therefore not available, and the
+current setting is confirmed rather than improved -- which is worth having, since it was
+being used at a corpus size it had never been checked at.
+
+**What the sweep does establish is that `k` is not a lever in either direction.** `lr-cca`'s
+behaviour in `k` is a *threshold*, not an optimum, and the cliff is enormous: **+0.21 between
+k=16 and k=20** at sub-TR, another +0.055 to k=24, then flat to k=128 (0.757). Below ~20
+canonical variates the projection cannot span gaze at all; above ~24 nothing further is
+available. A corollary worth noting is that the 256 directions stored in every basis file are
+mostly dead weight for this task.
+
+This closes "retune k" as a source of gain. It does not speak to whether more unlabeled
+participants help, which is the separate scaling measurement running alongside it.
 
 ### A voxel network that provably matches the linear incumbent — and two bugs that faked it (2026-08-20)
 
