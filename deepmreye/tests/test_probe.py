@@ -166,3 +166,36 @@ def test_calibration_targets_are_recorded():
     """The numbers are pinned in code so a drifting harness is caught, not rationalised."""
     assert tp.CALIBRATION["lr-cca:32"] == pytest.approx(0.7408)
     assert tp.CALIBRATION["lr-cca:32+lags1"] == pytest.approx(0.7703)
+
+
+def test_train_filter_is_a_no_op_when_it_accepts_everything():
+    """The default path must not move: every existing number is `train_filter=None`."""
+    recs = [_rec(ds, f"sub-{i}", seed=10 * j + i)
+            for j, ds in enumerate(("dsA", "dsB", "dsC")) for i in range(3)]
+    base = tp.lodo(recs, lambda r: tp.cca_avg(r, 4))
+    same = tp.lodo(recs, lambda r: tp.cca_avg(r, 4), train_filter=lambda r, held: True)
+    assert same["median_subtr"] == pytest.approx(base["median_subtr"])
+    assert same["median_1tr"] == pytest.approx(base["median_1tr"])
+
+
+def test_train_filter_restricts_only_the_training_side():
+    """A budget must not shrink the test set, or the metric's denominator moves with it.
+
+    Half the participants are dropped from training; every fold must still report
+    the same participant count, because each is scored on its whole dataset.
+    """
+    recs = [_rec(ds, f"sub-{i}", seed=10 * j + i)
+            for j, ds in enumerate(("dsA", "dsB", "dsC")) for i in range(4)]
+    keep = {"sub-0", "sub-1"}
+    out = tp.lodo(recs, lambda r: tp.cca_avg(r, 4),
+                  train_filter=lambda r, held: r["subject"] in keep)
+    assert {d: f["n"] for d, f in out["folds"].items()} == {"dsA": 4, "dsB": 4, "dsC": 4}
+    assert len(out["participants"]) == 12
+
+
+def test_train_filter_that_empties_a_fold_drops_it_rather_than_raising():
+    """`lodo` already skips a fold with no usable training rows; a filter must not change that."""
+    recs = [_rec(ds, f"sub-{i}", seed=10 * j + i)
+            for j, ds in enumerate(("dsA", "dsB")) for i in range(3)]
+    out = tp.lodo(recs, lambda r: tp.cca_avg(r, 4), train_filter=lambda r, held: False)
+    assert out["folds"] == {}

@@ -10,7 +10,7 @@ while needing **no data from the target study**.
 
 The method, in full:
 
-1. Fit a linear basis on ~1900 unlabeled OpenNeuro participants by canonical
+1. Fit a linear basis on 2,000 unlabeled OpenNeuro participants by canonical
    correlation between the **left and right orbit** (`lr-cca`). Both eyes rotate
    together, so a direction in left-orbit voxel space that predicts the right
    orbit is a direction driven by conjugate gaze; anything local to one eye is
@@ -145,6 +145,41 @@ scripts/            Portable stages: basis fitting, the QA UI, gaze ingest and
 slurm/              Cluster-specific staging and extraction, plus run.sbatch.
 ```
 
+`paper/` and `docs/`, if you have them, are gitignored: the COSYNE abstract, the
+figure and its input snapshot, and a note on the claims it makes. Nothing in the
+method depends on them.
+
+### The analysis scripts, and what each one answers
+
+These produce the tables in `FINDINGS.md`. Their outputs land in `results/`,
+which is gitignored -- **`FINDINGS.md` is the record, not the JSON** -- and the
+first four are caches that make the rest cheap.
+
+```
+fit_lrcca_variants.py      One corpus pass -> second moment, per-participant and
+                           per-slab means, and (--lag1) the lag-1 cross moment.
+                           Every covariance in the family is then a subtraction.
+build_labeled_voxels.py    All 337 labelled participants' masked voxels as one
+                           22 GB memmap, so applying a new basis is a matmul.
+corpus_pc_timeseries.py    The corpus as 96,000 x 512 orbital PCs (212 MB), for
+                           criteria that need more than a covariance (ICA).
+analysis_unlabeled.py      The corpus-scaling, labelled-budget and fold-local
+                           references behind the figure.
+
+improve_lrcca.py           Estimator, covariance, symmetry and criterion sweeps.
+beyond_cca.py              ICA / dictionary learning as subspace selection.
+hybrid_lrcca.py            Corpus vs labelled voxels vs both, one basis per fold.
+tradeoff_participants_trs.py  Participants against TRs at a fixed row count.
+shift_lrcca.py             Per-participant registration shift, plus its oracle.
+anatomical_basis.py        The analytic eyeball-rotation basis (no fitting).
+temporal_contrast.py       Lag-1 hard negatives; cross-orbit CCA over a window.
+slice_time.py              z-band features and the within-TR sample profile.
+subtr_align.py             Is the corpus aligned at sub-TR, not just at TR?
+report_lrcca.py            Ranks any of those JSONs by fold, not by median.
+eval_dme1.py               The published DeepMReye 1.0 CNN, from OSF weights.
+figure_unlabeled.py        The figure; panels selected by letter.
+```
+
 ## Data
 
 `data/<dataset>/<subject>.h5`, one file per participant: `eye_block [47, 29, 18, T]`
@@ -161,8 +196,13 @@ Current corpus:
 - **337 gaze-labeled participants across 9 datasets** -- `dsL01` 170, `dsL11` 37,
   `dsL04` 34, `dsL05` 27, `dsL03` 24, `dsL07` 15, `dsL08` 15, `dsL02` 9,
   `dsL06` 6. All in degrees of visual angle.
-- **~1,880 unlabeled participants across 915 OpenNeuro accessions**, almost all
-  contributing exactly 2 participants each.
+- **2,064 unlabeled participants eligible across 654 OpenNeuro accessions**,
+  almost all contributing exactly 2 participants each. The shipped basis is fit
+  on the first **2,000** of a seed-0 shuffle of those, spanning 649 accessions
+  and 96,000 TRs (48 per participant). Count them with
+  `unsupervised.unlabeled_subjects`; a participant is eligible only if its eye
+  mask is fully covered (14,236 voxels) and its run is at least 32 TRs, which is
+  why this is smaller than the raw download.
 
 ### Extending the data
 
@@ -170,13 +210,25 @@ Two directions, and they are worth very different amounts.
 
 **More unlabeled participants: probably not worth it.** The corpus-size curve
 saturates. `lr-cca` gains +0.15 going from 25 to 800 participants and then
-flattens; going from 1039 to 2000 buys nothing measurable. The mechanism is that
-a 64-dimensional linear subspace of a 14236-voxel eye mask is simply easy to
-estimate, so more data approaches a ceiling that is set by the target being easy.
+flattens; going from 1039 to 2000 buys nothing measurable. **More TRs per
+participant is saturated too** -- eight times the TR budget at N=2000 is worth
++0.004 -- and at a fixed total row count, trading participants for TRs is a tie
+from 2000 down to 250 (see *Participants or TRs?* in `FINDINGS.md`). The
+mechanism is that a 64-dimensional linear subspace of a 14236-voxel eye mask is
+simply easy to estimate, so more data approaches a ceiling that is set by the
+target being easy.
 If you want to try anyway, `slurm/stage_downloads.py --sample 5` stages five
 subjects per dataset instead of two, and `slurm/submit_extraction.sh` extracts
 them; the split exists because Leonardo's compute nodes have no network and its
 login nodes have a 32 GB cap. See `slurm/README.md`.
+
+**Two fields to add at ingest, next time anything is re-extracted.** Both cost
+one line in `pipeline.py` and both unlock an experiment that is otherwise a
+460 GB re-download: the per-participant `masked_eye.mean(-1)` and `.std(-1)`
+*before* `normalize_img` (the stored block is z-scored per voxel, so the
+anatomy is gone), and the `SliceTiming` vector (a volume is a sweep, not an
+instant, and under multiband the map from z to acquisition time is periodic).
+See the analytic-basis and slice-timing entries in `FINDINGS.md`.
 
 **More labeled datasets: this is the scarce resource.** Every claim here rests
 on nine leave-one-dataset-out folds, and independent *acquisitions* -- not

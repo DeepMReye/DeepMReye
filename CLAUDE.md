@@ -7,15 +7,45 @@ stage. Then **`FINDINGS.md`**, which is the record of what was tried, what the
 controls said, and which directions are closed. Those two files are the whole
 documentation set, deliberately: an earlier version of this repo carried six
 markdown files totalling 6700 lines, most of it about code that no longer
-exists.
+exists. (`slurm/README.md` covers the cluster split; it is not about the
+method. `paper/` and `docs/` are **gitignored and local to the author's
+checkout** -- the COSYNE abstract, its figure, the snapshot of the figure's
+input JSON, and a provenance note on which claims it makes. If they are present
+in your working tree, `paper/README.md` and `docs/COSYNE_FRAMING.md` are worth
+reading before touching a headline number; if they are absent, nothing in the
+method depends on them.)
+
+**`results/` is gitignored.** Every number quoted anywhere is in `FINDINGS.md`,
+and `README.md` lists which script regenerates which JSON. Do not go looking for
+a results file to confirm a claim -- regenerate it, or trust the record.
 
 ## Before you propose an improvement
 
-Check `FINDINGS.md` first. Eight representation-learning arms were built and
-measured here and all of them lost to a linear basis, for a reason that is
-itself measured: **gaze is linearly accessible from these features**, so a
-non-linear encoder in front of a linear readout has nothing to add. The
-supervised non-linear ceiling is one command and it is *below* ridge.
+Check `FINDINGS.md` first, and specifically the **table at the head of
+"Trying to beat `lr-cca`"** -- seventeen arms, one row each, scannable in a
+minute. If your idea is one of those rows it has already been measured; say
+which row it is *not*.
+
+What is closed, in one breath: eight representation-learning arms (all lost to a
+linear basis, because **gaze is linearly accessible from these features**, so a
+non-linear encoder in front of a linear readout has nothing to add -- the
+supervised non-linear ceiling is one command and it is *below* ridge); the
+estimator's own hyperparameters; every covariance the accumulator can form,
+including the temporal ones; the mirror-symmetry prior; selection criteria past
+second order (ICA, dictionary learning); per-participant registration; both
+corpus budget axes; and putting the temporal contrast into the bilateral
+criterion.
+
+Three things in that section are *positive* and worth reusing rather than
+re-deriving: the whitening dose-response (PLS -> CCA is monotone, which is the
+first real evidence that correlation is the right criterion), the random-subspace
+floor at matched rank (0.394 against 0.769), and the fact that the cross-orbit
+criterion **fitted on the labelled scans alone loses to the corpus fit** -- which
+is the cleanest statement of what the unlabelled half is for.
+
+Two experiments are blocked on one line of ingest code each, not on ideas:
+the per-participant anatomical mean (the stored block is z-scored per voxel) and
+the `SliceTiming` vector. Add both the next time anything is re-extracted.
 
 Two more constraints that bound almost any proposal:
 

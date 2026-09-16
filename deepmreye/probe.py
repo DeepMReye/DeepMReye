@@ -200,7 +200,7 @@ def _resolutions(pred_20, labels):
     }
 
 
-def lodo(recs, feature_fn, seed=0, alphas=ALPHAS):
+def lodo(recs, feature_fn, seed=0, alphas=ALPHAS, train_filter=None):
     """Leave-one-dataset-out, every metric, at sub-TR and 1-TR resolution.
 
     Returns ``{"participants": [...], "folds": {...}, "summary": {...}}``.
@@ -210,6 +210,13 @@ def lodo(recs, feature_fn, seed=0, alphas=ALPHAS):
     :mod:`deepmreye.metrics`); Pearson r is not calibrated and needs no
     calibration. A fold with fewer than two participants therefore reports r
     only.
+
+    ``train_filter(rec, held) -> bool`` restricts the **training** side only,
+    which is how a labeled-budget curve is measured: the readout sees fewer
+    labeled participants while every fold is still scored on its whole held-out
+    dataset. Subsetting the test side instead would move the denominator of the
+    metric along with the budget and make the curve unreadable. ``None`` is the
+    shipped protocol and changes nothing.
     """
     from sklearn.linear_model import RidgeCV
 
@@ -219,6 +226,8 @@ def lodo(recs, feature_fn, seed=0, alphas=ALPHAS):
 
     for held in datasets:
         train = [r for r in recs if r["dataset"] != held]
+        if train_filter is not None:
+            train = [r for r in train if train_filter(r, held)]
         test = [r for r in recs if r["dataset"] == held]
 
         xs, ys = [], []
