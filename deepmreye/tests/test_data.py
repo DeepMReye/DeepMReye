@@ -1,10 +1,14 @@
-"""Tests for the per-participant on-disk layout and the registry sidecars."""
-import h5py
+"""The corpus on disk: the per-participant layout, and where a corpus is found.
+
+Resolution decides whether a command touches the network, so the order is
+pinned here: an explicit path, then $DEEPMREYE_DATA, then ./data, then the
+cache -- and a download only when the cache lacks what the command needs.
+"""
 import numpy as np
 import pytest
 
-from deepmreye import registry
-from deepmreye.storage import (
+from deepmreye import data
+from deepmreye.data import (
     FORMAT_VERSION,
     is_intact,
     iter_subjects,
@@ -103,42 +107,72 @@ def test_iter_subjects_finds_all(tmp_path):
     assert found == {("ds1", "sub-01"), ("ds1", "sub-02"), ("ds2", "sub-01")}
 
 
-def test_registry_merge_applies_records(tmp_path):
-    registry.record(tmp_path, "ds000001", "sub-01",
-                    {"repetition_time": 2.0, "n_trs": 100}, worker_id=1)
-    registry.record(tmp_path, "ds000001", "sub-02",
-                    {"repetition_time": 2.5, "n_trs": 200}, worker_id=2)
-
-    assert registry.merge_pending(tmp_path) == 2
-
-    with h5py.File(tmp_path / "datasets.h5", "r") as f:
-        assert f["ds000001/sub-01"].attrs["repetition_time"] == 2.0
-        assert f["ds000001/sub-02"].attrs["n_trs"] == 200
-    # Sidecars are cleared so a second merge is a no-op.
-    assert registry.merge_pending(tmp_path) == 0
+def test_iter_subjects_honours_a_dataset_pattern(tmp_path):
+    for ds in ("ds000001", "dsL01_x", "dsL02_y"):
+        write_subject(subject_path(tmp_path, ds, "sub-01"), _block(t=10))
+    assert {ds for ds, _s, _p in iter_subjects(tmp_path, "dsL*")} == {"dsL01_x", "dsL02_y"}
 
 
-def test_merge_never_clobbers_qa_labels(tmp_path):
-    """QA labels are the expensive artifact; a merge must not overwrite them."""
-    registry.record(tmp_path, "ds1", "sub-01", {"n_trs": 100}, worker_id=1)
-    registry.merge_pending(tmp_path)
-
-    with h5py.File(tmp_path / "datasets.h5", "a") as f:
-        f["ds1/sub-01"].attrs["approved"] = 1
-
-    registry.record(tmp_path, "ds1", "sub-01", {"n_trs": 150}, worker_id=1)
-    registry.merge_pending(tmp_path)
-
-    with h5py.File(tmp_path / "datasets.h5", "r") as f:
-        assert f["ds1/sub-01"].attrs["approved"] == 1  # preserved
-        assert f["ds1/sub-01"].attrs["n_trs"] == 150   # updated
+# --- resolution ----------------------------------------------------------------
 
 
-def test_merge_tolerates_truncated_sidecar_line(tmp_path):
-    """A killed worker leaves a partial final line; the rest must still merge."""
-    registry.record(tmp_path, "ds1", "sub-01", {"n_trs": 100}, worker_id=7)
-    sidecar = registry.pending_dir(tmp_path) / "worker_7.jsonl"
-    with open(sidecar, "a") as f:
-        f.write('{"dataset": "ds1", "subject": "sub-02", "n_tr')  # truncated
+@pytest.fixture
+def no_network(monkeypatch):
+    calls = []
+    monkeypatch.setattr(data, "fetch", lambda *a, **kw: calls.append((a, kw)) or kw.get("target"))
+    monkeypatch.delenv("DEEPMREYE_DATA", raising=False)
+    return calls
 
-    assert registry.merge_pending(tmp_path) == 1
+
+def _corpus(path, datasets=("ds000001",)):
+    for ds in datasets:
+        write_subject(subject_path(path, ds, "sub-01"), _block(t=10))
+    return path
+
+
+def test_explicit_path_wins_and_is_never_downloaded_into(tmp_path, monkeypatch, no_network):
+    monkeypatch.setenv("DEEPMREYE_DATA", str(_corpus(tmp_path / "env")))
+    explicit = _corpus(tmp_path / "explicit")
+    assert data.resolve(explicit, patterns=data.LABELLED) == explicit
+    assert no_network == []
+
+
+def test_explicit_path_must_exist(tmp_path, no_network):
+    with pytest.raises(FileNotFoundError):
+        data.resolve(tmp_path / "missing")
+
+
+def test_env_var_then_cwd_data(tmp_path, monkeypatch, no_network):
+    env = _corpus(tmp_path / "env")
+    monkeypatch.setenv("DEEPMREYE_DATA", str(env))
+    assert data.resolve(quiet=True) == env
+
+    monkeypatch.delenv("DEEPMREYE_DATA")
+    monkeypatch.chdir(tmp_path)
+    _corpus(tmp_path / "data")
+    assert data.resolve(quiet=True) == tmp_path / "data"
+    assert no_network == []
+
+
+def test_cache_is_used_when_it_has_what_is_asked(tmp_path, monkeypatch, no_network):
+    monkeypatch.chdir(tmp_path)
+    cache = _corpus(tmp_path / "cache", ("ds000001", "dsL01_x"))
+    (cache / "index.parquet").write_bytes(b"")
+    monkeypatch.setenv("DEEPMREYE_CACHE", str(cache))
+    assert data.resolve(patterns=data.LABELLED, quiet=True) == cache
+    assert no_network == []
+
+
+def test_cache_is_topped_up_when_it_lacks_what_is_asked(tmp_path, monkeypatch, no_network):
+    monkeypatch.chdir(tmp_path)
+    cache = _corpus(tmp_path / "cache", ("ds000001",))       # no labelled folders yet
+    monkeypatch.setenv("DEEPMREYE_CACHE", str(cache))
+    data.resolve(patterns=data.LABELLED, quiet=True)
+    assert len(no_network) == 1 and no_network[0][0][0] == data.LABELLED
+
+
+def test_no_download_raises_with_a_useful_message(tmp_path, monkeypatch, no_network):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPMREYE_CACHE", str(tmp_path / "empty"))
+    with pytest.raises(FileNotFoundError, match="DEEPMREYE_DATA"):
+        data.resolve(download=False)

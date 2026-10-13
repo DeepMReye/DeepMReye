@@ -5,7 +5,7 @@ computed straight from the readout's output and is the metric to compare methods
 on.
 
 **R-squared and Euclidean error do not survive that invariance**, and the
-protocol they are computed under makes the problem unavoidable: `probe.lodo`
+protocol they are computed under makes the problem unavoidable: `evaluate.lodo`
 z-scores gaze per *training* dataset before pooling, because the per-dataset
 Euclidean scale spans 21 to 595 and one pooled ridge would otherwise follow
 whichever dataset has the largest target variance. Its predictions therefore
@@ -97,7 +97,7 @@ def score(pred, true, gain=None, offset=None):
     ``pred`` and ``true`` are ``[N, 2]`` in that participant's own rows. Pass a
     calibration to get R-squared and Euclidean error in label units; without one
     they are computed on the raw prediction and will be meaningless if it is in
-    z-units, which is why :func:`probe.lodo` always supplies one.
+    z-units, which is why :func:`evaluate.lodo` always supplies one.
     """
     cal = pred if gain is None else apply_affine(pred, gain, offset)
     r_x, r_y = pearson(pred[:, 0], true[:, 0]), pearson(pred[:, 1], true[:, 1])
@@ -117,7 +117,7 @@ def orbit_agreement(left, right):
 
     ``left`` and ``right`` are ``[T, 20]`` decodings of the same run by one
     readout, applied to each orbit's canonical coordinates alone (``views`` in
-    :func:`probe.lodo`). Returns the Pearson correlation between them over the
+    :func:`evaluate.lodo`). Returns the Pearson correlation between them over the
     sub-TR samples, averaged over the two axes.
 
     It is a confidence **per participant**, not per volume. Within a dataset it

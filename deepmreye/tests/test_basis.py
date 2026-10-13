@@ -1,4 +1,4 @@
-"""The unlabeled-corpus feature bases, and the accumulator they are fitted from.
+"""The frozen basis, and the accumulator it is fitted from.
 
 The accumulator gets the most attention here on purpose. Its one historical
 failure mode is silent: ``scipy``'s ``syrk`` wrapper only honours
@@ -9,12 +9,10 @@ definite, and still yielding a plausible-looking leading component. Only a
 numerical comparison against a directly computed covariance catches it.
 """
 import numpy as np
-import pytest
 
-from deepmreye.unsupervised import (
+from deepmreye.basis import (
     Moments,
     fit_lr_cca,
-    fit_pca,
     load_basis,
     orbit_projections,
     project,
@@ -68,25 +66,6 @@ def test_moments_are_symmetric_after_symmetrise():
     assert np.allclose(cov, cov.T)
 
 
-def test_pca_basis_recovers_a_planted_low_rank_subspace():
-    """Three latent directions driving 40 voxels: the top-3 components must span
-    them, or the basis is not finding structure that is actually there."""
-    rng = np.random.default_rng(1)
-    loadings = rng.normal(size=(3, 40))
-    m = Moments(40, batch_rows=64)
-    for _ in range(8):
-        latent = rng.normal(size=(50, 3)) * np.array([6.0, 4.0, 2.0])
-        m.add((latent @ loadings + 0.01 * rng.normal(size=(50, 40))).astype(np.float32))
-    m.symmetrise()
-
-    basis = fit_pca(m, k=3)
-    # Projection residual of the true loadings onto the fitted span.
-    q = np.linalg.qr(basis["components"])[0]
-    residual = loadings.T - q @ (q.T @ loadings.T)
-    assert np.linalg.norm(residual) / np.linalg.norm(loadings) < 0.05
-    assert (np.diff(basis["eigenvalues"]) <= 1e-8).all()   # descending
-
-
 def test_lr_cca_finds_the_signal_shared_between_orbits():
     """A latent shared by both orbits, plus independent per-orbit noise. The
     leading canonical correlation must be high and the projection must track
@@ -119,7 +98,7 @@ def test_lr_cca_finds_the_signal_shared_between_orbits():
     zz = rng2.normal(size=(400, 1))
     x = np.hstack([zz @ lw[None] + 0.3 * rng2.normal(size=(400, n_left)),
                    zz @ rw[None] + 0.3 * rng2.normal(size=(400, n_vox - n_left))])
-    variate = project("lr-cca", basis, x)[:, 0]
+    variate = project(basis, x)[:, 0]
     assert abs(np.corrcoef(variate, zz[:, 0])[0, 1]) > 0.85
     assert len(z) == m.n
 
@@ -132,39 +111,23 @@ def test_basis_round_trips_through_disk(tmp_path):
         m.add(np.random.default_rng(4).normal(size=(40, int(mask.sum()))).astype(np.float32))
     m.symmetrise()
 
-    bases = {"corpus-pca": fit_pca(m, k=4),
-             "lr-cca": fit_lr_cca(m, mask, k=2, n_reduce=6, split_x=4)}
-    path = save_basis(tmp_path / "b.npz", mask, bases, {"k": 4, "n_voxels": 32})
+    bases = {"lr-cca": fit_lr_cca(m, mask, k=2, n_reduce=6, split_x=4)}
+    path = save_basis(tmp_path / "b.npz", mask, bases, {"k": 2, "n_voxels": 32})
 
     got_mask, got_bases, meta = load_basis(path)
     assert got_mask.shape == mask.shape and got_mask.all()
-    assert meta["k"] == 4
-    assert set(got_bases) == {"corpus-pca", "lr-cca"}
+    assert meta["k"] == 2
+    assert set(got_bases) == {"lr-cca"}
     x = np.random.default_rng(5).normal(size=(10, 32))
-    assert project("corpus-pca", got_bases["corpus-pca"], x).shape == (10, 4)
-    assert project("lr-cca", got_bases["lr-cca"], x).shape == (10, 2)
-
-
-def test_project_honours_a_component_budget():
-    m = Moments(32, batch_rows=64)
-    for _ in range(6):
-        m.add(np.random.default_rng(6).normal(size=(40, 32)).astype(np.float32))
-    m.symmetrise()
-    basis = fit_pca(m, k=8)
-    x = np.random.default_rng(7).normal(size=(15, 32))
-    assert project("corpus-pca", basis, x, k=3).shape == (15, 3)
-
-
-def test_project_rejects_an_unknown_basis():
-    with pytest.raises(ValueError):
-        project("no-such-basis", {}, np.zeros((2, 4)))
+    assert project(got_bases["lr-cca"], x).shape == (10, 2)
+    assert project(got_bases["lr-cca"], x, k=1).shape == (10, 1)
 
 
 # --- the feature layer -------------------------------------------------------
 
 
 def _corpus(tmp_path):
-    from deepmreye.storage import subject_path, write_subject
+    from deepmreye.data import subject_path, write_subject
 
     rng = np.random.default_rng(11)
     full = np.ones((47, 29, 18), dtype=bool)   # stand-in for the real mask
@@ -209,15 +172,13 @@ def test_exclude_datasets_holds_out_one_fold(tmp_path):
     assert "dsL01_guided_fixations" in datasets
 
 
-
-
 def test_corpus_subjects_is_every_eligible_participant_but_evaluation_sources(tmp_path):
     """The corpus is every eligible participant, never an evaluation dataset's
     own accession, shuffled; nested in n for one seed, a new draw for another."""
     import numpy as np
 
-    from deepmreye.storage import subject_path, write_subject
-    from deepmreye.unsupervised import EVALUATION_SOURCES, corpus_subjects
+    from deepmreye.data import subject_path, write_subject
+    from deepmreye.basis import EVALUATION_SOURCES, corpus_subjects
 
     rng = np.random.default_rng(3)
     source = EVALUATION_SOURCES["dsL07_deepmreye_calib"]
@@ -252,4 +213,4 @@ def test_orbit_projections_average_to_project():
     x = rng.normal(size=(30, d))
     zl, zr = orbit_projections(x, arrays, k=3)
     assert zl.shape == zr.shape == (30, 3)
-    assert np.allclose(0.5 * (zl + zr), project("lr-cca", arrays, x, k=3))
+    assert np.allclose(0.5 * (zl + zr), project(arrays, x, k=3))

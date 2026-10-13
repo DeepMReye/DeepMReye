@@ -1,31 +1,25 @@
-"""The two linear feature bases learned from the *unlabeled* corpus.
+"""The frozen basis: canonical correlation between the left and right orbit.
 
-The unlabeled corpus (:func:`corpus_subjects`) is every eligible OpenNeuro
-participant with no gaze labels that is not an evaluation participant under
-another name: 2,060 participants of 652 datasets. Both bases come out of **one
-streaming pass** over it, which
-accumulates a mean and a second-moment matrix over the masked voxels::
+Both eyes rotate together, so gaze is part of the signal the two orbits share. A
+direction in left-orbit voxel space whose projection correlates with a direction
+in right-orbit voxel space is therefore driven by conjugate gaze, while what is
+local to one orbit (its own noise, physiology, susceptibility) is suppressed.
+The basis is fitted once, on unlabelled fMRI, and never sees gaze.
+
+It comes out of **one streaming pass** over the corpus, which accumulates a mean
+and a second-moment matrix over the 14,236 eye-mask voxels::
 
     n += T
     s += sum_t x_t
     C += X^T X            (14236 x 14236, ~810 MB float32)
 
-- ``corpus-pca``  top-k eigenvectors of the voxel covariance: the k directions
-                  along which eye-region signal varies most, across hundreds of
-                  scanners. The variance-ordered reference.
-- ``lr-cca``      canonical correlation between the left and right orbit, and
-                  the arm this package exists to ship. The eyes rotate together,
-                  so a direction in left-orbit voxel space that predicts the
-                  right orbit is a direction driven by conjugate gaze, while
-                  anything local to one orbit (that side's noise, physiology,
-                  susceptibility) is suppressed. Fitted on unlabeled subjects it
-                  is a *fixed* projection: it never sees the run it is applied
-                  to and never needs labels to pick which variate is x, which is
-                  y, or their signs -- the supervised readout settles that.
+and is then solved in closed form (:func:`fit_lr_cca`): each orbit reduced to its
+256 leading principal directions, whitened, and the whitened cross-covariance
+decomposed by SVD. Its singular vectors are the canonical pairs.
 
-Six further bases were fitted and measured here and all of them lost; see
-FINDINGS.md. They needed a second accumulator over temporal differences, which
-is why this pass is now half the memory and half the cost it used to be.
+The shipped corpus (:func:`corpus_subjects`) is every eligible participant of
+the published eye-block corpus that is not a gaze-labelled participant under any
+name: 2,060 participants of 652 OpenNeuro datasets.
 """
 import json
 import logging
@@ -45,8 +39,6 @@ FULL_MASK_VOXELS = 14236
 # 52 there against ~390 at each lobe's centre). Splitting on the trough rather
 # than the array midpoint keeps each half to one eyeball.
 LR_SPLIT_X = 24
-
-BASIS_KINDS = ("corpus-pca", "lr-cca")
 
 # The OpenNeuro accessions three gaze-labelled datasets were ingested from. The
 # same runs sit under both names, so the corpus must exclude the accession as
@@ -99,7 +91,7 @@ def corpus_mask(data_dir, max_files=40):
     return acc
 
 
-def unlabeled_subjects(data_dir, probe_prefix="dsL", min_voxels=FULL_MASK_VOXELS,
+def unlabeled_subjects(data_dir, labelled_prefix="dsL", min_voxels=FULL_MASK_VOXELS,
                        min_trs=32, include_labeled=False, exclude_datasets=(),
                        exclude_sources=True):
     """Participants eligible to fit a basis: fully covered, and label-free *as
@@ -134,7 +126,7 @@ def unlabeled_subjects(data_dir, probe_prefix="dsL", min_voxels=FULL_MASK_VOXELS
         dataset = path.parent.name
         if dataset in exclude:
             continue
-        if dataset.startswith(probe_prefix) and not include_labeled:
+        if dataset.startswith(labelled_prefix) and not include_labeled:
             continue
         try:
             with h5py.File(path, "r") as f:
@@ -297,18 +289,6 @@ def _top_eigenvectors(cov, k, seed=0):
     return u, np.maximum(s, 0.0)
 
 
-def fit_pca(moments, k, seed=0, cached=None):
-    """Top-``k`` principal directions of the corpus covariance.
-
-    ``cached`` takes ``(cov, mu)`` to skip rebuilding the covariance.
-    """
-    cov, mu = cached if cached is not None else moments.covariance()
-    total = float(np.trace(cov))
-    vecs, vals = _top_eigenvectors(cov, k, seed)
-    return {"mean": mu, "components": vecs, "eigenvalues": vals,
-            "total_variance": np.array([total])}
-
-
 def fit_lr_cca(moments, mask, k, n_reduce=256, shrinkage=1e-3, seed=0,
                split_x=LR_SPLIT_X, cached=None):
     """Canonical correlation between the left and right orbit.
@@ -382,29 +362,15 @@ def load_basis(path):
     return mask, bases, meta
 
 
-def project(kind, arrays, x, k=None):
-    """Apply a fitted basis to masked voxels ``x [N, D]`` -> ``[N, k]``."""
-    x = np.asarray(x, dtype=np.float64)
-    # Every PCA-shaped basis: a mean plus an orthonormal-ish `components` matrix.
-    # Keyed off the stored arrays rather than a hand-maintained name list, so a
-    # basis that was fitted and saved can always be applied.
-    if kind != "lr-cca" and "components" in arrays:
-        comp = arrays["components"]
-        if k:
-            comp = comp[:, :k]
-        return (x - arrays["mean"]) @ comp
-    if kind == "lr-cca":
-        mu = arrays["mean"]
-        li, ri = arrays["left_index"], arrays["right_index"]
-        wl, wr = arrays["left_weights"], arrays["right_weights"]
-        if k:
-            wl, wr = wl[:, :k], wr[:, :k]
-        xc = x - mu
-        # The two orbits give two estimates of the same conjugate gaze; their
-        # mean is the denoised one, which is the entire point of fitting across
-        # eyes rather than pooling their voxels.
-        return 0.5 * (xc[:, li] @ wl + xc[:, ri] @ wr)
-    raise ValueError(f"unknown basis kind {kind!r}")
+def project(arrays, x, k=None):
+    """Masked voxels ``x [N, 14236]`` -> the bilateral feature ``[N, k]``.
+
+    The two orbits give two estimates of the same conjugate gaze; their mean is
+    the denoised one, which is the entire point of fitting across eyes rather
+    than pooling their voxels.
+    """
+    zl, zr = orbit_projections(x, arrays, k)
+    return 0.5 * (zl + zr)
 
 
 def orbit_projections(rows, arrays, k=None):
@@ -421,3 +387,41 @@ def orbit_projections(rows, arrays, k=None):
     k = int(min(k or wl.shape[1], wl.shape[1], wr.shape[1]))
     centred = rows - arrays["mean"]
     return centred[:, li] @ wl[:, :k], centred[:, ri] @ wr[:, :k]
+
+
+def fit_corpus(data_dir, out, k=256, n=None, seed=0, trs_per_subject=48, n_slabs=4,
+               n_reduce=256, shrinkage=1e-3, progress=100):
+    """Fit the basis on a corpus directory and save it to ``out``.
+
+    ``data_dir`` is laid out as ``<dataset>/<subject>.h5`` (:mod:`deepmreye.data`).
+    The corpus is :func:`corpus_subjects` -- every fully covered, unlabelled
+    participant with at least 32 volumes, never a gaze-labelled dataset or its
+    source accession -- in a seed-``seed`` shuffle, the first ``n`` of them (all
+    if ``None``). Each contributes ``trs_per_subject`` volumes, in ``n_slabs``
+    blocks spread over its run, so that long runs do not dominate.
+
+    ``k`` canonical pairs are stored (the decoder uses the leading 32). Costs one
+    streaming pass: about three minutes for the full corpus on a 12-core laptop,
+    and ~1 GB of memory for the accumulator.
+    """
+    import time
+
+    mask = corpus_mask(data_dir)
+    subjects = corpus_subjects(data_dir, n=n, seed=seed)
+    if not subjects:
+        raise RuntimeError(f"no eligible participants under {data_dir}")
+    print(f"[*] {len(subjects)} participants from {len({s[0] for s in subjects})} datasets",
+          flush=True)
+    moments = accumulate(subjects, mask, trs_per_subject, n_slabs, progress=progress)
+    arrays = fit_lr_cca(moments, mask, k, n_reduce=n_reduce, shrinkage=shrinkage, seed=seed)
+    meta = {"n_subjects": moments.n_subjects, "n_trs": moments.n, "k": k,
+            "trs_per_subject": trs_per_subject, "n_slabs": n_slabs, "seed": seed,
+            "n_reduce": n_reduce, "shrinkage": shrinkage,
+            "datasets": len({s[0] for s in subjects}),
+            "subjects": [f"{d}/{s}" for d, s, *_ in subjects],
+            "fitted": time.strftime("%Y-%m-%d %H:%M:%S")}
+    path = save_basis(out, mask, {"lr-cca": arrays}, meta)
+    cc = arrays["canonical_correlations"]
+    print(f"[+] {meta['n_subjects']} participants, {moments.n} volumes; canonical r "
+          f"1st {cc[0]:.3f}, 32nd {cc[min(31, len(cc) - 1)]:.3f} -> {path}", flush=True)
+    return path

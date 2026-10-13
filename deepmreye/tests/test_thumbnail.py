@@ -1,12 +1,8 @@
-"""Tests for the QA thumbnail that replaced the 5 MB HTML report.
+"""Tests for the QA image of a registration.
 
-The thumbnail is what QA is now decided on, at full-extraction scale, so the
-properties worth pinning are that it stays small, that it actually distinguishes
-a subject with eyeballs from one without, and that the two ways of producing it
--- live during extraction, and backfilled from an old report -- agree.
+The properties worth pinning are that it stays small and that it actually
+distinguishes a run with eyeballs in the mask from one without.
 """
-import json
-
 import numpy as np
 
 from deepmreye import thumbnail
@@ -94,48 +90,6 @@ def test_flat_volume_does_not_blow_up():
     flat = np.zeros((91, 109, 91), dtype=np.float32)
     image = thumbnail.from_arrays(flat, _mask(), np.zeros((47, 29, 18, 5), dtype=np.float32))
     assert image.height == thumbnail.PANEL_HEIGHT
-
-
-def _fake_report(wb, mask, eye_mean):
-    """A minimal report carrying the traces `from_report` reads, in report order."""
-    def heatmap(a):
-        return {"type": "heatmap", "z": np.asarray(a, dtype=np.float32).tolist()}
-
-    traces = [
-        heatmap(wb[25, :, :].T), heatmap(mask[25, :, :].T),      # 0, 1
-        heatmap(wb[:, 90, :].T), heatmap(mask[:, 90, :].T),      # 2, 3
-        heatmap(wb[:, :, thumbnail.Z_SLICE]),                    # 4
-        heatmap(mask[:, :, thumbnail.Z_SLICE]),                  # 5
-        {"type": "histogram", "x": [1, 2, 3]},                   # 6
-        heatmap(eye_mean.mean(axis=0).T),                        # 7
-        heatmap(eye_mean.mean(axis=1).T),                        # 8
-        heatmap(eye_mean.mean(axis=2)),                          # 9
-        {"type": "scatter", "y": [1, 2]}, {"type": "scatter", "y": [3, 4]},
-    ]
-    return f"<html><script>Plotly.newPlot('x', {json.dumps(traces)}, {{}})</script></html>"
-
-
-def test_backfill_from_a_report_matches_live_extraction():
-    """Half the corpus predates thumbnails; both halves must look the same.
-
-    If these disagreed, a contact sheet would mix two renderings and the eye
-    panels would not be comparable between a backfilled and a fresh subject.
-    """
-    brain, mask, block = _brain(), _mask(), _eye_block()
-
-    live = np.asarray(thumbnail.from_arrays(brain, mask, block))
-    backfilled = np.asarray(thumbnail.from_report(_fake_report(brain, mask, block.mean(axis=3))))
-
-    assert live.shape == backfilled.shape
-    np.testing.assert_array_equal(live, backfilled)
-
-
-def test_report_without_the_expected_traces_is_skipped_not_guessed():
-    # A truncated or unexpected report should yield nothing, rather than an
-    # image built from whatever traces happened to be present.
-    assert thumbnail.from_report("<html><body>no plot here</body></html>") is None
-    short = "<html><script>Plotly.newPlot('x', [{\"type\": \"heatmap\"}], {})</script></html>"
-    assert thumbnail.from_report(short) is None
 
 
 def _normalized_block(t=40, seed=3):

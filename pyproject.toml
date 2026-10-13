@@ -5,34 +5,25 @@ requires = ["hatchling", "hatch-vcs"]
 [project]
 authors = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3"
 ]
 dependencies = [
-    # Evaluation: pure numpy/sklearn, no GPU and no deep-learning stack.
     "numpy",
     "scipy",
     "scikit-learn",
     "h5py",
-    "pandas",
-    "joblib",
-    # Ingestion: S3, coregistration, gaze parsing, QA images.
+    # Registration of a new run to the template (preprocess / decode).
     "antspyx",
-    "nibabel",
-    "boto3",
-    "requests",
-    "tqdm",
-    "eyelinkio>=0.3.0",
-    "pillow",
-    "plotly",
-    # QA labeling UI, and the HuggingFace mirror of the corpus.
-    "flask",
+    # The pretrained decoder and the published corpus.
     "huggingface-hub",
+    # The QA image of a registration.
+    "pillow",
 ]
-description = "MR-based eye tracker without eye tracking"
+description = "Decode eye gaze from fMRI without an eye tracker"
 dynamic = ["version"]
 license = {file = "LICENSE"}
 maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
@@ -43,13 +34,11 @@ requires-python = ">=3.9.0,<3.12"
 [project.optional-dependencies]
 test = ["pytest>6", "pytest-cov"]
 
+[project.scripts]
+deepmreye = "deepmreye.__main__:main"
+
 [project.urls]
 home = "https://github.com/DeepMReye/DeepMReye"
-
-[tool.pyright]
-# The scripts import their own helper package (`scripts/unlabeled/`) as
-# `unlabeled`, which is how they run: `python scripts/<name>.py`.
-extraPaths = ["scripts"]
 
 [tool.black]
 line-length = 120

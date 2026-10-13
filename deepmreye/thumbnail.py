@@ -1,33 +1,16 @@
-"""Small QA thumbnails: the image you actually judge a subject on.
+"""A small QA image of a participant's registered eyes.
 
-Every extracted participant gets a ``<subject>.png`` next to its
-``<subject>.h5``. It is a strip of panels -- the registered brain at z=-30 with
-the eye mask drawn over it, then the extracted eye block seen from two sides --
-which is enough to answer the only question QA asks: are the eyeballs in there.
+The one question to ask of a preprocessed run before trusting its gaze is
+whether both eyeballs are inside the eye mask. This writes a ~20 KB PNG that
+answers it: the registered brain at the eyes' level (z = -30 in template space)
+with the eye mask drawn over it, then the extracted eye block seen from two
+sides.
 
-This exists because the full HTML report is ~5 MB and the thumbnail is ~20 KB.
-At the QA sample of 1779 subjects the reports cost 8 GB, which was tolerable; at
-full extraction they would cost well over 100 GB, which is not, and no one is
-going to open twenty thousand Plotly pages anyway. The report is still available
-per subject (``--report html``) when a specific case needs the histogram and the
-timecourses; the thumbnail is what gets produced by default and shipped.
-
-Two entry points produce byte-identical output, so the corpus is uniform even
-though half of it was extracted before thumbnails existed:
-
-- :func:`from_arrays` -- during extraction, straight from the volumes in hand.
-- :func:`from_report` -- backfill, by reading the arrays back out of an
-  existing report.
-
-Both take *raw* (pre-normalization) volumes. That matters: normalization
-z-scores every voxel across time, so the temporal mean of a stored ``eye_block``
-is approximately zero everywhere and renders as noise. The anatomy is only
-visible before that step.
+It is built from the *raw* registered volumes. Normalisation z-scores every
+voxel across time, so the temporal mean of a stored eye block is flat and
+renders as noise; :func:`from_block` (for a block that is already normalised)
+shows the temporal standard deviation instead.
 """
-import base64
-import json
-import re
-import zlib
 
 import numpy as np
 
@@ -135,102 +118,6 @@ def from_arrays(whole_brain, mask, masked_eye, height=PANEL_HEIGHT):
     eye_mean = np.asarray(masked_eye, dtype=np.float32).mean(axis=3)
     return _compose(_panels(whole_brain[:, :, Z_SLICE], mask[:, :, Z_SLICE], eye_mean),
                     height=height)
-
-
-# ---------------------------------------------------------------------------
-# Backfill: recover the same arrays from a report that already exists.
-# ---------------------------------------------------------------------------
-
-# `plot_subject_report` emits its heatmaps in a fixed order. Indices 4/5 are the
-# z=-30 brain and its mask; 7/8/9 are the eye block collapsed along each axis.
-_TRACE_WB_Z, _TRACE_MASK_Z = 4, 5
-_TRACE_EYE_X, _TRACE_EYE_Y, _TRACE_EYE_Z = 7, 8, 9
-_MIN_TRACES = 10
-
-
-def _plotly_traces(html):
-    """The trace array from a report's ``Plotly.newPlot`` call.
-
-    Plotly embeds heatmap ``z`` as base64 rather than JSON numbers, so the
-    arrays cannot be read without walking the script -- there is no lighter
-    handle on this data than the report itself. Several ``newPlot`` calls can
-    appear; the real one is the array with every trace in it.
-    """
-    for script in re.findall(r"<script.*?>(.*?)</script>", html, re.DOTALL):
-        if "Plotly.newPlot" not in script:
-            continue
-        for match in re.finditer(r"Plotly\.newPlot", script):
-            start = script.find("[", match.start())
-            if start == -1:
-                continue
-            depth, end = 0, -1
-            for i in range(start, len(script)):
-                if script[i] == "[":
-                    depth += 1
-                elif script[i] == "]":
-                    depth -= 1
-                    if depth == 0:
-                        end = i
-                        break
-            if end == -1:
-                continue
-            try:
-                parsed = json.loads(script[start:end + 1])
-            except ValueError:
-                continue
-            if isinstance(parsed, list) and len(parsed) >= _MIN_TRACES:
-                return parsed
-    return None
-
-
-def _trace_matrix(trace):
-    """Decode one heatmap trace's ``z`` into an array."""
-    z = trace.get("z")
-    if isinstance(z, list):
-        return np.array(z, dtype=np.float32)
-    if not isinstance(z, dict) or "bdata" not in z:
-        return None
-    raw = base64.b64decode(z["bdata"])
-    try:
-        raw = zlib.decompress(raw)
-    except zlib.error:
-        pass  # Plotly only compresses above a size threshold.
-    arr = np.frombuffer(raw, dtype=np.dtype(z.get("dtype", "f4")))
-    shape = z.get("shape")
-    if shape:
-        arr = arr.reshape(tuple(int(x) for x in str(shape).split(",")))
-    return arr
-
-
-def from_report(html, height=PANEL_HEIGHT):
-    """Rebuild the thumbnail from an existing HTML report.
-
-    Returns ``None`` if the report does not carry the expected traces, so a
-    malformed one is skipped rather than producing a misleading image.
-    """
-    traces = _plotly_traces(html)
-    if traces is None:
-        return None
-
-    wb = _trace_matrix(traces[_TRACE_WB_Z])
-    mask = _trace_matrix(traces[_TRACE_MASK_Z])
-    if wb is None or mask is None:
-        return None
-
-    # The report stores the eye block already collapsed, and transposed the way
-    # it was plotted. Undo that so both entry points feed `_compose` the same
-    # orientation.
-    eye_z = _trace_matrix(traces[_TRACE_EYE_Z])   # mean over Z, [X, Y]
-    eye_y = _trace_matrix(traces[_TRACE_EYE_Y])   # mean over Y, plotted [Z, X]
-    if eye_z is None or eye_y is None:
-        return None
-
-    panels = [
-        _overlay_mask(_to_uint8(np.flipud(wb)), np.flipud(mask)),
-        _to_uint8(eye_z.T),
-        _to_uint8(eye_y),
-    ]
-    return _compose(panels, height=height)
 
 
 def save(image, path):
