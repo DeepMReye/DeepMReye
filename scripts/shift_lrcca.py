@@ -130,7 +130,7 @@ def oracle_shift(recs, shifts, fixed):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True)
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
     p.add_argument("--out", default="results/lrcca_variants/shift.json")
     p.add_argument("--radius", type=int, default=1)
     p.add_argument("--k", type=int, default=32)

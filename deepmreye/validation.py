@@ -1,5 +1,4 @@
 import ants
-import logging
 
 class MissingTRError(Exception):
     """Exception raised when a valid TR (Repetition Time) cannot be found in the image header."""

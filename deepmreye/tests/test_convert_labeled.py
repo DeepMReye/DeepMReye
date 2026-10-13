@@ -22,7 +22,8 @@ from convert_labeled_to_h5 import (
     tr_for,
 )
 
-from deepmreye.pipeline import LBL_EYES, is_dataset_approved
+from deepmreye.labels import LBL_EYES
+from deepmreye.pipeline import is_dataset_approved
 
 
 def _write_npz(path, n_trs=8, seed=0):

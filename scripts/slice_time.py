@@ -103,7 +103,7 @@ def sub_tr_profile(recs, feature_fn, seed=0):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True)
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
     p.add_argument("--out", default="results/lrcca_variants/slice_time.json")
     p.add_argument("--bands", type=int, default=6)
     p.add_argument("--k-band", type=int, default=16)

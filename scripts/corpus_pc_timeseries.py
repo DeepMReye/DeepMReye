@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The unlabelled corpus as a small timeseries, so criteria past second order can run.
 
-Everything fitted from `moments_n2000.npz` is a decomposition of a covariance,
+Everything fitted from `moments.npz` is a decomposition of a covariance,
 which fixes the family: variance, cross-covariance, correlation, and the
 temporal versions of those. Anything that needs **higher-order** statistics --
 independence, sparsity, non-Gaussianity -- cannot be computed from a covariance
@@ -18,7 +18,7 @@ basis spans: rotating k features among themselves is invisible to ridge. So a
 method like ICA can only matter here through which directions it *selects*,
 never through the rotation it applies -- and it must be scored that way.
 
-    python scripts/corpus_pc_timeseries.py --out results/lrcca_variants/pcs_n2000.npz
+    python scripts/corpus_pc_timeseries.py --out results/lrcca_variants/pcs.npz
 """
 import argparse
 import sys
@@ -40,8 +40,8 @@ from scripts.improve_lrcca import Corpus, Eigs  # noqa: E402
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--data-dir", default=None)
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
-    p.add_argument("--out", default="results/lrcca_variants/pcs_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
+    p.add_argument("--out", default="results/lrcca_variants/pcs.npz")
     p.add_argument("--n", type=int, default=2000)
     p.add_argument("--m", type=int, default=256, help="PCs kept per orbit.")
     p.add_argument("--trs-per-subject", type=int, default=48)

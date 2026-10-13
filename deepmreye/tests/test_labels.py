@@ -93,3 +93,33 @@ def test_restore_skips_datasets_not_in_registry(tmp_path):
     append_label_events(csv_path, [("ds999999", "subject", "sub-01", 1)])  # not in registry
     applied, missing = restore_labels(h5_path, csv_path)
     assert applied == 0 and missing == 1
+
+
+# --- which datasets pass ------------------------------------------------------
+
+def test_labels_pass_is_all_or_nothing():
+    from deepmreye.labels import labels_pass
+
+    assert labels_pass([1, 3, 4])
+    assert not labels_pass([1, 0])            # one 'no eyes' drops the dataset
+    assert not labels_pass([1, 2])
+    assert not labels_pass([-1, -1])          # unlabelled is not a pass
+    assert labels_pass([1, -1])
+
+
+def test_qa_status_matches_is_dataset_approved(tmp_path):
+    from deepmreye.labels import qa_status
+    from deepmreye.pipeline import is_dataset_approved
+
+    h5_path = tmp_path / "datasets.h5"
+    with h5py.File(h5_path, "w") as f:
+        for ds, subs in {"dsA": {"sub-01": 1, "sub-02": 4}, "dsB": {"sub-01": 1, "sub-02": 0},
+                         "dsC": {"sub-01": -1}, "dsD": {"sub-01": 1}}.items():
+            g = f.create_group(ds)
+            for s, v in subs.items():
+                g.create_group(s).attrs["approved"] = v
+        f["dsD"].attrs["approved"] = -99
+    status = qa_status(h5_path)
+    assert status == {"dsA": "pass", "dsB": "fail", "dsC": "not labelled", "dsD": "skipped"}
+    with h5py.File(h5_path, "r") as f:
+        assert {ds for ds in f if is_dataset_approved(f[ds])} == {"dsA"}

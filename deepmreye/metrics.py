@@ -112,6 +112,26 @@ def score(pred, true, gain=None, offset=None):
     }
 
 
+def orbit_agreement(left, right):
+    """How well a participant's two orbits agree on their decoded gaze; no labels.
+
+    ``left`` and ``right`` are ``[T, 20]`` decodings of the same run by one
+    readout, applied to each orbit's canonical coordinates alone (``views`` in
+    :func:`probe.lodo`). Returns the Pearson correlation between them over the
+    sub-TR samples, averaged over the two axes.
+
+    It is a confidence **per participant**, not per volume. Within a dataset it
+    ranks participants by how well they decode; it does not say how well a new
+    dataset will decode, because what fails to transfer -- the feature->gaze
+    map -- is shared by both orbits and invisible to their agreement. And it says
+    nothing about single volumes: with independent noise in the two orbits, the
+    difference of their estimates is independent of the error of their mean.
+    """
+    left = np.asarray(left).reshape(-1, 2)
+    right = np.asarray(right).reshape(-1, 2)
+    return float(np.nanmean([pearson(left[:, a], right[:, a]) for a in range(2)]))
+
+
 def nanmedian(values):
     """Median over the finite entries; NaN when there are none."""
     vals = [v for v in values if v is not None and np.isfinite(v)]

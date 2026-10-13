@@ -11,7 +11,6 @@ as 34 paired participants on the strength of 204 files named
 
 Every key below is a real key from the bucket.
 """
-import re
 import sys
 from pathlib import Path
 

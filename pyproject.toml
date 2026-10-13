@@ -46,6 +46,11 @@ test = ["pytest>6", "pytest-cov"]
 [project.urls]
 home = "https://github.com/DeepMReye/DeepMReye"
 
+[tool.pyright]
+# The scripts import their own helper package (`scripts/unlabeled/`) as
+# `unlabeled`, which is how they run: `python scripts/<name>.py`.
+extraPaths = ["scripts"]
+
 [tool.black]
 line-length = 120
 
@@ -77,3 +82,14 @@ log_cli_level = "INFO"
 minversion = "6.0"
 testpaths = ["deepmreye/tests"]
 xfail_strict = true
+
+[tool.uv]
+# antspyx 0.6.3 pins scipy<1.16, and the scipy 1.15 wheels no longer load on
+# macOS 27 (dyld rejects `_spropack`), which takes scikit-learn down with them.
+# Nothing here uses the part of scipy that antspyx pins against. An override
+# replaces every declaration of the package, so the second entry restates
+# antspyx's pin wherever the first does not apply -- Linux resolves as before.
+override-dependencies = [
+    "scipy>=1.17; sys_platform == 'darwin' and python_version >= '3.11'",
+    "scipy<1.16; sys_platform != 'darwin' or python_version < '3.11'",
+]

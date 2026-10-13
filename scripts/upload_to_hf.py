@@ -59,7 +59,7 @@ ingested from OpenNeuro datasets that recorded eye tracking during the scan:
 | folder | source | n | TR (s) | paradigm |
 |---|---|---|---|---|
 | `dsL07_deepmreye_calib` | ds006833 | 15 | 1.2 | fixation / pursuit / free viewing |
-| `dsL08_studyforrest_movie` | ds000113 | 15 | 2.0 | movie (Forrest Gump), 7T |
+| `dsL08_studyforrest_movie` | ds000113 | 15 | 2.0 | movie (Forrest Gump), 3T |
 | `dsL11_backtothefuture` | ds006642 | 37 | 1.5 | movie (Back to the Future) |
 
 ### Gaze/BOLD alignment

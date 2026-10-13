@@ -211,6 +211,28 @@ def test_exclude_datasets_holds_out_one_fold(tmp_path):
 
 
 
+def test_corpus_subjects_is_every_eligible_participant_but_evaluation_sources(tmp_path):
+    """The corpus is every eligible participant, never an evaluation dataset's
+    own accession, shuffled; nested in n for one seed, a new draw for another."""
+    import numpy as np
+
+    from deepmreye.storage import subject_path, write_subject
+    from deepmreye.unsupervised import EVALUATION_SOURCES, corpus_subjects
+
+    rng = np.random.default_rng(3)
+    source = EVALUATION_SOURCES["dsL07_deepmreye_calib"]
+    for ds in ("ds000001", "ds000002", source):
+        for s in range(4):
+            write_subject(subject_path(tmp_path, ds, f"sub-{s:02d}"),
+                          rng.normal(size=(47, 29, 18, 40)).astype(np.float32))
+    n_vox = 47 * 29 * 18
+    got = corpus_subjects(tmp_path, min_voxels=n_vox)
+    assert len(got) == 8 and source not in {d for d, *_ in got}
+    assert corpus_subjects(tmp_path, n=3, min_voxels=n_vox) == got[:3]
+    other = corpus_subjects(tmp_path, seed=1, min_voxels=n_vox)
+    assert sorted(other) == sorted(got) and other != got
+
+
 def test_orbit_projections_average_to_project():
     """`project` is the average of the two orbits, and this is the check that says so.
 

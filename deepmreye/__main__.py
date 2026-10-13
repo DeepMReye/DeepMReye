@@ -101,10 +101,9 @@ def cmd_fetch(args):
 def cmd_fit_basis(args):
     from fit_corpus_basis import main as fit_main
     sys.argv = ["fit_corpus_basis.py", "--data-dir", str(args.data_dir),
-                "--out", args.out, "--k", str(args.k),
-                "--trs-per-subject", str(args.trs_per_subject)]
-    if args.max_subjects:
-        sys.argv += ["--max-subjects", str(args.max_subjects)]
+                "--out-dir", args.out_dir, "--shipped", args.out, "--k", str(args.k),
+                "--trs-per-subject", str(args.trs_per_subject),
+                "--checkpoints", *args.checkpoints]
     fit_main()
 
 
@@ -194,11 +193,15 @@ def build_parser():
     p_fetch.set_defaults(func=cmd_fetch)
 
     p_basis = sub.add_parser("fit-basis", parents=[common],
-                             help="Fit the unsupervised basis on the unlabeled corpus.")
-    p_basis.add_argument("--out", default="results/basis.npz")
+                             help="Fit the unsupervised bases on the unlabeled corpus.")
+    p_basis.add_argument("--out", default="results/basis.npz",
+                         help="Where the full-corpus basis goes (what `evaluate` reads).")
+    p_basis.add_argument("--out-dir", default="results/corpus_bases",
+                         help="Every checkpoint's basis, basis_n{N}.npz.")
+    p_basis.add_argument("--checkpoints", nargs="+", default=["all"],
+                         help="Corpus sizes to fit at ('all' = the whole corpus).")
     p_basis.add_argument("--k", type=int, default=256, help="Components kept per basis.")
     p_basis.add_argument("--trs-per-subject", type=int, default=48)
-    p_basis.add_argument("--max-subjects", type=int, default=None)
     p_basis.set_defaults(func=cmd_fit_basis)
 
     p_eval = sub.add_parser("evaluate", parents=[common],

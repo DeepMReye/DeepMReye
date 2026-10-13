@@ -21,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepmreye import qa_classifier as qac
-from deepmreye.storage import iter_subjects, subject_path
+from deepmreye.storage import iter_subjects
 
 
 def train_and_save_classifier(data_dir, registry=None, out_path=None, manual_only=True):
@@ -108,7 +108,6 @@ def main():
 
     model = res["model"]
     keys = res["keys"]
-    scores = res.get("cv_mean")
 
     order = np.argsort(model.feature_importances_)[::-1]
     print("\nFeature importance:")
@@ -128,7 +127,7 @@ def main():
         return
 
     print(f"\nScoring {len(todo)} unlabeled subjects...")
-    from deepmreye.pipeline import APPROVED_LABELS
+    from deepmreye.labels import APPROVED_LABELS
     classes = list(model.classes_)
     eye_idx = [i for i, c in enumerate(classes) if int(c) in APPROVED_LABELS]
 

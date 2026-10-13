@@ -26,7 +26,6 @@ import argparse
 import json
 import re
 import sys
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -239,7 +238,7 @@ def main():
                if d not in KNOWN and r.get("readable") is not False
                and set(r["format"]) == {"edf"}]
     if blocked:
-        print(f"\n[*] blocked on an EDF reader (edf2asc / eyelinkio / pyedfread): "
+        print("\n[*] blocked on an EDF reader (edf2asc / eyelinkio / pyedfread): "
               + ", ".join(sorted(blocked)))
     denied = [d for d, r in hits.items() if r.get("readable") is False]
     if denied:
@@ -249,8 +248,8 @@ def main():
                 if d not in KNOWN and r.get("readable") is not False
                 and "func" not in r["where"]]
     if beh_only:
-        print(f"[*] gaze is not under /func/, so check it is simultaneous with "
-              f"the scan before ingesting: " + ", ".join(sorted(beh_only)))
+        print("[*] gaze is not under /func/, so check it is simultaneous with "
+              "the scan before ingesting: " + ", ".join(sorted(beh_only)))
     errs = {d: r["error"] for d, r in rows.items() if "error" in r}
     if errs:
         print(f"\n[!] {len(errs)} accessions failed to list: "

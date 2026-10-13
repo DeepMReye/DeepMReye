@@ -57,7 +57,6 @@ def predict_for(dataset, subjects):
     """Return ({subject: label}, {subject: confidence}) for a dataset's subjects."""
     if _MODEL is None:
         return {}, {}
-    import numpy as np
     from deepmreye.qa_classifier import features_from_file
     from deepmreye.storage import subject_path
 

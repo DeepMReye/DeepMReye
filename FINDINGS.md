@@ -11,6 +11,70 @@ Everything below is leave-one-dataset-out over 337 gaze-labeled participants in
 
 ---
 
+## The corpus was refitted on 6 October 2026
+
+**What changed.** The unlabelled corpus is now every eligible participant:
+`unsupervised.corpus_subjects`, **2,060 participants from 652 datasets**
+(98,880 volumes at 48 per participant), against a random 2,000 of the 2,064
+eligible (649 datasets) before. Four of those 2,064 were **evaluation
+participants under another name** (`ds006833` sub-01/02 = `dsL07`, `ds006642`
+sub-01/02 = `dsL11`, found by a decoded-trace correlation of 0.997), and all
+four had been drawn; `unsupervised.EVALUATION_SOURCES` now excludes those
+accessions and `ds000113`. Eligibility is unchanged: fully covered eye mask,
+at least 32 volumes, no gaze labels. The QA labels gate downloads, as before,
+not the corpus: 53 corpus datasets (73 participants) carry a failing QA label.
+
+**The corpus-size axis now has draws.** Below the full corpus there are many
+ways to pick N participants, so each of N = 10, 100, 200, 400, 800 and 1,600 is
+fitted on **20 independent random draws** (seed 0 is the nested main sweep in
+`results/corpus_bases/`, seeds 1-19 are in `results/corpus_bases/draws/`) and
+scored by `--stages scaling-draws` -> `scaling_draws.json`. Intervals below are
+the central 95% of draws -- which participants are drawn, not which labelled
+participants are scored. At N = 1,600 the draws share most of their
+participants, so that interval is narrow by construction.
+
+**What it did to the numbers: nothing outside the noise floor at the full
+corpus.** Every stage of `scripts/analysis_unlabeled.py` was rerun
+(`results/corpus_bases/`; the previous corpus is archived as
+`results/archive/2026-10-05_*_v1`). Sections marked *(2,060)* below carry the
+new numbers. The other sections quote the 2,000 draw: the closed experiments
+of "Trying to beat `lr-cca`" were not rerun, since a 0.001 shift in the
+headline cannot move a verdict that rests on a 0.02 floor, and the rerun
+stages they cite (`budget`, `transfer`, `gap`, `overlap`, `fewshot`, `priors`,
+`participants`) moved by at most 0.004 -- the table above has the ones the
+paper uses.
+
+| measurement (sub-TR median unless noted) | 2,000 draw | **all 2,060** |
+|---|---|---|
+| `lr-cca:32+lags1`, median / 1-TR / mean over datasets | 0.770 / 0.838 / 0.721 | **0.771 / 0.835 / 0.721** |
+| `lr-cca:32`, no temporal context | 0.741 | 0.741 |
+| `lr-cca:32+lags1` at N = 10 / 100 / 400, mean of 20 draws [95%] | -- | 0.647 [0.567, 0.712] / 0.635 [0.543, 0.703] / 0.744 [0.717, 0.757] |
+| gain to the full corpus from N = 10 (mean of draws) | +0.154 from N = 25, one draw | **+0.124**, 9/9 folds (+0.10 to +0.17) |
+| `corpus-pca:64+lags1`, N = 10 / 100 / full | 0.724 (N = 25) / -- / 0.754 | 0.732 / 0.751 / 0.754 (flat from 100) |
+| corpus size at which `lr-cca` passes the same ridge on voxels | ~500 | **~450** (mean of draws) |
+| lead over that ridge (2x2x2 voxels, 0.747, corpus-free), mean over datasets | +0.035 [0.021, 0.065] | **+0.035 [0.020, 0.064]**, 8/9 datasets |
+| the same at 1-TR (against 0.784) | -- | +0.038 [0.018, 0.068], 9/9 datasets |
+| lead with one labelled dataset (mean) | +0.097 to +0.11 | **+0.104** [99% CI 0.081, 0.127], every one of 20 draws |
+| ... with 2 / 4 / 6 / 8 labelled datasets | -- | +0.069 / +0.051 / +0.037 / +0.033, every draw |
+| lead over a PCA of the labelled scans with 1 / 2 / 8 labelled datasets | +0.05 / +0.05 / 0 | +0.055 / +0.044 / +0.001 |
+| matched rank k = 32: `lr-cca` / whole-mask PCA | 0.770 / 0.744 | 0.771 / 0.743 |
+| readout fitted inside the dataset | 0.830 | 0.831 |
+| orbit agreement: AUROC for the worst fifth / keep 80% / oracle | 0.93 / 0.802 / 0.804 | 0.94 / 0.802 / 0.804 |
+| on the 80% most reliable: lead over the same ridge | -- | +0.034 |
+| consensus prior, mean over datasets | 0.721 -> 0.742 | 0.721 -> 0.742 |
+| a new study's own K labelled participants (ridge on ours) at K = 1 / 2 / 4 | 0.682 / 0.728 / 0.789 | 0.680 / 0.726 / 0.785 |
+| the published CNN, mean over the three datasets acquired after it | 0.483 against 0.566 | 0.483 against 0.567 |
+
+`probe.CALIBRATION` is now 0.7412 / 0.7712 (2,000 draw: 0.7408 / 0.7703).
+
+A QA-gated corpus (1,865 participants of the 570 datasets passing QA, with the
+auto-labeller's labels dropped) was fitted and fully analysed the night
+before, by mistake -- the request was to remove the four evaluation
+participants only. It read 0.773 / 0.832 / 0.721, the same within the floor,
+and is archived as `results/archive/2026-10-06_*_qa_gated`.
+
+---
+
 ## The one number that explains almost everything
 
 **Gaze is *linearly* accessible from these features.** The readout is linear, so
@@ -88,45 +152,70 @@ Both were regression-tested before the network was deleted.
 
 **The corpus basis works, and the reason is not what we first wrote down.**
 
-Re-measured on the current nine-fold protocol (`scripts/analysis_unlabeled.py`,
-sub-TR, the shipped `lr-cca:32 + lags1` arm) over the eleven bases in
-`results/scaling/`. The earlier table here was seven folds and a different k, so
-quote these:
+*(2,060)* Re-measured on the nine-fold protocol (`scripts/analysis_unlabeled.py
+--stages scaling,scaling-draws,transfer`, sub-TR median over datasets, the
+shipped `lr-cca:32 + lags1` arm). Each size below the full corpus is the mean
+of **20 random draws** of that many participants, with the central 95% of
+draws in brackets; the full corpus is one fit:
 
-| unlabeled participants | 25 | 100 | 200 | 400 | 800 | 1039 | 2000 |
+| unlabeled participants | 10 | 100 | 200 | 400 | 800 | 1,600 | 2,060 |
 |---|---|---|---|---|---|---|---|
-| `lr-cca:32+lags1` | 0.616 | 0.672 | 0.669 | 0.739 | 0.761 | 0.766 | **0.770** |
-| `corpus-pca:64` | 0.714 | 0.726 | 0.737 | 0.743 | 0.739 | 0.745 | 0.746 |
-| `gev-slow:64` (control) | 0.580 | 0.339 | 0.263 | 0.274 | 0.248 | 0.160 | 0.272 |
+| `lr-cca:32+lags1` | 0.647 [0.567, 0.712] | 0.635 [0.543, 0.703] | 0.701 [0.629, 0.739] | 0.744 [0.717, 0.757] | 0.760 [0.752, 0.766] | 0.767 [0.763, 0.771] | **0.771** |
+| ... at 1-TR | 0.676 [0.602, 0.739] | 0.666 [0.568, 0.748] | 0.743 [0.665, 0.786] | 0.790 [0.778, 0.812] | 0.810 [0.797, 0.829] | 0.827 [0.813, 0.837] | **0.835** |
+| `corpus-pca:64+lags1` | 0.732 [0.694, 0.753] | 0.751 [0.741, 0.760] | 0.754 [0.748, 0.762] | 0.753 [0.750, 0.757] | 0.754 [0.751, 0.758] | 0.753 [0.749, 0.757] | 0.754 |
+| `corpus-pca:64` (seed 0 only) | 0.723 | 0.736 | 0.741 | 0.740 | 0.744 | 0.745 | 0.746 |
+| datasets in the seed-0 draw | 10 | 86 | 162 | 287 | 453 | 608 | 652 |
+
+The 2,000 draw (one nested draw, sizes 25-2000): `lr-cca:32+lags1` 0.616 at 25
+to 0.770, `corpus-pca:64` 0.714 to 0.746, and the `gev-slow:64` control -- the
+same accumulators selected for slow drift -- fell from 0.580 to 0.272.
+`gev-slow` needs a temporal-difference accumulator the package no longer builds
+and was not refitted. The QA-gated corpus of 6 October (one draw) had read
+0.602 at 25 and 0.554 at 100 -- single draws at small N sit anywhere in the
+intervals above.
 
 With no corpus at all: `raw+lags1` **0.729**, `fold-pca:64+lags1` **0.766** --
-the supervised reference, fitted on the labeled data itself and given 200 TRs
+the no-corpus reference, a PCA fitted on the labeled scans themselves (its basis
+sees no labels; the supervised voxel decoders are under "What the corpus buys")
+and given 200 TRs
 per participant against the corpus bases' 48, so that it cannot lose on TR
-budget. The sweep reproduces `probe.CALIBRATION` exactly at N=2000 (0.7703 and
-0.7408), so it is the shipped number rather than a second implementation of it.
+budget. The sweep reproduces `probe.CALIBRATION` exactly at the full corpus
+(0.7712 and 0.7412), so it is the shipped number rather than a second
+implementation of it.
 
 **The two bases scale completely differently, and that is the finding.**
-`corpus-pca` is ordinary variance and gains **+0.03** across an 80-fold increase
-in corpus size -- it barely needs the data. `lr-cca` gains **+0.154**, and
-*loses to plain variance PCA below about N=400*: it is a cross-covariance
-between two ~7100-voxel spaces, so it has vastly more to estimate, and it only
-becomes the best arm once the corpus is large. State the corollary plainly --
-with 200 unlabeled participants you would have shipped `corpus-pca` and had no
+`corpus-pca` is ordinary variance and, with the same +-1 TR of context, is at
+its level by 100 participants (0.751) and gains nothing after (0.754 at 2,060);
+even 10 participants give it 0.732 -- it does not need the data. `lr-cca`
+gains **+0.124** from 10 participants and **+0.136** from 100, and *loses to
+variance PCA below about N = 600*: it is a cross-covariance between two
+~7100-voxel spaces, so it has vastly more to estimate, and it only becomes the
+best arm once the corpus is large. State the corollary plainly -- with 200
+unlabeled participants you would have shipped `corpus-pca` and had no
 bilateral mechanism to describe.
 
-**It is not one fold.** All **9 of 9** held-out datasets improve from N=25 to
-N=2000, by +0.117 to +0.181 against a 0.02 noise floor, across fixation,
-pursuit, free viewing and movie paradigms alike. That agreement is what stands
-in for an error bar, because the sweep is **incremental over a single shuffled
-participant order** -- one draw, not a mean over draws.
+**Small corpora are a lottery.** At N = 10 and 100 the 95% range of draws is
+0.14-0.16 wide (0.543 to 0.703 at 100): which participants a small corpus
+holds matters more than how many it holds, and the mean is not even monotone
+between 10 and 100 (0.647, 0.635; the ranges overlap almost entirely). From
+400 the range is under 0.04 and from 800 under 0.015. A single nested sweep,
+which is all this file had before, can put N = 25 or 100 anywhere in that
+range.
 
-**And the control moves the other way.** `gev-slow` comes out of the same
-accumulators at the same rank and *degrades by about 0.31* over identical data.
+**It is not one fold.** All **9 of 9** held-out datasets improve from N = 10
+(mean of draws) to the full corpus, by +0.10 to +0.17, and from N = 100 by
++0.08 to +0.19, against a 0.02 noise floor, across fixation, pursuit, free
+viewing and movie paradigms alike.
 
-Then `lr-cca` **saturates**: 800 to 2000 is worth +0.009, inside the noise floor.
+**And the control moves the other way** (2,000 draw). `gev-slow` came out of
+the same accumulators at the same rank and *degraded by about 0.31* over
+identical data.
+
+Then `lr-cca` **saturates**: 800 to 2,060 is worth +0.011 (2,000 draw, 800 to
+2,000: +0.009), inside the noise floor.
 
 One confound to state rather than hide: participants, TRs and OpenNeuro
-accessions all grow together (24 accessions at N=25, 655 at N=2000), so the axis
+accessions all grow together (10 accessions at N=10, 652 at N=2,060), so the axis
 is "more unlabeled data", not "more studies" specifically. An older matched-N
 comparison of one-vs-two participants per accession found no consistent
 advantage for accession count, which is weak evidence that sample size rather
@@ -145,7 +234,7 @@ draws, sub-TR:
 | labeled participants per study | 1 | 2 | 4 | 8 | 16 | all |
 |---|---|---|---|---|---|---|
 | `lr-cca:32+lags1` @ N=2000 | **0.695** | 0.727 | 0.764 | 0.766 | 0.773 | 0.770 |
-| `fold-pca:64+lags1` (supervised) | 0.707 | 0.732 | 0.754 | 0.754 | 0.754 | 0.766 |
+| `fold-pca:64+lags1` (no corpus) | 0.707 | 0.732 | 0.754 | 0.754 | 0.754 | 0.766 |
 | `raw+lags0` (stride-4 voxels) | 0.575 | 0.631 | 0.657 | 0.677 | **0.700** | 0.700 |
 | `lr-cca:32` @ N=25 | 0.517 | 0.571 | 0.590 | 0.594 | 0.604 | 0.598 |
 
@@ -161,9 +250,9 @@ catches up -- more labels cannot repair an under-estimated basis. This is the
 budget-axis form of the crossover above.
 
 **What does *not* survive: the corpus basis does not beat the fold-local
-supervised one at low budget.** They are within 0.012 at B=1 and the ordering
+PCA at a low participant budget.** They are within 0.012 at B=1 and the ordering
 flips across participant draws. The corpus does not rescue a labeled-data
-shortage relative to a *supervised* basis -- it removes the need for target-study
+shortage relative to a basis fitted on the labelled scans -- it removes the need for target-study
 data, which is a deployment claim, not an accuracy one. Do not state it as the
 latter.
 
@@ -177,6 +266,68 @@ to recombine; a well-estimated basis is compact. Retune k if the corpus changes.
 **0.825** / 0.808 at k = 8 / 16 / 24 / 32 / 48. A cliff of **+0.280 between
 k=16 and k=24** -- below about 24 canonical variates the projection cannot span
 gaze at all. Do not economise here.
+
+### Datasets or participants, at a matched total *(2,060)*
+
+`--stages spread` -> `label_spread.json`. The two labelled budgets above move
+the total with the axis (B participants from each of 8 datasets; all
+participants of m datasets), so neither says which buys more. Here the total
+is fixed: the readout trains on T = 8, 16 or 32 labelled participants drawn
+from m = 1, 2, 4 or 8 of the other datasets (T / m from each, only datasets
+with that many can be drawn), ten draws per cell, every fold scored on its
+whole held-out dataset. Mean over datasets, sub-TR, mean of draws [99% CI]:
+
+| T | from 1 dataset | 2 | 4 | 8 |
+|---|---|---|---|---|
+| ours, 8 | 0.585 [0.517, 0.653] | 0.609 | 0.648 | **0.664** [0.646, 0.682] |
+| ours, 16 | 0.648 | 0.663 | 0.665 | 0.684 |
+| ours, 32 | 0.633 [0.606, 0.660] | 0.684 | 0.688 | **0.696** [0.684, 0.708] |
+| same ridge on voxels (3x3x3), 8 | 0.512 | 0.537 | 0.576 | 0.599 |
+| same ridge on voxels, 16 | 0.570 | 0.590 | 0.604 | 0.633 |
+| same ridge on voxels, 32 | 0.569 | 0.634 | 0.632 | 0.646 |
+
+- **Spreading the same labels over more datasets helps, for every decoder.**
+  1 -> 8 datasets is worth +0.04 to +0.08 at a fixed total; per doubling of
+  datasets +0.020 (ours) and +0.025 (supervised). **8 participants from 8
+  datasets beat 32 from one** (0.664 against 0.633; supervised 0.599 against
+  0.569).
+- **But doubling the participants from the same datasets helps about as much
+  in this range** (+0.025 and +0.032 per doubling, T = 8 -> 32). Read with the
+  budget sweep above, participants per dataset stop paying at about four
+  (B = 4: 0.712 on the mean, all: 0.721), datasets have not stopped at eight.
+- Ours leads supervision in every cell, by +0.04 to +0.08.
+- Caveats: one dataset is a lottery (the 99% CI at T = 8 is 0.14 wide: it
+  depends which dataset is drawn), and at T = 32 only `dsL01`, `dsL04` and
+  `dsL11` have 32 participants. The training volumes are not matched (runs
+  differ in length): T = 32 trains on 43k volumes from one dataset against
+  55k from eight, T = 8 on 11k against 14k, T = 16 on 34k against 27k -- so
+  at 16 the spread wins on fewer volumes.
+
+The paper's Fig. c.
+
+### Every supervised decoder at every labelled-dataset budget *(2,060)*
+
+`--stages datasets-voxels` now runs every supervised decoder below eight
+datasets too (the same ridge on 20 draws, the lag-0 ridges on 4, PLS and the
+MLP on 2 -- they cost ~10 min a fold set). The draw of datasets moves the score
+far more than the decoder does (the same ridge spans 0.43-0.52 at one dataset
+across draws), so a decoder run on 2 draws must be compared **paired**, on the
+draws it shares with the ridge, never by its raw mean: PLS's raw mean at one
+dataset is 0.536 against the ridge's 0.476, but on the same two draws it is
+-0.003. Mean over datasets, paired difference from the same ridge (3x3x3,
++-1 TR):
+
+| decoder | 1 | 2 | 4 | 6 | 8 |
+|---|---|---|---|---|---|
+| PLS-64 then ridge | -0.003 | +0.008 | +0.009 | +0.007 | +0.005 |
+| ridge, no context (3x3x3 / 2x2x2) | -0.001 / -0.006 | -0.009 / -0.007 | -0.010 / -0.019 | -0.009 / -0.013 | -0.015 / -0.014 |
+| MLP | -0.066 | -0.025 | -0.009 | -0.015 | -0.008 |
+| ridge on 2x2x2, +-1 TR | | | | | -0.001 |
+
+PLS is the best supervised decoder from two datasets on, by under 0.01; the
+lead of the frozen basis over the *best* supervised decoder is therefore
++0.10 at one dataset and +0.03 at eight, as against the same ridge. Fig. b
+draws the others in grey at the ridge's curve plus their paired difference.
 
 ### Why a bigger corpus stops helping
 
@@ -244,7 +395,7 @@ Sub-TR, on the folds v1 has not seen:
 | arm | dsL07 | dsL08 | dsL11 | dsL06 | median |
 |---|---|---|---|---|---|
 | **`lr-cca:32+lags1` @ N=2000** | **0.744** | **0.283** | **0.671** | **0.673** | **0.671** |
-| `fold-pca:64+lags1` (supervised) | 0.766 | 0.195 | 0.666 | 0.737 | 0.666 |
+| `fold-pca:64+lags1` (no corpus) | 0.766 | 0.195 | 0.666 | 0.737 | 0.666 |
 | `corpus-pca:64` @ N=2000 | 0.718 | 0.179 | 0.653 | 0.642 | 0.653 |
 | **DeepMReye 1.0** | 0.728 | 0.097 | 0.625 | 0.485* | 0.625 |
 | `raw+lags1` | 0.711 | 0.127 | 0.598 | 0.704 | 0.598 |
@@ -276,6 +427,26 @@ fitted on the other eight labeled datasets, which includes v1's six *plus*
 `dsL07`/`dsL11` when they are not the held-out one. Neither method saw the
 held-out fold, but the supervised material is not identical -- we had two
 acquisitions available that did not exist when v1 was published.
+
+**Every metric, against selected supervised decoders** *(2,060)* (`--stages
+against-dme1` -> `dme1_table.json`; the paper's Table 1). Mean over the three
+datasets the shipped CNN never saw; sub-TR unless marked; R2 and median
+Euclidean error (degrees) calibrated on each dataset's other participants:
+
+| | r | r_x | r_y | R2 | error | r, 1-TR | r, all nine |
+|---|---|---|---|---|---|---|---|
+| DeepMReye 1.0 | 0.483 | 0.502 | 0.450 | 0.27 | 2.96 | 0.581 | -- |
+| ridge on voxels (3x3x3, +-1 TR) | 0.517 | 0.568 | 0.445 | 0.27 | 3.00 | 0.615 | 0.687 |
+| ridge on voxels, no context | 0.506 | 0.548 | 0.431 | 0.26 | 3.05 | 0.624 | 0.672 |
+| PLS-64 on voxels | 0.519 | 0.561 | 0.444 | 0.28 | 2.98 | 0.618 | 0.692 |
+| MLP on voxels | 0.517 | 0.551 | 0.439 | 0.25 | 3.01 | 0.617 | 0.680 |
+| **ours** | **0.567** | **0.651** | **0.499** | **0.30** | **2.88** | **0.677** | **0.721** |
+
+The supervised decoders sit between the CNN and ours on r; the calibrated
+error barely separates anyone (2.9-3.0 degrees), because the per-dataset
+affine absorbs most of what the CNN gets wrong (its gain). Ours leads on each
+of the three datasets on r and on error except `dsL07`, where its error is
+2.92 against the CNN's 2.86.
 
 ### Running the shipped weights on all nine folds: measured, and it does not help us
 
@@ -335,6 +506,10 @@ Both are properties of the **acquisition**, not of the decoder, and both were
 mistaken for modelling problems first.
 
 ### Temporal resolution sets the score
+
+*Revised by "What the corpus buys, and where the rest is lost": these are LODO
+scores, and a readout fitted inside the dataset exceeds the envelope on several
+cells. Read it as a description of what transfers, not of what is decodable.*
 
 Over the 12 (dataset, axis) cells, the *gaze trace's* lag-1 autocorrelation
 predicts the decoded correlation at **Spearman rho = +0.797, p = 0.002**.
@@ -522,12 +697,14 @@ it is not.
 ### Reproducing any of it
 
 `results/` is **gitignored**, so this file is the record, not the JSON. Every
-number above is regenerable, and the two caches are what make that cheap:
+number above is regenerable, and the two caches are what make that cheap. The
+rows were measured on the 2,000 draw (`--n 2000` of the old shuffle); rerun
+now, the same commands use all 2,060 participants.
 
 | step | command | writes |
 |---|---|---|
-| corpus moments (2.2 min) | `fit_lrcca_variants.py --n 2000` | second moment + group means |
-| lag-1 cross moment (2.5 min) | `fit_lrcca_variants.py --n 2000 --lag1` | for rows 4 and 15 |
+| corpus moments (2.2 min) | `fit_lrcca_variants.py` | second moment + group means |
+| lag-1 cross moment (2.5 min) | `fit_lrcca_variants.py --lag1 --out results/lrcca_variants/lag1.npz` | for rows 4 and 15 |
 | labelled voxel memmap (2.2 min, 22 GB) | `build_labeled_voxels.py --out <dir>` | every arm is then a matmul |
 | corpus PC timeseries (2.5 min) | `corpus_pc_timeseries.py` | 96k x 512; needed for row 7 |
 | rows 1-8 | `improve_lrcca.py --arms shrink,reduce,within,mirror,sign,whiten,random,fast,combine` | `sweep*.json` |
@@ -658,11 +835,18 @@ and it has to be scored that way.
 | cross-orbit correlation (`lr-cca`) | **0.7692** | **0.8379** |
 | ICA, ranked by \|excess kurtosis\| | 0.7596 | 0.8175 |
 | dictionary learning (atoms as a projection) | 0.7530 | 0.8041 |
-| leading variance (`corpus-pca` restricted) | 0.6922 | 0.7325 |
+| leading variance, 16 per orbit | 0.6984 | 0.7359 |
 | **random orthogonal** | **0.3938** | **0.3956** |
 
+*(The variance row is variance per orbit, which spends half its rank on the
+second copy of what the first orbit already has. It read 0.6922 when the 32
+were the left orbit alone; balanced it is 0.6984. A PCA over both orbits at
+rank 32 reads **0.744 / 0.811** -- "Why the two bases tie inside a study" below
+-- and that is the number to quote as variance at matched rank.)*
+
 Two things to keep. **Non-Gaussianity is a real criterion** -- ICA beats
-variance by +0.067 at matched rank, which is not nothing -- **and it still loses
+per-orbit variance by +0.061 at matched rank, and whole-mask variance by 0.016
+-- **and it still loses
 to bilateral agreement by 0.010.** And the random-projection floor says what the
 criterion is worth at all: **+0.375 over a random subspace of identical rank**.
 That is the control `CLAUDE.md` asks for, for the shipped arm, and it had never
@@ -957,45 +1141,869 @@ case does not need it.
 
 ---
 
+## What the corpus buys, and where the rest is lost
+
+`scripts/analysis_unlabeled.py --stages transfer,gap,datasets`, all through
+`probe.lodo`: `split=` trains the readout on the other eight datasets (`lodo`,
+the protocol), on all nine (`pooled`) or inside the held-out dataset
+(`within`); `readout=` swaps the ridge; `train_filter=` sets the labelled
+budget. Same features, same scoring, so a difference between columns is the
+cost of transfer and nothing else. `calibrate` still reads 0.7408 / 0.7703.
+
+### The corpus-size curve is a transferability curve
+
+Both arms with +-1 TR of context, sub-TR:
+
+| N unlabelled | 25 | 100 | 400 | 800 | 2000 |
+|---|---|---|---|---|---|
+| `lr-cca:32+lags1`, within | 0.707 | 0.736 | 0.806 | 0.825 | 0.830 |
+| `corpus-pca:64+lags1`, within | **0.804** | 0.814 | 0.824 | 0.826 | 0.829 |
+| `lr-cca:32+lags1`, LODO | 0.616 | 0.672 | 0.739 | 0.761 | **0.770** |
+| `corpus-pca:64+lags1`, LODO | 0.724 | 0.745 | 0.754 | 0.756 | 0.754 |
+
+**Every linear basis converges on the same ~0.83 of decodable gaze**, and
+variance PCA holds 0.80 of it at 25 participants. The corpus does not add
+content; it lets the bilateral criterion be estimated, and what that buys is a
+basis half the size that transfers slightly better.
+
+**The margin over variance PCA is smaller than the scaling table above
+states, and this corrects it.** That table sets `lr-cca:32+lags1` against
+`corpus-pca:64` *without* lags. With the same context on both, N = 2000 reads
+0.770 against 0.754 sub-TR, 0.837 against 0.823 at 1-TR and 0.721 against 0.706
+on the fold mean: **+0.016, inside the noise floor**, carried by `dsL08`
+(+0.10) and `dsL02` (+0.04), and the crossover is between N = 400 and 800
+rather than at 400. What survives undiminished: the gain with corpus size
+(+0.154 against +0.030), and the matched-*rank* comparison, which is
+0.770 against 0.744 for a whole-mask PCA at k = 32 (fold mean 0.721 against
+0.672) -- not the 0.692 quoted until 30 September, which was variance inside
+one orbit. State the advantage as compactness and scaling, not as a win over
+variance at its own best rank.
+
+### The headroom is in the readout map, not the representation
+
+The shipped arm, sub-TR / 1-TR:
+
+| readout | within dataset | pooled, all nine | LODO |
+|---|---|---|---|
+| ridge | **0.830** / 0.866 | 0.778 / 0.839 | 0.770 / 0.838 |
+| MLP (256, 256), early-stopped on held-out participants | 0.815 / 0.860 | **0.791** / 0.835 | 0.761 / 0.802 |
+
+- **The features already carry 0.830.** `dsL06` reads 0.853 within against
+  0.673 across, `dsL01` 0.845 against 0.770. This revises the temporal-envelope
+  reading above, which was drawn from LODO scores only: several cells sit well
+  above it once the readout is fitted inside the dataset.
+- **No non-linear gaze information.** Where transfer cannot confound it, the
+  MLP does not beat ridge. This is the supervised non-linear ceiling measured
+  cleanly, and it is what closes the encoder programme at the root.
+- **The feature->gaze map differs between acquisitions.** One ridge on all nine
+  reaches 0.778 although 40% of its rows are `dsL01`, which it scores at 0.778
+  against 0.845 within. The MLP given the same nine reaches 0.791 (`dsL06`
+  0.791 against ridge's 0.681) by inferring the acquisition from the features;
+  under LODO the acquisition is unseen and it falls below ridge.
+
+### Labelled datasets are the axis still rising
+
+Random subsets of the eight training datasets per fold, four draws, every fold
+scored whole (`lr-cca:32+lags1`):
+
+| labelled datasets | 1 | 2 | 4 | 6 | 8 |
+|---|---|---|---|---|---|
+| sub-TR median | 0.568 | 0.729 | 0.751 | 0.751 | **0.770** |
+| 1-TR median | 0.654 | 0.773 | 0.808 | 0.827 | **0.837** |
+| fold mean | 0.584 | 0.661 | 0.707 | 0.711 | **0.721** |
+
+Decelerating but not flat: +0.014 to +0.029 from four datasets to eight,
+against a corpus axis that stopped moving at N = 800. `corpus-pca:64+lags1`
+matches `lr-cca` on the median from four datasets up and trails it on the fold
+mean throughout (0.549 / 0.632 / 0.693 / 0.697 / 0.706), by 0.03 at one or two
+datasets -- which is where a compact basis earns its keep.
+
+**Against decoders that see only labelled participants, this is where the
+corpus wins.** Two kinds of control, same draws, no unlabelled scan anywhere:
+
+- **Supervised** (`--stages datasets-voxels`): voxels in, gaze out, no basis
+  step. A ridge on every eye voxel (3x3x3 block means, 709 columns, +-1 TR) at
+  every budget, solved by `ridge_by_covariance` -- the protocol's `RidgeCV`
+  from `X'X`, identical to 1e-13. With all eight datasets also a PLS basis
+  chosen *with* the gaze (64 components, then the ridge) and an MLP (256, 256)
+  early-stopped on held-out participants.
+- **Unsupervised step on labelled scans only** (`--stages
+  datasets-supervised`): a PCA of the scans of exactly the datasets the readout
+  may train on, then the ridge (`fold-pca:64+lags1`; at eight it reproduces the
+  0.7658 / 0.8308 / 0.7194 of `foldpca_full.json`). Its basis uses no labels,
+  so it is a no-corpus reference, not a supervised method.
+
+Fold mean, sub-TR, mean over draws:
+
+| labelled datasets | 1 | 2 | 4 | 6 | 8 |
+|---|---|---|---|---|---|
+| `lr-cca:32+lags1` @ N=2000 | **0.584** | **0.661** | **0.707** | **0.711** | **0.721** |
+| PCA of the labelled scans (`fold-pca`) | 0.532 | 0.616 | 0.689 | 0.705 | 0.719 |
+| supervised: ridge on voxels | 0.477 | 0.598 | 0.656 | 0.672 | 0.687 |
+| supervised: PLS-64 on voxels | | | | | 0.692 |
+| supervised: MLP on voxels | | | | | 0.680 |
+| `lr-cca` minus supervised ridge, every draw | +0.08 to +0.17 | +0.04 to +0.09 | +0.04 to +0.06 | +0.039 | +0.034 |
+
+With all eight datasets the medians are 0.770 / 0.837 against 0.741 / 0.788
+(ridge), 0.752 / 0.792 (PLS), 0.739 / 0.771 (MLP) and 0.766 / 0.831 (PCA of
+the labelled scans). `lr-cca` beats the supervised ridge in every draw at every
+budget, on the fold mean, the median and 1-TR alike, and in 8 or 9 of 9 folds
+in 16 of 17 draws (7 of 9 in the other). The resolution is not what holds the voxel arms back: at
+lag 0, 2x2x2 and 3x3x3 block means read 0.673 and 0.672 on the fold mean.
+
+**At 1-TR the best supervised decoder is the lag-0 ridge, and the margin is
+small** (noticed 5 October, from the same `label_datasets_voxels.json`). The
+supervised medians at all eight datasets, sub-TR / 1-TR: ridge 3x3x3 lag 0
+0.722 / **0.823**, ridge 2x2x2 lag 0 0.740 / 0.806, ridge 3x3x3 +-1 TR
+0.741 / 0.788, ridge 2x2x2 +-1 TR 0.747 / 0.784, PLS 0.752 / 0.792, MLP
+0.739 / 0.771. Best of the supervised family at each resolution: **0.752
+sub-TR (PLS), 0.823 at 1-TR (lag-0 ridge)**, against `lr-cca`'s 0.771 / 0.835
+on the 2,060 corpus: +0.019 and +0.012, inside the noise floor at 1-TR, and the
+corpus curve (mean of 20 draws) only crosses the 1-TR line at N ~ 1,350
+(sub-TR, against the same ridge: ~450). The PCA of the same corpus reads
+0.754 / 0.822 -- level with the best supervised decoder at both. Every
+"0.838 against 0.784" quoted before this date compares against the +-1 TR
+ridge, which is not supervision's best at 1-TR.
+
+**Every base with every readout** *(2,060)* (`--stages readout-grid` ->
+`readout_grid.json`). One protocol, all eight other datasets,
+leave-one-dataset-out; sub-TR median (mean) / 1-TR median:
+
+| readout | ours, `lr-cca:32` @ 2060 | corpus PCA:64 @ 2060 | voxels 3x3x3 | voxels 2x2x2 |
+|---|---|---|---|---|
+| ridge, +-1 TR (the protocol) | **0.771** (0.721) / 0.835 | 0.754 (0.705) / 0.822 | 0.741 (0.687) / 0.788 | 0.747 (0.686) / 0.784 |
+| ridge, no context | 0.741 (0.700) / **0.838** | 0.746 (0.683) / 0.820 | 0.722 (0.672) / 0.823 | 0.740 (0.673) / 0.806 |
+| ridge, +-2 TR | 0.761 (0.716) / 0.827 | 0.760 (0.703) / 0.823 | 0.737 (0.687) / 0.779 | not run (memory) |
+| least squares, +-1 TR | 0.771 (0.721) / 0.835 | 0.754 (0.705) / 0.822 | 0.739 (0.686) / 0.785 | 0.744 (0.681) / 0.777 |
+| PLS-64 then ridge, +-1 TR | 0.771 (0.721) / 0.835 | 0.754 (0.705) / 0.822 | 0.752 (0.692) / 0.792 | not run (memory) |
+| MLP, +-1 TR | 0.765 (0.694) / 0.790 | 0.752 (0.675) / 0.781 | 0.739 (0.680) / 0.771 | not run (memory) |
+| **best readout** | **0.771 (0.721) / 0.838** | 0.760 (0.705) / 0.823 | 0.752 (0.692) / 0.823 | 0.747 (0.686) / 0.806 |
+
+The frozen basis is the best base under its best readout at every statistic.
+Under the same readout it leads every other base in 6 of 6 rows on the mean and
+at 1-TR, and in 5 of 6 on the sub-TR median, where it trails corpus PCA by
+0.005 with no context (and ties it, +0.001, at +-2 TR). PLS is the ridge again
+on the 32- and 64-dimensional bases (it keeps every direction); the MLP is
+below the ridge on every base. At 1-TR the best readout for the frozen basis
+and for voxels is the one without context. (The 2,000 draw: 0.770 / 0.721 /
+0.838 for ours; the voxel columns do not depend on the corpus.)
+
+**The penalty does nothing for anyone** (v1; the `readouts` stage it came from
+is now the least-squares row of the grid above). Every arm with the protocol's
+ridge and with plain least squares (no penalty), all eight other datasets,
+sub-TR / 1-TR:
+
+| arm | ridge | least squares |
+|---|---|---|
+| `lr-cca:32+lags1` @ N=2000 | 0.770 / 0.838 | 0.770 / 0.838 |
+| `corpus-pca:64+lags1` @ N=2000 | 0.754 / 0.823 | 0.754 / 0.823 |
+| voxels 3x3x3 +-1 TR | 0.741 / 0.788 | 0.739 / 0.785 |
+| voxels 3x3x3 lag 0 | 0.722 / 0.823 | 0.722 / 0.822 |
+| voxels 2x2x2 lag 0 | 0.740 / 0.806 | 0.735 / 0.799 |
+
+With ~400,000 training rows and at most ~1,900 voxel columns, least squares is
+well determined and the leave-one-row-out penalty is near zero anyway. So an
+unpenalised supervised decoder is not a weaker baseline here (-0.005 at most),
+and what holds supervision back across datasets is the map's transfer, not its
+estimation.
+
+Read in three steps:
+
+1. **A low-rank basis beats decoding the voxels directly, and by more the
+   fewer labelled datasets there are** (+0.03 at eight, +0.11 at one, against
+   the supervised ridge). Choosing that basis *with* the labels (PLS) is worth
+   only +0.005 over the plain ridge; choosing it by variance on the same
+   labelled scans is worth +0.03. The bottleneck regularises the transfer, and
+   the gaze is the wrong thing to select it by when it has to transfer.
+2. **The corpus is worth +0.05 over the labelled scans' own PCA at one or two
+   datasets**, in all eight draws (+0.015 to +0.108), +0.018 at four, level by
+   six. `corpus-pca` sits between them (0.549 / 0.632), so a third of that is
+   having a corpus at all and two thirds is the bilateral criterion.
+3. **So the accuracy claim the unlabelled corpus supports against supervision
+   is: it beats a supervised decoder at every labelled budget, and it stands in
+   for labelled *datasets* when there are few** -- roughly one extra dataset's
+   worth at two, against a PCA of the labelled scans. Against that PCA it is
+   worth nothing once there are six.
+
+**How sure is the lead over the supervised decoder?** `--stages participants`
+keeps every participant's LODO r, and the figure's `_paired_boot` resamples
+participants inside each dataset, the same ones for both arms. With all eight
+labelled datasets, against the supervised voxel ridge at 3x3x3 (against the
+finer 2x2x2 one, which is the fairer comparison, see the next section: +0.024
+median, +0.035 mean, 8/9):
+
+| arm | median over datasets, paired 95% | mean over datasets, paired 95% | datasets better |
+|---|---|---|---|
+| `lr-cca:32+lags1` @ N=2000 | +0.030 [-0.006, +0.059] | **+0.034 [+0.018, +0.058]** | 8/9 (sign test p = 0.039) |
+| `lr-cca:32+lags1` @ N=800 | +0.021 [-0.020, +0.049] | +0.019 [+0.003, +0.044] | 7/9 |
+| `corpus-pca:64+lags1` @ N=2000 | +0.014 [-0.004, +0.064] | +0.018 [+0.006, +0.041] | 8/9 |
+| PCA of the labelled scans | +0.025 [+0.001, +0.060] | +0.032 [+0.015, +0.048] | 9/9 (p = 0.004) |
+
+The median over nine datasets is too jumpy to separate 0.03 from zero; the mean
+does, and so does the count of datasets. Quote the lead as the mean
+(+0.034, interval +0.018 to +0.058) or as 8 of 9 datasets, not as the median.
+And note what the last row says: a PCA of the labelled scans beats the
+supervised decoder at least as surely. The lead over supervision belongs to
+having a low-rank basis; what the corpus adds on top is the scaling and the
+few-labelled-datasets lead above.
+
+### Every decoding scheme against the supervised decoder
+
+*(2,060)* `--stages schemes` -> `scheme_participants.json`. Six schemes -- what the readout is trained on
+before it is tested -- and in each one every arm's readout sees the same
+labelled rows. The supervised decoder is a ridge on every eye voxel (block
+means, +-1 TR) at 2x2x2 and 3x3x3; it is compared at whichever scores higher in
+that scheme. `labeled-pca` is a PCA of the training participants' own scans,
+refitted inside each readout. `probe.lodo(split="halves")` trains on the first
+quarter or half of a participant's run, in time order, and always tests on its
+second half. Draws (one participant: six; one dataset: four) are averaged per
+participant.
+
+Sub-TR median / mean over datasets:
+
+| trained on | `lr-cca` | corpus PCA | PCA of labelled scans | supervised 2x2x2 | supervised 3x3x3 |
+|---|---|---|---|---|---|
+| own run, first quarter | 0.799 / 0.707 | 0.789 / 0.710 | 0.814 / 0.751 | 0.812 / 0.751 | 0.802 / 0.736 |
+| own run, first half | 0.824 / 0.741 | 0.816 / 0.754 | 0.835 / 0.791 | 0.833 / 0.787 | 0.819 / 0.774 |
+| one other participant | 0.627 / 0.622 | 0.644 / 0.626 | 0.649 / 0.625 | 0.625 / 0.613 | 0.606 / 0.590 |
+| all other participants | 0.831 / 0.776 | 0.829 / 0.776 | 0.843 / 0.795 | 0.843 / 0.791 | 0.834 / 0.785 |
+| one other dataset | **0.595 / 0.582** | 0.564 / 0.544 | 0.554 / 0.525 | 0.477 / 0.485 | 0.503 / 0.483 |
+| all eight other datasets | **0.771 / 0.721** | 0.754 / 0.705 | 0.753 / 0.700 | 0.747 / 0.686 | 0.741 / 0.687 |
+
+`lr-cca` minus the best supervised decoder, paired 95% bootstrap over
+participants (median over datasets | mean over datasets | datasets better):
+
+| trained on | median | mean | datasets |
+|---|---|---|---|
+| own run, first quarter | -0.013 [-0.039, +0.007] | -0.043 [-0.059, -0.034] | 0/9 |
+| own run, first half | -0.009 [-0.036, +0.008] | -0.046 [-0.058, -0.037] | 0/9 |
+| one other participant | +0.002 [-0.032, +0.051] | +0.009 [-0.006, +0.022] | 5/9 |
+| all other participants | -0.012 [-0.031, +0.011] | -0.014 [-0.034, -0.004] | 3/9 |
+| one other dataset | **+0.118 [+0.070, +0.158]** | **+0.097 [+0.081, +0.118]** | **9/9** |
+| all eight other datasets (vs 2x2x2) | +0.025 [-0.005, +0.051] | **+0.035 [+0.020, +0.064]** | 8/9 |
+
+Three readings, and they are the whole story of this file in one table:
+
+- **Inside an acquisition -- a participant's own run, or a dataset's other
+  participants -- supervision is level or ahead.** Every participant scores
+  better with the supervised decoder on its own run (0 of 9 datasets favour
+  `lr-cca`, -0.04 on the mean). A frozen basis cannot learn what is specific to
+  this head in this scanner; the voxels can.
+- **Across acquisitions the frozen basis is ahead, and most where labels are
+  scarcest.** Trained on one other dataset it leads by +0.10 to +0.12 in all
+  nine folds, and leads both PCAs there (+0.031 over corpus PCA, +0.041 over
+  the PCA of the labelled scans): this is the one cell where the bilateral
+  criterion, the corpus and the low-rank basis each add something. With all
+  eight datasets the lead is +0.035 on the mean (8/9) and +0.025 on the median,
+  whose interval touches zero.
+- **The finer supervised decoder** (2x2x2) is the one to compare against: it is
+  better in five schemes of six. With it the LODO number is 0.747 / 0.784 (not
+  0.741 / 0.788), and lr-cca overtakes it at N ~ 450 on the corpus-size curve
+  (mean of 20 draws). The paper uses these.
+
+### A new study with a few labelled participants of its own
+
+`--stages fewshot`, `probe.lodo(split="within", shots=K)`: the readout is fitted
+on at most K participants of the test participant's own dataset (`dsL06` has
+six) and nothing else; the test side is the `within` one, so the denominator
+does not move with K. Median over six draws of which participants; the draws
+spread by +-0.04 at K = 1. K = 0 is the frozen decoder, leave-one-dataset-out.
+Sub-TR:
+
+| labelled participants in the new study | 0 | 1 | 2 | 4 | 8 | 16 | all |
+|---|---|---|---|---|---|---|---|
+| `lr-cca:32+lags1` @ N=2000 | **0.770** | 0.682 | 0.728 | 0.789 | 0.812 | 0.826 | 0.830 |
+| `corpus-pca:64+lags1` @ N=2000 | 0.754 | 0.696 | 0.739 | 0.780 | 0.806 | 0.823 | 0.829 |
+| `own-pca:32+lags1` (PCA of the study's own scans, no corpus) | -- | 0.707 | 0.727 | 0.780 | 0.806 | 0.822 | 0.833 |
+| `own-pca:64+lags1` | -- | 0.669 | 0.739 | 0.757 | 0.795 | 0.825 | 0.836 |
+| `raw+lags1` (stride-4 voxels, no basis) | 0.729 | 0.576 | 0.663 | 0.724 | 0.770 | 0.793 | 0.810 |
+| frozen decoder, its output refitted on the K | 0.770 | 0.703 | 0.742 | 0.800 | 0.811 | 0.815 | 0.816 |
+
+**Against decoders that see no unlabelled scan** (`--stages
+fewshot-supervised`, same draws). `voxels` is the supervised one: a ridge
+straight on 2x2x2 block means of all 14,236 voxels (an SVD of the whole
+design, so one and two shots only). `labeled-pca` is a PCA of the K labelled
+participants' own scans, refitted inside every readout from the same block
+means, then the ridge; `fold-pca` is the PCA of the
+other eight labelled datasets' scans, which holds 0.766 at K = 0.
+
+| labelled participants in the new study | 0 | 1 | 2 | 4 | 8 | 16 | all |
+|---|---|---|---|---|---|---|---|
+| `labeled-pca:64+lags1` | -- | 0.673 | 0.760 | 0.791 | 0.821 | 0.838 | **0.843** |
+| `labeled-pca:256+lags1` | -- | 0.664 | 0.741 | 0.791 | 0.821 | 0.837 | 0.844 |
+| `voxels+lags1`, every voxel | -- | 0.668 | 0.738 | | | | |
+| `fold-pca:64+lags1` | 0.766 | 0.689 | 0.753 | 0.793 | 0.815 | 0.831 | 0.837 |
+| `lr-cca:32+lags1` @ N=2000, fold mean | 0.721 | 0.643 | 0.687 | 0.731 | 0.756 | 0.770 | 0.776 |
+| `labeled-pca:64+lags1`, fold mean | -- | 0.636 | 0.707 | 0.746 | 0.779 | 0.791 | 0.795 |
+
+- **The corpus basis has no few-label advantage over a supervised pipeline,
+  and from two participants it is slightly behind one.** At K = 1 the PCA of
+  that one participant's scans reads 0.673 against 0.682, a tie inside the
+  +-0.04 of the draws. From K = 2 it leads on the fold mean by 0.019-0.022 in
+  every draw (paired, same participants: +0.018 to +0.026 at K = 8), and with
+  all participants it reads 0.843 / 0.889 against 0.830 / 0.866, ahead in eight
+  folds of nine (`dsL08` +0.07, `dsL07` +0.04). A basis fitted on the study
+  itself is adapted to its acquisition; a frozen one is not.
+- **The `raw+lags1` row understates supervision.** Stride-4 keeps 233 voxels of
+  14,236. A ridge on all of them reads 0.668 at K = 1, not 0.576, so the
+  "+0.11 for any basis over raw voxels" below is what subsampling costs, not
+  what a basis buys.
+- **So the 0.83 within-dataset ceiling is the ceiling of a frozen basis.** A
+  study-specific one reaches 0.843 / 0.889.
+
+- **`lr-cca` is not better than variance PCA here, at any K.** The two corpus
+  bases are within 0.014 of each other in every column (1-TR: 0.768 against
+  0.754 at K = 1, 0.828 against 0.824 at K = 4; fold mean 0.643 against 0.647).
+  This is the few-label form of "every linear basis holds the same gaze": no
+  transfer is involved when the readout is fitted inside the study, and transfer
+  is the only place the bilateral criterion has an edge.
+- **The corpus is not needed for it either.** A PCA of the new study's own
+  scans -- unlabelled data every study has -- matches both corpus bases from
+  K = 1 up. Corpus *size* does matter when labels are this scarce (at K = 1,
+  `corpus-pca` 0.625 at N = 25 to 0.696 at N = 2000, `lr-cca` 0.495 to 0.682),
+  but the study's own scans buy the same.
+- **Against stride-4 voxels any basis is worth +0.11 to +0.13 at K = 1**, +0.06
+  at K = 4 and +0.02 with all of them -- but see above: that is the cost of
+  keeping 233 voxels, and it is gone against a ridge on all of them.
+- **The frozen decoder is worth two to four of the new study's own labelled
+  participants.** With none it reads 0.770 / 0.838. A supervised decoder trained
+  on one reads 0.67-0.69 / 0.75-0.76, on two 0.74-0.76 / 0.80-0.81, and at four
+  it passes (0.791 / 0.842; fold mean 0.746 against 0.721). That is the
+  deployment claim in labelled-participant units, and it belongs to the eight
+  labelled datasets, not to the corpus: the no-corpus frozen decoder reads
+  0.766 (`fold-pca`).
+- **One or two labelled participants do not improve the frozen decoder.**
+  Refitting its output (+-1 TR, 60 columns) on them reads 0.703 and 0.742, below
+  leaving it alone; shrinking toward the frozen output instead of toward zero,
+  and a per-sample gain and offset only, were tried in a scratch run and do not
+  change that (0.70-0.74 at K = 1). From four it is level with a fresh readout,
+  and with all of them plus the features it reads 0.842 / 0.875, +0.012 on the
+  within-dataset readout and inside the noise floor.
+
+### Both bases tuned on the readout side
+
+*(2,060)* `--stages tune` -> `tuning.json`, leave-one-dataset-out, every
+combination of rank, lag context (0, +-1, +-2 TR), whitening of the PCA scores
+by the corpus eigenvalues, and a penalty grid to 1e7 (the protocol's stops at
+1e4). Sub-TR median, protocol grid, no whitening:
+
+| rank | 16 | 24 | 32 | 48 | 64 | 96 | 128 | 192 | 256 |
+|---|---|---|---|---|---|---|---|---|---|
+| `corpus-pca`, +-1 TR | 0.574 | | 0.743 | 0.754 | 0.754 | 0.759 | 0.751 | 0.750 | 0.751 |
+| `corpus-pca`, +-2 TR | 0.576 | | 0.734 | 0.753 | **0.760** | 0.751 | 0.744 | 0.751 | 0.749 |
+| `lr-cca`, +-1 TR | 0.500 | 0.766 | **0.771** | 0.765 | 0.764 | 0.764 | 0.760 | | |
+| `lr-cca`, +-2 TR | 0.500 | 0.754 | 0.761 | 0.752 | 0.752 | 0.756 | 0.752 | | |
+
+- **Whitening and the penalty grid do nothing**: at most 0.0008 and 0.0006
+  anywhere. With 270,000 training rows the leave-one-out choice of penalty
+  barely matters, so the PCA scores' larger scale was never under-regularised.
+- **Per-participant standardisation of the features hurts both** (scratch run):
+  `corpus-pca` 0.754 -> 0.754 / 0.761 -> 0.755, `lr-cca` 0.770 -> 0.767.
+- **Best of grid against best of grid**, equally optimistic for both:
+  `corpus-pca` k = 64, +-2 TR, wide grid, **0.761 / 0.824 / fold mean 0.704**
+  (its best fold mean is 0.712, at k = 128, +-1 TR; its best 1-TR is 0.838, at
+  k = 128 with no context); `lr-cca` is its shipped configuration, **0.771 /
+  0.835 / 0.721** (its best 1-TR is 0.842, at k = 24 with no context). Tuned,
+  the margin is +0.010 on the median, +0.004 at 1-TR best against best and
+  +0.009 on the fold mean -- all inside the noise floor, as the
+  matched-context number already said. Nothing on the readout side was left
+  on the table for either basis.
+- The two bases want different context: `corpus-pca` gains from +-2 TR where
+  `lr-cca` loses (0.761 against 0.771). Its 64 dimensions are dominated by slow
+  variance, so a wider window helps it separate the faster gaze.
+
+### Why the two bases tie inside a study, and where they do not
+
+`--stages overlap` -> `basis_overlap.json`. Four measurements, N = 2000, both
+arms with +-1 TR of context.
+
+**They are mostly the same subspace.** Canonical correlations between the
+`lr-cca:32` and `corpus-pca:64` features on the labelled scans: 16 of 32 at
+0.95 or above, 21 at 0.90 or above, 25 at 0.79 or above, the last seven from
+0.72 down to 0.37. What varies most in an orbit -- head motion, global signal,
+the eye itself -- is also what the two orbits share, so the variance ordering
+and the agreement ordering pick largely the same directions.
+
+**They read the same signal and fail at the same moments.** Predictions of the
+two readouts correlate at 0.96 inside a study and 0.97 across studies; their
+*errors* correlate at 0.92 and 0.95. Concatenating the two bases reads 0.836
+within (against 0.830 and 0.829), 0.696 at one shot, 0.759 LODO. There is no
+gaze in one that is missing from the other; the 0.83 is a limit outside the
+basis.
+
+**Neither criterion ranks gaze first.** Sub-TR, by rank:
+
+| k | 8 | 16 | 24 | 32 | 48 | 64 |
+|---|---|---|---|---|---|---|
+| `lr-cca`, within | 0.544 | 0.580 | **0.830** | 0.830 | 0.830 | 0.825 |
+| `corpus-pca`, within | 0.564 | 0.723 | 0.815 | 0.825 | 0.826 | 0.829 |
+| `lr-cca`, one shot | 0.437 | 0.438 | 0.699 | 0.701 | 0.696 | 0.682 |
+| `corpus-pca`, one shot | 0.401 | 0.503 | 0.697 | 0.701 | 0.703 | 0.700 |
+| `lr-cca`, LODO | 0.469 | 0.505 | **0.766** | **0.770** | 0.764 | 0.762 |
+| `corpus-pca`, LODO | 0.456 | 0.617 | 0.727 | 0.744 | 0.755 | 0.754 |
+| `lr-cca`, LODO fold mean | 0.434 | 0.467 | 0.720 | 0.721 | 0.719 | 0.713 |
+| `corpus-pca`, LODO fold mean | 0.415 | 0.556 | 0.675 | 0.672 | 0.704 | 0.706 |
+
+The sixteen directions the two orbits agree on most hold 0.58 of a possible
+0.83; the gaze arrives between the 17th and the 24th. Bilateral agreement is
+not a gaze filter -- it keeps what is shared, and most of what is shared is
+nuisance. This is the linear form of what the deep arms did when asked for
+more agreement.
+
+**One shot is short of people, not of rows or of columns.** One participant
+with all of their rows reads 0.70 under either basis; *the same number of rows*
+taken evenly from every training participant reads 0.809 under either. (Fifty
+rows of one participant already read 0.61-0.63, scratch run.) The feature->gaze
+map differs between people, and a smaller basis cannot supply the people. The
+ridge is not short of data either: at one shot it spends about 65 of 96
+effective degrees of freedom on `lr-cca` and 109 of 192 on `corpus-pca`, for
+the same score.
+
+**Where they differ is transfer at small rank.** Under LODO `lr-cca` leads by
+0.039 at k = 24 and 0.026 at k = 32 on the median, and by 0.045-0.049 on the
+fold mean, both outside the noise floor; variance needs 48 to 64 components to
+close it to 0.01. `lr-cca:24` is already the shipped score (0.766 / 0.833 /
+0.720). That is the whole of the bilateral criterion's advantage, stated in
+the units it is real in: the same transfer from half to a third of the
+dimensions -- not more gaze, and not fewer labels.
+
+### Tried on top of it, measured, and deleted
+
+September 2026. Eighteen arms, none a clean win; the code is removed and lives
+only in the author's local `results/archive/`. Scores are sub-TR / 1-TR LODO
+against the incumbent's 0.770 / 0.838 unless marked.
+
+| arm | score | what it showed |
+|---|---|---|
+| deep CCA on all 2,064 participants (DCCA loss, separate orbit encoders, started at the incumbent), unregularised | 0.451 | memorises volumes: train sum-corr 17.4 -> 31.6, held-out 17.9 -> 11.7 |
+| same, regularised (input noise, small nets, low lr, grouped batches); InfoNCE | 0.772-0.775 / 0.829-0.838 | the one run that raises held-out agreement (17.9 -> 20.3) lowers gaze to 0.753; a gradient-trained *linear* control gets the same +0.002 |
+| same, from random weights | 0.772 (untrained 0.511) | rediscovers `lr-cca` in 1000 steps, then stops |
+| per-participant cross-orbit CCA shrunk toward the corpus | 0.769 -> 0.636 | a single participant's strongest bilateral signal is their own motion |
+| forward-model decoding with the participant's own feature covariance | 0.749 at 5% own | own covariance contains the signal; lifts only `dsL08`, `dsL11` |
+| k = 64..256 with alpha up to 1e6 | 0.774, nested 0.769 | larger bases need ~10x the penalty and still lose |
+| row weight per dataset / sqrt / participant | 0.765 / 0.771 / 0.740 | trades minority paradigms (+0.03) against pursuit (-0.02) |
+| co-regularised L/R readouts on the corpus | nested 0.760 | agreement collapses onto shared nuisance |
+| site-invariant CCA over 605 accessions | 0.769 -> 0.713 | uniform agreement across sites removes gaze |
+| training sets weighted by decoded-dynamics similarity | 0.771 | tie |
+| 2x decimated runs as synthetic acquisitions | 0.764 -> 0.749 | loses |
+| TR-conditioned readout | 0.752 | the timing that fails to transfer is not TR |
+| cross-orbit Noise2Noise temporal filter | 0.779 / 0.828 | smooths, cannot de-bias |
+| lag-0 readout + linear interpolation to sub-TR, no model | 0.784 / 0.831 | no fold down by 0.02; the learned sub-TR kernel is worse than interpolating |
+| lag-0 readout + per-study GP on the decoded trace | 0.793 / 0.838 | `dsL01` +0.03, `dsL03` +0.04, `dsL08` +0.05; `dsL06` -0.14 |
+| joint space-time generative decoder | 0.787 / 0.826 | reduces to the incumbent with a pooled prior (0.773) only once noise is temporally correlated; dynamics are not identifiable from a new site's features |
+| bilateral GP: dynamics from the two eyes' cross-covariance, decode the averaged trace | **0.794 / 0.843**, mean 0.728 | best arm; 3 folds up, 4 tied, `dsL07` -0.04, `dsL06` -0.08; chosen among four variants on all folds |
+| whole-run GRU / transformer; transformer prior pretrained on corpus traces | 0.771 / 0.810; 0.700-0.727; 0.744-0.747 | a viewing prior from eight paradigms does not reach a ninth; corpus pretraining is below its untrained control (0.766) and flat in N |
+
+Four things from that table are worth carrying forward.
+
+**The part of the readout that does not transfer is temporal.** Fitting a
+correction of the LODO *output* on the held-out dataset's other participants:
+gain and offset per sample 0.771, x/y mixing 0.770, remixing the ten sub-TR
+samples per axis 0.803, a +-1 TR kernel per axis **0.812 / 0.860**. How volumes
+t-1, t, t+1 are weighted into each gaze instant is what differs between
+studies; the pooled kernel is shaped by the pursuit datasets, which supply
+~60% of training rows. The map also varies per participant -- a ridge on half of
+one run beats the within-dataset readout on long runs (`dsL02` 0.954 vs 0.922,
+`dsL04` 0.916 vs 0.866) -- and nothing label-free recovered that.
+
+**Every temporal model was compared in one harness**, and the GP is best by
+about 0.01 only: likelihood-selected GP 0.795 / 0.843, kernel-free Wiener
+0.795 / 0.819, Matern-3/2 0.793, kernel smoother 0.789, OU 0.787 / 0.846,
+**linear interpolation 0.784**, squared-exponential 0.781, total variation
+0.776 (five folds down), cubic spline 0.772, per-volume value repeated 0.738.
+Most of the gain over the shipped kernel is interpolation, not dynamics.
+
+**`dsL06` is three acquisitions under one name.** Its six participants span TR
+1.25 / 1.8 / 2.5 s and two resolutions, and its decoded trace carries a
+periodic component at 3 TRs that the gaze does not have (lag-1 autocorrelation
+0.24 decoded against 0.79 true) and that is present in both eyes. Every
+dynamics-adaptive arm fails there and only there.
+
+**Agreement and predictability are nuisance in time as they are in space.**
+More cross-orbit agreement (deep CCA, co-regularisation, site-invariance) and
+more predictability (masked pretraining of decoded traces) each lowered gaze.
+Any further self-supervised arm needs a target only gaze can satisfy.
+
+### Temporal stages on the decoded trace, remeasured *(2,060)*
+
+8 October 2026. `--stages temporal` -> `temporal_stages.json`
+(`scripts/unlabeled/temporal.py`). The September GP arms above were deleted
+code, scored on the median only; this reimplements them through
+`probe.score_predictions`. Each decoder is read out at lag 0 (one value per
+TR, the mean of its ten outputs) and a stage produces the ten samples:
+repeat, linear or cubic interpolation between TR centres, or the posterior
+mean of a GP whose observation is the TR's *average* of the latent gaze plus
+white noise. GP hyperparameters are label-free: marginal likelihood on the
+held-out dataset's decoded traces (per study / per participant), the two
+orbits' cross-covariance (bilateral), the length scale from the *other*
+datasets' measured gaze, or -- a ceiling, not a method -- from the dataset's
+own measured gaze. Paired difference of the mean over datasets from the
+decoder's own +-1 TR readout [95% CI over participants], datasets up/down by
+0.005:
+
+| on ours (0.771 / 0.721) | sub-TR median / mean | delta mean | up/down |
+|---|---|---|---|
+| lag 0, repeated | 0.737 / 0.697 | -0.024 [-0.030, -0.020] | 1/8 |
+| lag 0 + linear interpolation | 0.783 / 0.723 | +0.002 [-0.003, +0.007] | 3/2 |
+| lag 0 + cubic spline | 0.774 / 0.724 | +0.003 [-0.001, +0.008] | 2/2 |
+| lag 0 + GP Matern-3/2, ML per study | **0.794 / 0.668** | -0.053 [-0.068, -0.038] | 5/4 |
+| ... Matern-1/2, -5/2, SE | 0.771-0.797 / 0.658-0.674 | -0.047 to -0.063 | |
+| ... per participant; bilateral | 0.794 / 0.665; 0.790 / 0.689 | -0.055; -0.032 | |
+| ... length scale <= 2 s | 0.793 / 0.718 | -0.002 [-0.008, +0.003] | 4/4 |
+| ... length scale from training gaze | 0.765 / 0.720 | -0.001 | 2/4 |
+| ... length scale from own gaze (oracle) | 0.790 / 0.725 | +0.004 [-0.001, +0.008] | 4/3 |
+| shipped + GP on its TR means; average of shipped and GP | 0.779 / 0.683; 0.784 / 0.719 | -0.038; -0.002 | |
+| stage chosen on the other eight datasets (cubic spline) | 0.774 / 0.722 | +0.002 [-0.002, +0.006] | 2/2 |
+
+- **The GP's median gain is a median artefact.** Marginal likelihood picks
+  length scales of 20-28 TRs on `dsL06` and `dsL08`, whose decoded traces
+  carry slow non-gaze structure, and over-smooths them (-0.26, -0.22); five
+  other datasets gain 0.005-0.04. Median up 0.023, mean down 0.053. Bounded,
+  or with the oracle length scale, it is within +-0.004. Closed for our
+  decoder: the residual error is map-and-timing error, correlated in time and
+  shared by both orbits, not white noise a smoother removes.
+- **The supervised voxel ridge gains, ours does not.** The 2x2x2 ridge at
+  lag 0 + linear interpolation reads 0.778 / 0.711 against its +-1 TR 0.747 /
+  0.686 (+0.025 [+0.016, +0.032], 8 up, 0 down; 3x3x3 +0.014). Its +-1 TR
+  readout fits a 2,116-column spatial map per lag, and that kernel transfers
+  worse than interpolating. **With each decoder's stage chosen on the other
+  datasets, ours leads the 2x2x2 ridge by +0.015 [+0.002, +0.041] on the mean
+  (5 up, 1 down) and +0.017 [+0.001, +0.049] at 1-TR**, against +0.035 /
+  +0.038 with the protocol readout for both (3x3x3: +0.024, 8/9). On the
+  median the interpolated ridge (0.778) is above our protocol 0.771 and below
+  our interpolated 0.783. "No supervised decoder or readout exceeds 0.692 on
+  the mean" holds for readouts; with a temporal stage the supervised mean is
+  0.711. The labelled-dataset and corpus-size comparisons have not been
+  remeasured with a stage on both.
+
+---
+
+## Viewing priors
+
+October 2026. The question: can what people tend to look at -- other viewers,
+the stimulus, the task -- add to what the eyeballs say? Literature and the
+reasoning behind each item are in the author's `docs/LITERATURE_2026-10-02.md`.
+
+### Only three of nine datasets share a stimulus clock, and one of them is its own labels
+
+Leave-one-out correlation of each participant's *measured* gaze with the mean
+of the others', at matched TR index (1-TR):
+
+| `dsL01` guided fixations | `dsL08` studyforrest | `dsL11` Back to the Future | the six others |
+|---|---|---|---|
+| **1.000** | 0.703 | 0.739 | -0.01 to 0.11 |
+
+**`dsL01`'s labels are its fixation-target sequence, not eye tracking**: all 170
+participants carry the identical 270-TR sequence over 25 positions, with zero
+variation inside a TR. So `dsL01` -- 40% of the training rows -- scores
+following-the-target, its sub-TR score is the score of a step function, and any
+prior that knows the task is trivially perfect there. Pursuit, free viewing,
+sequences and calibration randomise order per participant; a prior across
+viewers cannot help them.
+
+### Other viewers' decoded gaze: +0.02 on the mean, decoder-agnostic
+
+`--stages priors` -> `viewing_priors.json`. Label-free: each participant's
+decoded trace mixed with the mean of the other participants' decoded traces
+(z-scored per column), on the three shared-stimulus datasets only, scored by
+`probe.score_predictions`:
+
+| | median / 1-TR / mean | `dsL01` | `dsL08` | `dsL11` |
+|---|---|---|---|---|
+| `lr-cca`, no prior | 0.770 / 0.837 / 0.721 | 0.770 | 0.283 | 0.671 |
+| `lr-cca`, own + consensus | 0.776 / 0.839 / **0.742** | 0.863 | **0.360** | 0.691 |
+| `lr-cca`, consensus only | 0.776 / 0.837 / 0.740 | 0.909 | 0.393 | 0.595 |
+| supervised voxels, no prior | 0.747 / 0.784 / 0.686 | 0.747 | 0.213 | 0.615 |
+| supervised voxels, own + consensus | 0.747 / 0.810 / 0.707 | 0.851 | 0.260 | 0.655 |
+
+The prior lifts both decoders by about 0.02 on the mean and leaves the lead
+between them where it was (+0.035). Of the gain, `dsL01` is the trivial part;
+the real one is the studyforrest film, `dsL08`, our worst fold: +0.08 to +0.11.
+
+### A stimulus-derived prior is bounded by other viewers' *measured* gaze
+
+The best any stimulus-driven prior (a saliency model, normative eye tracking of
+the same film) could do is the mean measured gaze of the other viewers. Used as
+the prior, sub-TR / 1-TR (scratch run):
+
+| | decoded only | prior only | decoded + prior | decoded + 2 x prior |
+|---|---|---|---|---|
+| `dsL08` studyforrest (3T) | 0.281 / 0.348 | 0.614 / 0.730 | 0.484 / 0.588 | 0.562 / 0.680 |
+| `dsL11` Back to the Future | 0.677 / 0.850 | 0.655 / 0.761 | **0.738 / 0.876** | 0.732 / 0.868 |
+
+On a film the stimulus-locked part of gaze is large (ISC 0.70-0.74), so a good
+prior adds +0.06 where decoding is good and dominates where it is poor. A real
+saliency model sits well below this bound. This is a deployment lever for
+naturalistic datasets, not a property of the basis, and this corpus has two
+films to show it on.
+
+### Two label-free alignments that hurt (scratch runs)
+
+- **Euclidean alignment** (He & Wu 2019, the BCI standard: whiten each domain's
+  features by its own covariance before a shared readout), per dataset or per
+  participant, with shrinkage 0-0.5: 0.657 to 0.744, every setting below the
+  incumbent's 0.770. Paradigms differ in how much gaze variance they have, and
+  whitening erases exactly that.
+- **Shared-response denoising** (SRM / multi-set CCA across the participants
+  of a shared-stimulus dataset, keeping k = 2-16 shared time courses of the
+  features): `dsL01` 0.77 -> 0.89, but the films get *worse* (`dsL08` 0.28 ->
+  0.07-0.30, `dsL11` 0.67 -> 0.56-0.67). What viewers share in their eyeball
+  features is not mostly gaze; what they share in their *decoded* gaze is.
+
+## A confidence with no labels, and what pseudo-labels can do with it
+
+October 2026, *(2,060)*. `--stages confidence` -> `confidence.json`. The question: does the
+frozen decoder know when it is wrong, and can its own labels on unlabelled data
+train something better? DeepMReye 1.0 had a confidence (a second output trained
+to predict its own Euclidean error, used to keep the 80% most reliable
+participants and drop 20-50% of volumes); `lr-cca` had none. Literature in the
+author's `docs/LITERATURE_2026-10-04_pseudo_labels.md`.
+
+**The confidence is orbit agreement.** The readout is linear in the average of
+the two orbits' canonical coordinates, so the same weights applied to each orbit
+alone (`probe.lodo(views=...)`) give two decodings that average to the scored
+one exactly (to 5e-15). How well they correlate over a run
+(`metrics.orbit_agreement`) needs no labels and no extra fitting.
+
+### Per participant it is as good as knowing the answer
+
+Leave-one-dataset-out, all 337 participants; Spearman with the participant's r
+and AUROC for its dataset's worst fifth are medians over the nine datasets;
+"keep" is the median over datasets of each dataset's most confident fraction's
+median r:
+
+| score | Spearman | AUROC worst 20% | keep 80% | keep 50% |
+|---|---|---|---|---|
+| **orbit agreement** | **0.66** | **0.94** | **0.802** | **0.825** |
+| s.d. of the decoded trace | 0.66 | 0.93 | 0.804 | 0.826 |
+| agreement through a random basis (control) | 0.43 | 0.82 | 0.785 | 0.809 |
+| agreement of the raw canonical variates (no readout) | 0.32 | 0.72 | 0.772 | 0.775 |
+| run length | -0.16 | 0.49 | 0.762 | 0.752 |
+| oracle (sorted by true r) | 1 | 1 | 0.804 | 0.827 |
+| random (mean of 200 draws) | | | 0.768 | 0.764 |
+
+All participants: 0.771. Agreement is within 0.002 of the oracle at 80% and
+at 50%; AUROC is 0.87-0.97 on seven datasets, 0.76 on `dsL01`, 0.62 on
+`dsL06` (six participants). Two things carry it, and the
+controls separate them: generic data quality (a random bilateral basis already
+gets 0.43 / 0.82), and agreement *on the readout's gaze directions* (the trained
+basis adds 0.22 Spearman over random, and weighting the variates by the readout
+adds 0.30 over raw canonical agreement). The s.d. of the decoded trace carries
+the same information (Spearman with agreement 0.69-0.94 on eight datasets);
+agreement is the one to ship because it is a correlation and so does not depend
+on the readout's units or the paradigm's gaze range.
+
+### On the most reliable participants every arm rises, ours most
+
+*(2,060)* `--stages reliable` -> `reliable_participants.json`: every participant's
+r for the frozen basis and corpus PCA at every corpus size, the voxel ridge and
+PLS, and the frozen basis's orbit agreement at each size (the 2x2x2 ridge is
+per participant in `scheme_participants.json`). Keeping each dataset's 80%
+most-agreeing participants -- the same participants for every arm, so no arm is
+scored on different people -- at the full corpus, sub-TR median:
+
+| | all participants | 80% most reliable |
+|---|---|---|
+| frozen basis | 0.771 | **0.802** |
+| corpus PCA (k = 64, +-1 TR) | 0.754 | 0.785 |
+| the same ridge on voxels (2x2x2 / 3x3x3) | 0.747 / 0.741 | 0.768 / 0.768 |
+| PLS on voxels | 0.752 | 0.775 |
+| lead over the same ridge | +0.025 | **+0.034** |
+
+Below the full corpus the same statistic is in `scaling_draws.json`, per draw:
+the 80% curve of Fig. a is the mean of 20 draws (0.675 at N = 10, 0.776 at
+400, 0.801 at 1,600), with the supervised 80% line re-selected on each draw's
+own agreement.
+
+The lead holds on the reliable participants rather than growing: against
+participants kept from 100% down to 20%, the lead over supervision on the mean
+over datasets stays at +0.025 to +0.038 (0.033, 0.038, 0.036, 0.032, 0.025 at
+100 / 80 / 60 / 40 / 20%), while the median jumps between +0.02 and +0.04 with
+no trend; the lead over corpus PCA shrinks towards zero (+0.015 at 100%,
++0.001 at 20%).
+
+The selection is the frozen basis's own, so it favours the participants it
+decodes well; that it lifts PCA (+0.031) and supervision (+0.021) too says it
+is picking participants whose eye signal is good, not only ones that suit it.
+
+### It does not say how well a new dataset will decode
+
+Read as a Spearman-Brown ceiling (`sqrt(2 rho / (1 + rho))`, what the averaged
+trace would correlate with the orbits' common signal at), it overestimates every
+dataset, and by how much is the transfer loss: `dsL02` 0.94 against 0.92, `dsL01`
+0.97 against 0.77, `dsL08` 0.78 against 0.28. Across the nine datasets its
+median ranks their medians at Spearman 0.23. What fails to transfer -- the
+feature->gaze map, mostly its timing -- is shared by both orbits and invisible
+to their agreement. It ranks participants *within* a study; it cannot replace
+labelled data for judging a study.
+
+### Per volume nothing works, and the reason is structural
+
+Median over datasets of the within-participant Spearman between a score and the
+1-TR error, and the squared error of the retained volumes relative to all
+(1.00 = no better than dropping volumes at random):
+
+| score | Spearman | keep 80% | keep 50% |
+|---|---|---|---|
+| orbit disagreement at that volume | 0.02 | 0.991 | 0.981 |
+| eccentricity of the decoded gaze | 0.06 | 0.997 | 0.986 |
+| decoded velocity | 0.06 | 0.972 | 0.889 |
+| feature step / feature energy | 0.07 / 0.11 | 0.971 / 0.949 | 0.929 / 0.877 |
+| learned error model, ridge / boosted trees (nested LODO, DME1-style) | 0.11 / 0.15 | 0.953 / 0.952 | 0.881 / 0.888 |
+| oracle | 1 | 0.546 | 0.270 |
+
+Dropping half the volumes by the best score removes 12% of the squared error;
+by the oracle, 73%. Disagreement at a volume carries nothing, as it must: with
+independent noise in the two orbits, the difference of their estimates is
+independent of the error of their mean, and the error that remains is the
+shared, map-and-timing part. Velocity is 0.31 on `dsL01` alone (errors sit at
+target jumps -- timing again).
+
+### Pseudo-labels from a linear decoder are a fixed point
+
+The frozen decoder labels every participant of a dataset; a student readout is
+fitted on its own dataset's participants against those labels (5-fold, the
+`within` split, no gaze label of that dataset anywhere) and scored on gaze:
+
+| | median / 1-TR / mean |
+|---|---|
+| frozen decoder (teacher) | 0.771 / 0.835 / 0.721 |
+| student on its pseudo-labels | 0.771 / 0.835 / 0.721 |
+| same, trained on the half of volumes the orbits agree on most | 0.771 / 0.835 / 0.721 |
+| teacher + consensus prior (above) | 0.776 / 0.839 / 0.742 |
+| student on consensus pseudo-labels | 0.776 / 0.835 / 0.724 |
+| same + consensus prior at test | 0.776 / 0.838 / 0.742 |
+| protocol readout without the 20% least-agreeing labelled participants | 0.772 / 0.831 / 0.719 |
+| protocol readout without a random 20% (three seeds) | 0.768-0.773 / 0.818-0.837 / 0.720-0.725 |
+
+(A scratch run with a richer student -- both orbits' 64 canonical coordinates
+separately, +-1 TR -- gave the teacher to four decimals as well.) A pseudo-label
+is a linear function of the very features the student reads, so the student's
+best fit *is* the teacher, whichever volumes it is fitted on: selection by
+confidence cannot move a linear fixed point. The only pseudo-labels that move
+anything carry information from outside the decoder -- here other viewers'
+decoded gaze -- and they do less as training targets (+0.003 on the mean) than
+as a prior at test time (+0.021). The labelled side does not want cleaning
+either: dropping the least confident labelled participants from the readout's
+training is inside the spread of dropping random ones.
+
+So: **ship orbit agreement as a per-participant confidence** (it is DME1's
+"80% most reliable participants" at no cost, and within 0.002 of the oracle),
+and close self-training with a linear student. Pseudo-labelling can only pay
+with labels that know something the decoder does not -- other viewers, the
+stimulus, the task's target layout.
+
+---
+
+## Decoding the archive *(2,060)*
+
+`scripts/decode_corpus.py` -> `results/decoded/corpus_gaze.h5`: the shipped
+basis with a readout fitted on all nine labelled datasets
+(`probe.fit_readout`), applied to every participant's whole run -- 3,676
+participants, 1.5 M volumes -- with each participant's orbit agreement.
+`scripts/decode_saccades.py` -> `results/decoded/saccades.json` scores the
+saccade studies below against their own `events.tsv`.
+`scripts/figure_archive.py` draws both (draft, not in the paper).
+
+**Two labelled datasets' own scans were in the 2,000 draw** -- fixed on 6
+October. It included `ds006833` sub-01/02 and `ds006642` sub-01/02, the same runs as
+`dsL07` sub-01/02 and `dsL11` sub-01/02 (154 and 1,360 volumes; decoded traces
+correlate at 0.997). `unlabeled_subjects` excluded the `dsL*` folders but not
+their source accessions; it now excludes `EVALUATION_SOURCES` too, and a
+decoded-trace search over all 337 labelled participants found no other
+duplicate.
+
+**The confidence separates the QA outcome.** Orbit agreement on unlabelled
+participants whose eye mask is fully covered: median 0.472 in datasets that
+passed the eyeball QA (n = 1,994) against 0.243 in datasets that failed it
+(n = 74), Mann-Whitney p = 2e-8. Restrict to covered participants: an uncovered
+one decodes to a flat trace whose two orbits "agree" trivially (52 participants
+of failed datasets sit at agreement ~1 with decoded SD ~0), so agreement is a
+confidence about decoded gaze, not a substitute for the coverage check.
+
+**Archived saccade studies decode trial by trial** (events from the datasets'
+own `events.tsv`; no eye-tracking data used, and these participants are
+unlabelled corpus participants). Change in decoded horizontal gaze 0.3-1.8 s
+after target onset against the target's horizontal position, correct trials;
+per participant, guided saccades r = 0.94-1.00 and antisaccades -0.87 to -0.93
+in `ds000119`, -0.75 to -0.94 in `ds000121`:
+
+| dataset (task) | trials | r |
+|---|---|---|
+| `ds000119`, visually guided saccades | 53 | **+0.96** |
+| `ds000119`, antisaccades (same runs) | 42 | **-0.87** |
+| `ds000121`, antisaccades | 105 | **-0.86** |
+| `ds000121`, antisaccade errors (looked at the dot) | 4 | +0.97 |
+| `ds000120`, antisaccades | 80 | +0.73 |
+
+Gaze goes toward the target on guided saccades and away from it on
+antisaccades, in the same participants' same runs. `ds000120` shows the
+mirrored relation on every one of its five participants: a left-right flip in
+that dataset's display or image orientation, unresolved (its registration
+transforms show no reflection).
+
+**Task categories are a weaker signal** (decoded with the 2,000-draw basis).
+Decoded gaze SD by task (reliable
+participants): fixation / retinotopy lowest (0.347), motor 0.372, other tasks
+0.41-0.46; rest is not lower than movies. Inter-subject correlation of decoded
+gaze is near zero except in the saccade tasks (0.23-0.28) and one pRF dataset.
+
 ## What is left worth trying
 
 Honestly: not much on this corpus, and that is the finding rather than a
 failure.
 
-The two cells with real headroom against the temporal envelope are `dsL01.y`
-(-0.098 residual) and `dsL02.y` (-0.086), both vertical axes of
-high-autocorrelation datasets. That is a budget of roughly 0.06-0.10 r on two
-cells.
+The representation is at its ceiling: every linear basis holds ~0.83 of gaze
+within a dataset and no non-linear readout finds more. The 0.06 lost under
+leave-one-dataset-out is the feature->gaze map, mostly its timing, differing
+between acquisitions.
 
-The scarce resource is **independent acquisitions**, not participants, not
-unlabeled data, and not model capacity. Nine folds is what every claim here
-rests on. A tenth well-verified gaze dataset is worth more than any of the eight
-architectures above.
+The scarce resource is **independent labelled acquisitions**, not participants,
+not unlabeled data, and not model capacity, and it is now measured: the
+labelled-dataset curve is still rising at eight while the corpus curve is flat
+by N = 800. A tenth well-verified gaze dataset is worth more than any
+architecture in this file.
 
-After the sweep above, the closed list now also covers the estimator
-(`shrinkage`, `n_reduce`, whitening exponent), the covariance it is fitted from
-(within-participant, within-slab, temporal difference, temporal sum), the
-anatomical symmetry prior, selection criteria past second order (ICA,
-dictionary learning), per-participant registration, and both corpus budget axes.
-So before proposing anything else, say which of these it is *not*.
+The closed list now covers the estimator (`shrinkage`, `n_reduce`, whitening
+exponent), the covariance it is fitted from, the anatomical symmetry prior,
+selection criteria past second order, per-participant registration, both corpus
+budget axes, deep and per-participant and site-invariant forms of the
+cross-orbit criterion, readout weighting and co-regularisation, learned,
+generative and pretrained temporal models, and self-training on the decoder's
+own labels (a linear fixed point, with or without a confidence). So before
+proposing anything else, say which of these it is *not*.
 
-Four specific things were not run and are the honest gaps:
+What is open:
 
+- **More labelled acquisitions exist and are not in the corpus.** HCP 7T movie
+  watching has EyeLink gaze for 176 participants (931 valid runs, 7T; our
+  worst fold, studyforrest, is 3T); the NKI naturalistic-viewing EEG-fMRI set has 22
+  participants with EyeLink on two films; HBN's PEER calibration scans give
+  target-labelled fixations at three sites on two scanner models (labels are
+  targets, as in `dsL01`). The labelled-dataset axis is the one still rising.
+- **A stimulus-derived prior for naturalistic datasets.** Bounded above at
+  +0.06 on a well-decoded film and much more on a poorly decoded one; needs the
+  stimulus frames (or normative eye tracking of the same film, which exists for
+  studyforrest's lab group and for the HBN / NKI films). Use it as a prior at
+  test time: as pseudo-labels for a student, other viewers' gaze kept a fifth
+  of its gain.
+- **A label-free temporal stage is closed for our decoder** (remeasured 8
+  October, "Temporal stages on the decoded trace"): GP and interpolation tie
+  the shipped readout on the mean, even with an oracle length scale. What is
+  open is the comparison with supervision *with* a stage on both, along the
+  labelled-dataset and corpus-size axes -- interpolation lifts the voxel ridge
+  by +0.025.
+- **Using one or two labelled participants of the new study.** Measured above:
+  a readout fitted on them loses to the frozen decoder, and refitting the
+  frozen decoder's output on them loses too. Something that improves on 0.770
+  with K = 1 is open; the ceiling is the within-dataset 0.830.
 - **Bagged bases** -- `lr-cca` on disjoint corpus subsets, concatenated. The
   shrinkage null argues against it, but bagging attacks *selection* variance
   rather than whitening variance, which is a different failure.
-- **Sub-voxel and per-orbit-independent shifts.** Only common integer shifts
-  were tried; the oracle bound of +0.011 says the ceiling is small either way.
 - **Slice timing, grouped properly.** The z-band test above was blind by
   construction under multiband; grouping voxels by acquisition time instead
-  needs the per-dataset `SliceTiming` vector stored at ingest. This is the one
-  temporal idea the measurements did not actually close.
-- **Per-participant anatomy.** The *template* version of the analytic basis is
-  now measured (see above) and does not add to `lr-cca`. The per-participant
-  version -- each subject's own mean and SD image, which would give an exact
-  matched filter instead of a template one -- is the remaining variant, and it
-  needs two lines in `pipeline.py` plus a full re-ingest. Given that the
-  template triple lies 80% outside the `lr-cca` span and still adds nothing, and
-  that the label-chosen shift oracle is worth only +0.011, do not expect much;
-  but **add the two lines the next time anything is re-ingested**, because then
-  it costs nothing.
+  needs the per-dataset `SliceTiming` vector stored at ingest.
+- **Per-participant anatomy.** The template version of the analytic basis does
+  not add to `lr-cca`; the per-participant version needs two lines in
+  `pipeline.py` plus a full re-ingest. Do not expect much, but **add the two
+  lines the next time anything is re-ingested**, because then it costs nothing.

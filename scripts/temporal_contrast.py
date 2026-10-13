@@ -138,9 +138,9 @@ def fit_multilag(pcs, lags, k=K_STORE, n_reduce=256, shrinkage=1e-3):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True)
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
-    p.add_argument("--lag-moments", default="results/lrcca_variants/lag1_n2000.npz")
-    p.add_argument("--pcs", default="results/lrcca_variants/pcs_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
+    p.add_argument("--lag-moments", default="results/lrcca_variants/lag1.npz")
+    p.add_argument("--pcs", default="results/lrcca_variants/pcs.npz")
     p.add_argument("--out", default="results/lrcca_variants/temporal_contrast.json")
     p.add_argument("--k", type=int, default=32)
     a = p.parse_args()

@@ -28,7 +28,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepmreye.labels import append_label_events
-from deepmreye.pipeline import LBL_EYES
+from deepmreye.labels import LBL_EYES
 from deepmreye.storage import is_intact, subject_path, write_subject
 
 EXPECTED_SPATIAL = (47, 29, 18)

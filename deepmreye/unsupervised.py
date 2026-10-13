@@ -1,23 +1,18 @@
 """The two linear feature bases learned from the *unlabeled* corpus.
 
-The published baseline reads gaze off a stride-4 subsample of the eye mask: 480
-of the 14236 masked voxels, chosen by nothing but their index. That subsample is
-not a modelling choice, it is a budget -- a basis over the full mask cannot be
-estimated from a handful of labeled datasets without overfitting the fold it is
-fitted on. The unlabeled half of the corpus (1878 participants, 915 OpenNeuro
-accessions, no eye tracking) is exactly the data that constraint is missing.
-
-Both bases come out of **one streaming pass** over the unlabeled participants,
-which accumulates a mean and a second-moment matrix over the masked voxels::
+The unlabeled corpus (:func:`corpus_subjects`) is every eligible OpenNeuro
+participant with no gaze labels that is not an evaluation participant under
+another name: 2,060 participants of 652 datasets. Both bases come out of **one
+streaming pass** over it, which
+accumulates a mean and a second-moment matrix over the masked voxels::
 
     n += T
     s += sum_t x_t
     C += X^T X            (14236 x 14236, ~810 MB float32)
 
-- ``corpus-pca``  top-k eigenvectors of the voxel covariance. The direct
-                  replacement for stride subsampling: the k directions along
-                  which eye-region signal actually varies, estimated across 900+
-                  scanners rather than the few datasets a fold gets to see.
+- ``corpus-pca``  top-k eigenvectors of the voxel covariance: the k directions
+                  along which eye-region signal varies most, across hundreds of
+                  scanners. The variance-ordered reference.
 - ``lr-cca``      canonical correlation between the left and right orbit, and
                   the arm this package exists to ship. The eyes rotate together,
                   so a direction in left-orbit voxel space that predicts the
@@ -52,6 +47,16 @@ FULL_MASK_VOXELS = 14236
 LR_SPLIT_X = 24
 
 BASIS_KINDS = ("corpus-pca", "lr-cca")
+
+# The OpenNeuro accessions three gaze-labelled datasets were ingested from. The
+# same runs sit under both names, so the corpus must exclude the accession as
+# well as the `dsL*` folder, or the basis is fitted on evaluation participants
+# (it was, for four of them, until 6 October 2026).
+EVALUATION_SOURCES = {
+    "dsL07_deepmreye_calib": "ds006833",
+    "dsL08_studyforrest_movie": "ds000113",
+    "dsL11_backtothefuture": "ds006642",
+}
 
 
 def _slabs(n_trs, total, n_slabs):
@@ -95,7 +100,8 @@ def corpus_mask(data_dir, max_files=40):
 
 
 def unlabeled_subjects(data_dir, probe_prefix="dsL", min_voxels=FULL_MASK_VOXELS,
-                       min_trs=32, include_labeled=False, exclude_datasets=()):
+                       min_trs=32, include_labeled=False, exclude_datasets=(),
+                       exclude_sources=True):
     """Participants eligible to fit a basis: fully covered, and label-free *as
     used here*.
 
@@ -114,8 +120,15 @@ def unlabeled_subjects(data_dir, probe_prefix="dsL", min_voxels=FULL_MASK_VOXELS
       leave-one-dataset-out number, and reporting it as one would be wrong.
 
     ``exclude_datasets`` is what buys the middle case, one basis per fold.
+    ``exclude_sources`` also drops the OpenNeuro accessions the labelled
+    datasets came from (:data:`EVALUATION_SOURCES`), which hold the same runs.
+
+    This is eligibility only (coverage, length); :func:`corpus_subjects` makes
+    the draw.
     """
     exclude = set(exclude_datasets)
+    if exclude_sources:
+        exclude |= set(EVALUATION_SOURCES.values())
     out = []
     for path in sorted(Path(data_dir).glob("*/*.h5")):
         dataset = path.parent.name
@@ -138,6 +151,22 @@ def unlabeled_subjects(data_dir, probe_prefix="dsL", min_voxels=FULL_MASK_VOXELS
             continue
         out.append((dataset, path.stem, str(path), int(n_trs)))
     return out
+
+
+def corpus_subjects(data_dir, n=None, seed=0, **eligibility):
+    """The unlabeled corpus: every eligible participant
+    (:func:`unlabeled_subjects`, which drops the evaluation sources) in a
+    seed-``seed`` shuffle, the first ``n`` of them (all if ``None``).
+
+    Shuffled rather than sorted because the sorted order is by accession: a
+    prefix would confound "more participants" with "fewer acquisitions". The
+    order is nested in ``n``: the first 400 of a seed are the first 400 of
+    every larger corpus of that seed; another seed is another random draw.
+    """
+    subjects = unlabeled_subjects(data_dir, **eligibility)
+    order = np.random.default_rng(seed).permutation(len(subjects))
+    subjects = [subjects[i] for i in order]
+    return subjects if n is None else subjects[:n]
 
 
 class Moments:
@@ -268,8 +297,12 @@ def _top_eigenvectors(cov, k, seed=0):
     return u, np.maximum(s, 0.0)
 
 
-def fit_pca(moments, k, seed=0):
-    cov, mu = moments.covariance()
+def fit_pca(moments, k, seed=0, cached=None):
+    """Top-``k`` principal directions of the corpus covariance.
+
+    ``cached`` takes ``(cov, mu)`` to skip rebuilding the covariance.
+    """
+    cov, mu = cached if cached is not None else moments.covariance()
     total = float(np.trace(cov))
     vecs, vals = _top_eigenvectors(cov, k, seed)
     return {"mean": mu, "components": vecs, "eigenvalues": vals,

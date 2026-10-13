@@ -5,19 +5,26 @@ Decode eye gaze from fMRI without an eye tracker.
 The signal in the voxels around the eyeballs in a BOLD volume carries gaze
 position. Version 1 read it out with a supervised 3-D CNN trained on gaze
 labels. This version reads it out with a **frozen linear basis learned from
-unlabeled fMRI** plus a ridge readout, and matches the supervised reference
-while needing **no data from the target study**.
+unlabeled fMRI** plus a ridge readout. On datasets it has never seen it beats
+a supervised decoder trained on the same labelled participants with the same
+readout (0.771 against 0.747 for a ridge on every eye voxel; 8 of 9 datasets)
+and needs **no data from the target study**. Inside one acquisition the
+supervised decoder is level or ahead -- see `FINDINGS.md`.
 
 The method, in full:
 
-1. Fit a linear basis on 2,000 unlabeled OpenNeuro participants by canonical
-   correlation between the **left and right orbit** (`lr-cca`). Both eyes rotate
+1. Fit a linear basis on 2,060 unlabeled OpenNeuro participants (652
+   datasets) by canonical correlation between the **left and right orbit**
+   (`lr-cca`). Both eyes rotate
    together, so a direction in left-orbit voxel space that predicts the right
    orbit is a direction driven by conjugate gaze; anything local to one eye is
    suppressed. No gaze labels are involved.
 2. Project a new participant's eye-mask voxels onto the leading 32 directions
    and stack them at lags -1, 0, +1.
 3. Fit a ridge on the gaze-labeled datasets and read gaze out.
+4. Optionally, apply the same readout to each orbit alone: how well the two
+   decodings agree (`metrics.orbit_agreement`) is a per-participant confidence
+   that needs no labels.
 
 That is the whole model. It is linear end to end and takes seconds to fit.
 
@@ -29,8 +36,8 @@ readout is fitted on 8 datasets and scored on the 9th, so every number answers
 
 | | Pearson r | r_x | r_y | R² * | error * |
 |---|---|---|---|---|---|
-| **sub-TR** (10 samples per TR) | **0.770** | 0.814 | 0.749 | 0.543 | 2.87° |
-| **1-TR** (mean gaze per TR) | **0.838** | 0.862 | 0.817 | 0.616 | 2.34° |
+| **sub-TR** (10 samples per TR) | **0.771** | 0.814 | 0.750 | 0.541 | 2.84° |
+| **1-TR** (mean gaze per TR) | **0.835** | 0.864 | 0.814 | 0.614 | 2.32° |
 
 Median over the 9 folds, of the median over participants within a fold. Mean
 over folds is **0.721** (sub-TR) and **0.777** (1-TR) -- report it beside the
@@ -46,15 +53,15 @@ Per fold, sub-TR / 1-TR Pearson r:
 
 | dataset | n | sub-TR | 1-TR | |
 |---|---|---|---|---|
-| `dsL02_pursuit` | 9 | 0.920 | 0.929 | |
-| `dsL04_pursuit` | 34 | 0.851 | 0.864 | |
+| `dsL02_pursuit` | 9 | 0.920 | 0.930 | |
+| `dsL04_pursuit` | 34 | 0.851 | 0.863 | |
 | `dsL05_free_viewing` | 27 | 0.803 | 0.839 | |
-| `dsL03_pursuit` | 24 | 0.776 | 0.808 | resolution-limited, see `FINDINGS.md` |
-| `dsL01_guided_fixations` | 170 | 0.770 | 0.786 | |
-| `dsL07_deepmreye_calib` | 15 | 0.744 | 0.837 | |
-| `dsL06_sequences` | 6 | 0.673 | 0.734 | vertical axis barely sampled |
-| `dsL11_backtothefuture` | 37 | 0.671 | 0.848 | |
-| `dsL08_studyforrest_movie` | 14 | 0.283 | 0.348 | 7T, worst registration in the corpus |
+| `dsL03_pursuit` | 24 | 0.776 | 0.810 | resolution-limited, see `FINDINGS.md` |
+| `dsL01_guided_fixations` | 170 | 0.771 | 0.787 | labels are the target sequence |
+| `dsL07_deepmreye_calib` | 15 | 0.743 | 0.835 | |
+| `dsL11_backtothefuture` | 37 | 0.672 | 0.845 | |
+| `dsL06_sequences` | 6 | 0.667 | 0.731 | vertical axis barely sampled |
+| `dsL08_studyforrest_movie` | 14 | 0.285 | 0.351 | 3T, worst registration in the corpus |
 
 **Read `FINDINGS.md` before proposing an improvement.** It records what was
 tried, what the controls said, and which directions are closed. The short
@@ -89,9 +96,12 @@ uv sync
 Everything runs through one entry point.
 
 ```bash
-# Fit the basis on the unlabeled corpus (one streaming pass, ~1.3 GB of
-# accumulators). Excludes every gaze-labeled dataset by construction.
-python -m deepmreye fit-basis --out results/basis.npz --k 256
+# Fit the basis on the unlabeled corpus (one streaming pass, ~1 GB of
+# accumulators, ~3 minutes). The corpus is every eligible unlabelled
+# participant, never a gaze-labelled dataset or its source accession.
+python -m deepmreye fit-basis                 # -> results/basis.npz
+python scripts/fit_corpus_basis.py            # ... at every corpus size, for the scaling curve
+# (and --seed 1..19 for the random draws of each size; see its docstring)
 
 # Leave-one-dataset-out decoding: r, R2 and error at both resolutions.
 python -m deepmreye evaluate --basis results/basis.npz --build-cache
@@ -105,7 +115,7 @@ To extend the corpus (see "Extending the data" below):
 ```bash
 python -m deepmreye compile --limit 5      # sample subjects for QA
 python -m deepmreye qa                     # browser UI: mark eyes / no eyes
-python -m deepmreye preprocess             # extract every subject of approved datasets
+python -m deepmreye preprocess             # extract every subject of datasets that pass QA
 ```
 
 `--data-dir` goes **after** the command. Unset, it resolves `$DEEPMREYE_DATA`,
@@ -118,11 +128,20 @@ deepmreye/
   unsupervised.py   The two linear bases and the streaming accumulator they
                     come from. `lr-cca` is what ships; `corpus-pca` is the
                     variance-ordered reference it is compared against.
+                    `corpus_subjects` is the corpus: every eligible
+                    participant, never an evaluation dataset or its source
+                    accession.
   probe.py          The evaluation protocol, written down once: leave-one-
                     dataset-out, scored at sub-TR and 1-TR, with a cache whose
-                    guard includes a corpus fingerprint.
-  metrics.py        Pearson r, R2, Euclidean error, and the per-dataset affine
-                    calibration that makes the last two mean something.
+                    guard includes a corpus fingerprint. `split=`,
+                    `readout=` and `shots=` are its diagnostic parameters;
+                    `views=` puts each orbit through the same readout;
+                    `fit_readout` is the readout on every labelled
+                    participant, for decoding data with no labels.
+  metrics.py        Pearson r, R2, Euclidean error, the per-dataset affine
+                    calibration that makes the last two mean something, and
+                    `orbit_agreement`: a per-participant confidence that
+                    needs no labels (the two orbits' decodings, correlated).
 
   pipeline.py       Ingestion: S3 download, coregistration, extraction, write.
   preprocess.py     Coregistration and eye-mask extraction (ANTs).
@@ -133,12 +152,14 @@ deepmreye/
   registry.py       Worker sidecars, so parallel extraction never writes the
                     registry directly.
   datasource.py     Finds the corpus and decides what each stage downloads.
-  labels.py         CSV backup of the QA labels.
+  labels.py         The QA vocabulary, which datasets pass (`qa_status`),
+                    and the CSV backup of every label.
   validation.py     TR extraction and validation from NIfTI headers.
   thumbnail.py      The ~20 KB QA image every participant gets.
   qa_classifier.py  Triage model: ranks unlabeled subjects so the uncertain ones
                     get labeled first, and pre-selects a label in the UI. It
-                    never approves anything.
+                    never approves anything (an auto-labeller that did was
+                    deleted).
 
 scripts/            Portable stages: basis fitting, the QA UI, gaze ingest and
                     its verification, corpus indexing, HuggingFace sync.
@@ -163,8 +184,17 @@ build_labeled_voxels.py    All 337 labelled participants' masked voxels as one
                            22 GB memmap, so applying a new basis is a matmul.
 corpus_pc_timeseries.py    The corpus as 96,000 x 512 orbital PCs (212 MB), for
                            criteria that need more than a covariance (ICA).
-analysis_unlabeled.py      The corpus-scaling, labelled-budget and fold-local
-                           references behind the figure.
+fit_corpus_basis.py        Both bases at every corpus size, one streaming pass
+                           (results/corpus_bases/), and the shipped one.
+analysis_unlabeled.py      Every table behind FINDINGS.md and the figure, as
+                           resumable stages; the stages live in unlabeled/ by
+                           topic (corpus, labels, confidence, readouts, data).
+                           `--stages` lists them; the docstring says what each
+                           one answers.
+decode_corpus.py           Gaze for every participant on disk, with its orbit
+                           agreement (results/decoded/corpus_gaze.h5).
+decode_saccades.py         Archived saccade studies against their events.tsv.
+figure_unlabeled.py        The paper figure.
 
 improve_lrcca.py           Estimator, covariance, symmetry and criterion sweeps.
 beyond_cca.py              ICA / dictionary learning as subspace selection.
@@ -177,7 +207,6 @@ slice_time.py              z-band features and the within-TR sample profile.
 subtr_align.py             Is the corpus aligned at sub-TR, not just at TR?
 report_lrcca.py            Ranks any of those JSONs by fold, not by median.
 eval_dme1.py               The published DeepMReye 1.0 CNN, from OSF weights.
-figure_unlabeled.py        The figure; panels selected by letter.
 ```
 
 ## Data
@@ -185,7 +214,8 @@ figure_unlabeled.py        The figure; panels selected by letter.
 `data/<dataset>/<subject>.h5`, one file per participant: `eye_block [47, 29, 18, T]`
 float32, plus `labels [T, 10, 2]` when gaze was recorded. Ten gaze samples per
 TR is what makes the sub-TR resolution possible. `data/datasets.h5` is the
-registry that carries the manual QA label per subject.
+registry that carries the QA label per subject; `data/labels.csv` logs every
+label written.
 
 Dataset names carry the subset: `ds######` is an OpenNeuro accession (keep the
 real accession -- it is the provenance), `dsL##_<name>` is gaze-labeled. So
@@ -196,22 +226,24 @@ Current corpus:
 - **337 gaze-labeled participants across 9 datasets** -- `dsL01` 170, `dsL11` 37,
   `dsL04` 34, `dsL05` 27, `dsL03` 24, `dsL07` 15, `dsL08` 15, `dsL02` 9,
   `dsL06` 6. All in degrees of visual angle.
-- **2,064 unlabeled participants eligible across 654 OpenNeuro accessions**,
-  almost all contributing exactly 2 participants each. The shipped basis is fit
-  on the first **2,000** of a seed-0 shuffle of those, spanning 649 accessions
-  and 96,000 TRs (48 per participant). Count them with
-  `unsupervised.unlabeled_subjects`; a participant is eligible only if its eye
-  mask is fully covered (14,236 voxels) and its run is at least 32 TRs, which is
-  why this is smaller than the raw download.
+- **2,060 unlabeled participants across 652 OpenNeuro datasets**, 98,880 TRs
+  (48 per participant): `unsupervised.corpus_subjects`, every participant whose
+  eye mask is fully covered (14,236 voxels) and whose run is at least 32 TRs.
+  Of the 2,394 OpenNeuro datasets listed, 912 yielded a two-participant QA
+  sample and 697 pass (both eyeballs inside the eye mask in every checked
+  participant); 599 of the corpus's 652 datasets pass. The accessions three
+  labelled datasets came from (`ds006833`, `ds000113`, `ds006642`) are
+  excluded, since they hold the same runs.
 
 ### Extending the data
 
 Two directions, and they are worth very different amounts.
 
 **More unlabeled participants: probably not worth it.** The corpus-size curve
-saturates. `lr-cca` gains +0.15 going from 25 to 800 participants and then
-flattens; going from 1039 to 2000 buys nothing measurable. **More TRs per
-participant is saturated too** -- eight times the TR budget at N=2000 is worth
+saturates. `lr-cca` gains +0.11 going from 10 to 800 participants (mean of 20
+random draws) and then flattens; going from 800 to 2,060 buys +0.011, inside
+the noise floor. **More TRs per
+participant is saturated too** -- eight times the TR budget at N=2000 (the earlier draw) is worth
 +0.004 -- and at a fixed total row count, trading participants for TRs is a tie
 from 2000 down to 250 (see *Participants or TRs?* in `FINDINGS.md`). The
 mechanism is that a 64-dimensional linear subspace of a 14236-voxel eye mask is

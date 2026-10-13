@@ -126,7 +126,7 @@ def score_per_fold(recs, index, folds, k=32, lags=1):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True)
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
     p.add_argument("--out", default="results/lrcca_variants/hybrid.json")
     p.add_argument("--trs", type=int, nargs="+", default=[48, 200],
                    help="Labelled TRs per participant folded in. 48 matches the "

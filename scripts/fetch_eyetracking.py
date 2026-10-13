@@ -146,7 +146,7 @@ DATASETS = {
     ),
     "ds000113": dict(
         corpus_name="dsL08_studyforrest_movie",
-        # Hanke et al. 2016 (Scientific Data 3:160092), studyforrest: 7T,
+        # Hanke et al. 2016 (Scientific Data 3:160092), studyforrest: 3T (the 7T session is audio-only, no gaze),
         # TR = 2.0 s, Forrest Gump. Only ses-movie run-1 is taken, one run per
         # participant, matching what is already in the corpus.
         et_pattern=r"/ses-movie/func/.*_task-movie_run-1_recording-eyegaze_physio\.tsv\.gz$",

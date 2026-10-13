@@ -17,11 +17,14 @@ The decomposition is exact and costs one extra rank-1 update per participant::
 
 so this pass stores the second moment, the per-participant means and the
 per-slab means, and every covariance below is a difference of those. Nothing
-here is fitted -- `--fit` does that afterwards from the saved moments, in
-seconds, which is what makes a shrinkage sweep affordable.
+here is fitted -- `improve_lrcca.py` does that afterwards from the saved
+moments, in seconds, which is what makes a shrinkage sweep affordable.
 
-    python scripts/fit_lrcca_variants.py --accumulate --n 2000
-    python scripts/fit_lrcca_variants.py --fit
+    python scripts/fit_lrcca_variants.py
+    python scripts/fit_lrcca_variants.py --lag1 --out results/lrcca_variants/lag1.npz
+
+The corpus is :func:`deepmreye.unsupervised.corpus_subjects`, the one the
+shipped basis is fitted on (same seed, same order).
 """
 import argparse
 import json
@@ -38,7 +41,7 @@ if str(ROOT) not in sys.path:
 
 from deepmreye.datasource import resolve  # noqa: E402
 from deepmreye.unsupervised import (  # noqa: E402
-    Moments, _slabs, corpus_mask, unlabeled_subjects,
+    Moments, _slabs, corpus_mask, corpus_subjects,
 )
 
 
@@ -145,13 +148,13 @@ def accumulate_lag1(subjects, mask, trs_per_subject=48, n_slabs=4, progress=100)
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--data-dir", default=None)
-    p.add_argument("--out", default="results/lrcca_variants/moments_n2000.npz")
-    p.add_argument("--n", type=int, default=2000)
+    p.add_argument("--out", default="results/lrcca_variants/moments.npz")
+    p.add_argument("--n", type=int, default=None, help="first N of the corpus draw; all by default")
     p.add_argument("--trs-per-subject", type=int, default=48)
     p.add_argument("--n-slabs", type=int, default=4)
     p.add_argument("--seed", type=int, default=0,
-                   help="Must match sweep_corpus_scaling.py's shuffle, or the "
-                        "corpus this fits is not the corpus basis_n2000 saw.")
+                   help="Must match fit_corpus_basis.py's, or the corpus this fits "
+                        "is not the one the shipped basis saw.")
     p.add_argument("--lag1", action="store_true",
                    help="Accumulate the lag-1 cross moment instead of the "
                         "second moment and the group means.")
@@ -159,9 +162,7 @@ def main():
 
     data_dir = resolve(a.data_dir, download=False, quiet=True)
     mask = corpus_mask(data_dir)
-    subjects = unlabeled_subjects(data_dir)
-    rng = np.random.default_rng(a.seed)
-    subjects = [subjects[i] for i in rng.permutation(len(subjects))][:a.n]
+    subjects = corpus_subjects(data_dir, n=a.n, seed=a.seed)
     print(f"[*] {len(subjects)} unlabeled participants, seed {a.seed}", flush=True)
 
     out = Path(a.out)

@@ -22,7 +22,7 @@ orthogonal subspace of the same rank as the floor.
                     projection (the sparse *coding* step is non-linear and is
                     deliberately not used -- it would change the readout, not
                     the basis, and the non-linear readout ceiling is closed).
-    `variance`      the top-k of the same 512, i.e. `corpus-pca` -- the control
+    `variance`      the top k/2 of each orbit's 256 -- the control
                     that says what the subspace is worth with no criterion at
                     all beyond variance.
 
@@ -87,7 +87,7 @@ def fit_dict(z, k, seed=0, max_rows=40000):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True)
-    p.add_argument("--pcs", default="results/lrcca_variants/pcs_n2000.npz")
+    p.add_argument("--pcs", default="results/lrcca_variants/pcs.npz")
     p.add_argument("--out", default="results/lrcca_variants/beyond.json")
     p.add_argument("--k", type=int, default=32)
     a = p.parse_args()
@@ -101,7 +101,12 @@ def main():
         blocks.append((name, (proj @ w).astype(np.float32), mu, K_STORE))
         print(f"  {name:<16} {w.shape}  [{time.time() - t0:5.0f}s]", flush=True)
     # Variance control: the leading PCs of the same two orbits, same rank.
-    order = np.concatenate([np.arange(K_STORE // 2), m + np.arange(K_STORE // 2)])
+    # Interleaved left/right, so that slicing to k keeps k/2 from each orbit;
+    # stacked left-then-right, `:32` was the left orbit alone (0.692 against
+    # 0.698 balanced). Either way this is variance *per orbit*: a PCA over both
+    # orbits at the same rank reads 0.744 (`analysis_unlabeled.py --stages
+    # overlap`), and that is the number to quote as "variance at matched rank".
+    order = np.stack([np.arange(K_STORE // 2), m + np.arange(K_STORE // 2)], axis=1).reshape(-1)
     w = np.zeros((2 * m, K_STORE), dtype=np.float32)
     w[order, np.arange(K_STORE)] = 1.0
     blocks.append(("orbit-variance", (proj @ w).astype(np.float32), mu, K_STORE))

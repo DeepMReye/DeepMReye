@@ -83,8 +83,6 @@ def build_manifest(data_dir, staging_dir, registry_path, max_subjects=MAX_SUBJEC
     reloaded on a rerun. An interrupted run then costs only the datasets it had
     not reached yet.
     """
-    s3 = make_s3_client()
-
     if datasets is None:
         with h5py.File(registry_path, "r") as f:
             if only_approved:

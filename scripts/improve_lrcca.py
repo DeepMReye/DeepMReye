@@ -542,8 +542,8 @@ def build_arms(index, arms):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--voxels", required=True, help="build_labeled_voxels.py output")
-    p.add_argument("--moments", default="results/lrcca_variants/moments_n2000.npz")
-    p.add_argument("--lag-moments", default="results/lrcca_variants/lag1_n2000.npz")
+    p.add_argument("--moments", default="results/lrcca_variants/moments.npz")
+    p.add_argument("--lag-moments", default="results/lrcca_variants/lag1.npz")
     p.add_argument("--out", default="results/lrcca_variants/sweep.json")
     p.add_argument("--arms", default="shrink,reduce,within,mirror,fast,combine")
     p.add_argument("--k", type=int, default=DEFAULT_K)

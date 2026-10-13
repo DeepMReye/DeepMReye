@@ -61,8 +61,12 @@ DEFAULT_K = 32
 DEFAULT_LAGS = 1
 
 # Headline sub-TR medians this module must reproduce before any ordering it
-# produces is quotable. 9 folds, 337 participants, all training rows.
-CALIBRATION = {"lr-cca:32": 0.7408, "lr-cca:32+lags1": 0.7703}
+# produces is quotable. 9 folds, 337 participants, all training rows, on the
+# basis `scripts/fit_corpus_basis.py` writes to results/basis.npz (all 2,060
+# eligible unlabelled participants of 652 datasets; 6 October 2026). The basis
+# before it, a draw of 2,000 that held four evaluation participants under
+# their OpenNeuro names, read 0.7408 / 0.7703.
+CALIBRATION = {"lr-cca:32": 0.7412, "lr-cca:32+lags1": 0.7712}
 
 
 def make_lags(z, lags=0):
@@ -200,16 +204,77 @@ def _resolutions(pred_20, labels):
     }
 
 
-def lodo(recs, feature_fn, seed=0, alphas=ALPHAS, train_filter=None):
+# Which participants a readout is fitted on. `lodo` is the protocol and the only
+# split a headline number may come from. The others hold the features fixed and
+# move the training set, which is how transfer is separated from content:
+# `within` fits one readout per dataset on its other participants, `pooled` fits
+# one readout on every dataset including the test participant's own, and
+# `halves` fits one readout per participant on the first half of its own run
+# and scores the second half.
+SPLITS = ("lodo", "within", "pooled", "halves")
+N_FOLDS = 5
+
+
+def _halves(recs, train_fraction=0.5):
+    """Every run cut into a training record and a test record.
+
+    The test record is always the second half of the run; the training record
+    is its first ``train_fraction`` (at most a half), so shortening the
+    calibration does not move the test set. In time order, not a random split
+    of rows: neighbouring TRs are nearly the same sample, so interleaved rows
+    would score the autocorrelation. Each part is lagged on its own (edge
+    padding), so no test feature reads a training volume.
+    """
+    out = []
+    for r in recs:
+        h, t = len(r["z"]) // 2, int(round(len(r["z"]) * train_fraction))
+        out.append({**r, "z": r["z"][:t], "labels": r["labels"][:t], "half": 0})
+        out.append({**r, "z": r["z"][h:], "labels": r["labels"][h:], "half": 1})
+    return out
+
+
+def _splits(recs, split, shots=None, seed=0):
+    """Yield ``(held, train, test)`` participant lists for one split."""
+    datasets = sorted({r["dataset"] for r in recs})
+    if split == "halves":                 # `recs` is already the output of _halves
+        for first, second in zip(recs[::2], recs[1::2]):
+            yield (first["dataset"], first["subject"]), [first], [second]
+        return
+    if split == "lodo":
+        for held in datasets:
+            yield (held, [r for r in recs if r["dataset"] != held],
+                   [r for r in recs if r["dataset"] == held])
+        return
+    members = {d: [r for r in recs if r["dataset"] == d] for d in datasets}
+    for f in range(N_FOLDS):
+        # Every n-th participant of every dataset, so each is tested exactly once
+        # and a dataset of six still has four to train on.
+        test = [r for d in datasets for i, r in enumerate(members[d]) if i % N_FOLDS == f]
+        ids = {id(r) for r in test}
+        if split == "pooled":
+            yield f, [r for r in recs if id(r) not in ids], test
+        else:
+            for j, d in enumerate(datasets):
+                train = [r for r in members[d] if id(r) not in ids]
+                if shots is not None:
+                    # Nested in `shots` for a fixed seed: the one participant of
+                    # a one-shot draw is also in the two-shot draw.
+                    order = np.random.default_rng([seed, f, j]).permutation(len(train))
+                    train = [train[i] for i in order[:shots]]
+                yield d, train, [r for r in test if r["dataset"] == d]
+
+
+def lodo(recs, feature_fn, seed=0, alphas=ALPHAS, train_filter=None,
+         split="lodo", readout=None, shots=None, keep_predictions=False,
+         train_fraction=0.5, views=None):
     """Leave-one-dataset-out, every metric, at sub-TR and 1-TR resolution.
 
     Returns ``{"participants": [...], "folds": {...}, "summary": {...}}``.
 
     R-squared and Euclidean error are calibrated per participant against the
-    *other* participants of its own held-out dataset (see
-    :mod:`deepmreye.metrics`); Pearson r is not calibrated and needs no
-    calibration. A fold with fewer than two participants therefore reports r
-    only.
+    *other* test participants of its own dataset (see :mod:`deepmreye.metrics`);
+    Pearson r is not calibrated and needs no calibration. A participant tested
+    alone therefore reports r only.
 
     ``train_filter(rec, held) -> bool`` restricts the **training** side only,
     which is how a labeled-budget curve is measured: the readout sees fewer
@@ -217,56 +282,183 @@ def lodo(recs, feature_fn, seed=0, alphas=ALPHAS, train_filter=None):
     dataset. Subsetting the test side instead would move the denominator of the
     metric along with the budget and make the curve unreadable. ``None`` is the
     shipped protocol and changes nothing.
-    """
-    from sklearn.linear_model import RidgeCV
 
+    ``split`` is one of :data:`SPLITS`. Anything but ``"lodo"`` is a diagnostic:
+    the same features and the same scoring with the readout trained closer to
+    the test participant, so the difference between splits is the cost of
+    transfer and nothing else.
+
+    ``readout(x, y, groups) -> predict`` replaces the ridge. ``groups`` is the
+    participant index of every training row, for a readout that needs to hold
+    participants out. ``None`` is ``RidgeCV`` over ``alphas``, the protocol.
+
+    ``shots`` is the few-shot form of ``split="within"``: the readout is fitted
+    on at most that many participants of the test participant's own dataset,
+    drawn by ``seed``. The test side is the ``within`` one, untouched, so every
+    participant is still scored exactly once and the denominator does not move
+    with the number of shots.
+
+    ``split="halves"`` is the within-participant form: one readout per
+    participant, fitted on the first half of its run and scored on the second.
+    Each is the only test participant of its fold, so it reports r only.
+    ``train_fraction`` shortens the training part to the first that fraction of
+    the run (at most 0.5); the test part stays the second half.
+
+    ``keep_predictions`` adds ``"predictions"``, ``{(dataset, subject): [T, 20]}``
+    in the readout's z-units, so that one call's output can be another call's
+    feature -- a readout trained elsewhere, then calibrated on a few shots.
+
+    ``views`` is ``{name: feature_fn}``: each test participant's features under
+    another function, put through the same fitted readout and returned unscored
+    as ``"views"``, ``{name: {(dataset, subject): [T, 20]}}``. For ``lr-cca``
+    the views are the two orbits alone; the readout is linear in their average,
+    so their two decodings average to the scored one exactly, and how far
+    apart they are is a confidence that needs no labels.
+    """
+    if split not in SPLITS:
+        raise ValueError(f"split must be one of {SPLITS}, got {split!r}")
+    if train_filter is not None and split != "lodo":
+        raise ValueError("train_filter is defined per held-out dataset; use split='lodo'")
+    if shots is not None and split != "within":
+        raise ValueError("shots are drawn from the test participant's own dataset; "
+                         "use split='within'")
+
+    if not 0.0 < train_fraction <= 0.5:
+        raise ValueError(f"train_fraction must be in (0, 0.5], got {train_fraction}")
+    if train_fraction != 0.5 and split != "halves":
+        raise ValueError("train_fraction is the length of a participant's own "
+                         "calibration; use split='halves'")
+    if split == "halves":
+        recs = _halves(recs, train_fraction)
     feats = {id(r): np.asarray(feature_fn(r), dtype=np.float64) for r in recs}
     datasets = sorted({r["dataset"] for r in recs})
-    rows = []
+    rows, kept = [], {}
+    viewed = {name: {} for name in (views or {})}
 
-    for held in datasets:
-        train = [r for r in recs if r["dataset"] != held]
+    for held, train, test in _splits(recs, split, shots, seed):
         if train_filter is not None:
             train = [r for r in train if train_filter(r, held)]
-        test = [r for r in recs if r["dataset"] == held]
-
-        xs, ys = [], []
-        for ds in sorted({r["dataset"] for r in train}):
-            members = [r for r in train if r["dataset"] == ds]
-            x = np.concatenate([feats[id(r)] for r in members])
-            y = np.concatenate([r["labels"].reshape(len(r["labels"]), 20) for r in members])
-            ok = np.isfinite(y).all(axis=1) & np.isfinite(x).all(axis=1)
-            if ok.sum() < 10:
-                continue
-            sd = y[ok].std(axis=0)
-            sd[sd < 1e-9] = 1.0
-            xs.append(x[ok])
-            ys.append((y[ok] - y[ok].mean(axis=0)) / sd)
-        if not xs:
+        if not test:
             continue
 
-        model = RidgeCV(alphas=alphas).fit(np.concatenate(xs), np.concatenate(ys))
+        predict = _fit(train, feats, alphas, readout)
+        if predict is None:
+            continue
 
         # Predict every test participant once, then calibrate each against the rest.
         preds = {}
         for s in test:
-            got = _resolutions(model.predict(feats[id(s)]), s["labels"])
+            pred = predict(feats[id(s)])
+            if keep_predictions:
+                kept[(s["dataset"], s["subject"])] = pred
+            for name, fn in (views or {}).items():
+                viewed[name][(s["dataset"], s["subject"])] = predict(
+                    np.asarray(fn(s), dtype=np.float64))
+            got = _resolutions(pred, s["labels"])
             if got is not None:
-                preds[s["subject"]] = got
+                preds[(s["dataset"], s["subject"])] = got
+        rows += _score_fold(preds)
 
-        for sub, per_res in preds.items():
-            row = {"dataset": held, "subject": sub}
-            for res, (p, t) in per_res.items():
-                others = [preds[o][res] for o in preds if o != sub]
-                if others:
-                    op = np.concatenate([o[0] for o in others])
-                    ot = np.concatenate([o[1] for o in others])
-                    gain, offset = metrics.fit_affine(op, ot)
-                else:
-                    gain = offset = None
-                row[res] = metrics.score(p, t, gain, offset)
-            rows.append(row)
+    res = _summarise(rows, datasets)
+    if keep_predictions:
+        res["predictions"] = kept
+    if views:
+        res["views"] = viewed
+    return res
 
+
+def _fit(train, feats, alphas=ALPHAS, readout=None):
+    """The readout on every finite row of ``train``, gaze z-scored per dataset.
+
+    ``feats`` maps ``id(rec)`` to that record's feature matrix. Returns the
+    fitted ``predict``, or ``None`` when no dataset has ten usable rows.
+    """
+    from sklearn.linear_model import RidgeCV
+
+    # Which rows train, then one preallocated design matrix: a voxel-sized
+    # feature set does not fit three copies of itself in memory.
+    parts, ys, gs = [], [], []
+    for ds in sorted({r["dataset"] for r in train}):
+        members = [r for r in train if r["dataset"] == ds]
+        y = np.concatenate([r["labels"].reshape(len(r["labels"]), 20) for r in members])
+        g = np.concatenate([np.full(len(feats[id(r)]), len(gs) * 100000 + i)
+                            for i, r in enumerate(members)])
+        oks = [np.isfinite(feats[id(r)]).all(axis=1) for r in members]
+        ok = np.isfinite(y).all(axis=1) & np.concatenate(oks)
+        if ok.sum() < 10:
+            continue
+        sd = y[ok].std(axis=0)
+        sd[sd < 1e-9] = 1.0
+        ys.append((y[ok] - y[ok].mean(axis=0)) / sd)
+        gs.append(g[ok])
+        bounds = np.cumsum([0] + [len(o) for o in oks])
+        parts += [(r, ok[a:b]) for r, a, b in zip(members, bounds[:-1], bounds[1:])]
+    if not ys:
+        return None
+
+    y_all = np.concatenate(ys)
+    x_all = np.empty((len(y_all), feats[id(parts[0][0])].shape[1]))
+    pos = 0
+    for r, ok in parts:
+        n = int(ok.sum())
+        x_all[pos:pos + n] = feats[id(r)][ok]
+        pos += n
+    if readout is None:
+        return RidgeCV(alphas=alphas).fit(x_all, y_all).predict
+    return readout(x_all, y_all, np.concatenate(gs))
+
+
+def fit_readout(recs, feature_fn, alphas=ALPHAS, readout=None):
+    """The protocol's readout fitted on *every* labelled participant, for decoding
+    data that has no labels at all. Outputs are in the training datasets' gaze
+    z-units, as every prediction :func:`lodo` keeps is."""
+    feats = {id(r): np.asarray(feature_fn(r), dtype=np.float64) for r in recs}
+    return _fit(recs, feats, alphas, readout)
+
+
+def _score_fold(preds):
+    """``{(dataset, subject): {res: (pred, true)}}`` -> one scored row each.
+
+    R-squared and error are calibrated per participant against the *other*
+    participants of the same dataset in the same fold; r needs no calibration.
+    """
+    rows = []
+    for (ds, sub), per_res in preds.items():
+        row = {"dataset": ds, "subject": sub}
+        for res, (p, t) in per_res.items():
+            others = [preds[o][res] for o in preds if o != (ds, sub) and o[0] == ds]
+            if others:
+                op = np.concatenate([o[0] for o in others])
+                ot = np.concatenate([o[1] for o in others])
+                gain, offset = metrics.fit_affine(op, ot)
+            else:
+                gain = offset = None
+            row[res] = metrics.score(p, t, gain, offset)
+        rows.append(row)
+    return rows
+
+
+def score_predictions(recs, predictions):
+    """Score given ``{(dataset, subject): [T, 20]}`` predictions as :func:`lodo` does.
+
+    Each dataset is one fold, which is what leave-one-dataset-out makes it, so
+    for predictions kept from a ``lodo`` call this reproduces that call's
+    result exactly. It exists for arms that transform predictions after the
+    readout -- a prior applied to decoded gaze -- so that they are scored by
+    the same code as everything else rather than by a second implementation.
+    """
+    datasets = sorted({r["dataset"] for r in recs})
+    rows = []
+    for d in datasets:
+        preds = {}
+        for r in recs:
+            key = (r["dataset"], r["subject"])
+            if r["dataset"] != d or key not in predictions:
+                continue
+            got = _resolutions(predictions[key], r["labels"])
+            if got is not None:
+                preds[key] = got
+        rows += _score_fold(preds)
     return _summarise(rows, datasets)
 
 

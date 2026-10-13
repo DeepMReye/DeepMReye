@@ -36,21 +36,7 @@ def make_s3_client():
     return boto3.client("s3", region_name="us-east-1", config=Config(signature_version=UNSIGNED))
 
 
-# QA label vocabulary, stored on each subject's ``approved`` attribute.
-LBL_UNLABELED = -1
-LBL_NO_EYES_BAD_TRANSFORM = 0
-LBL_EYES = 1
-LBL_NO_EYES_GOOD_TRANSFORM = 2
-LBL_EYES_CUT = 3  # eyeballs visible but clipped by the bounding box
-LBL_EYES_FAINT = 4  # eyeballs visible but faint
-LBL_DATASET_SKIPPED = -99
-
-# Labels that count as usable eye signal. `LBL_EYES_CUT` and `LBL_EYES_FAINT` are
-# included: clipped or faint eyeballs still carry gaze information, and dropping
-# those would cost whole datasets under the all-or-nothing rule below. They are
-# kept as distinct labels (rather than folded into `LBL_EYES`) so the corpus can
-# be filtered on them later.
-APPROVED_LABELS = (LBL_EYES, LBL_EYES_CUT, LBL_EYES_FAINT)
+from deepmreye.labels import LBL_DATASET_SKIPPED, LBL_UNLABELED, labels_pass  # noqa: E402
 
 
 # Gaze-labeled datasets are named `dsL<nn>_<name>` (see DATASET_ALIASES in
@@ -76,15 +62,12 @@ def is_dataset_approved(ds_grp):
     4 = eyes visible but faint, 3 = eyes visible but cut off,
     0 = no eyes / bad transform, 2 = no eyes / good transform, -1 = unlabeled.
     A dataset qualifies only if it was not skipped (-99) and *every* labeled
-    subject shows eyes (clean, cut off, or faint). A single 'no eyes' subject
-    drops the whole dataset, since the same scanner/experiment tends to fail the
-    same way across subjects and OpenNeuro has more datasets than we need.
+    subject shows eyes (clean, cut off, or faint); see
+    :func:`deepmreye.labels.labels_pass`.
     """
     if ds_grp.attrs.get("approved", 0) == LBL_DATASET_SKIPPED:
         return False
-    labels = [ds_grp[s].attrs.get("approved", LBL_UNLABELED) for s in ds_grp.keys()]
-    labels = [lbl for lbl in labels if lbl != LBL_UNLABELED]
-    return len(labels) > 0 and all(lbl in APPROVED_LABELS for lbl in labels)
+    return labels_pass(ds_grp[s].attrs.get("approved", LBL_UNLABELED) for s in ds_grp.keys())
 
 
 def list_datasets(s3, limit=None):

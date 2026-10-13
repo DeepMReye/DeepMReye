@@ -1,4 +1,4 @@
-"""Versionable, human-readable backup of manual QA labels.
+"""QA labels: the vocabulary, which datasets pass, and a versionable backup.
 
 The authoritative labels live as ``approved`` attributes inside
 ``data/datasets.h5`` (a mutable binary file). This module mirrors every
@@ -12,8 +12,7 @@ CSV schema (one row per labeling event, newest rows win on restore):
 
 - ``scope="dataset"`` with an empty ``subject``: a whole-dataset action, i.e.
   the skip flag (label ``-99``).
-- ``scope="subject"``: a per-subject label (1 eyes, 0 no eyes/bad transform,
-  2 no eyes/good transform).
+- ``scope="subject"``: a per-subject label (the ``LBL_*`` vocabulary below).
 """
 import csv
 from datetime import datetime, timezone
@@ -22,6 +21,48 @@ from pathlib import Path
 import h5py
 
 CSV_FIELDS = ["timestamp", "dataset", "scope", "subject", "label"]
+
+# QA label vocabulary, stored on each subject's ``approved`` attribute.
+LBL_UNLABELED = -1
+LBL_NO_EYES_BAD_TRANSFORM = 0
+LBL_EYES = 1
+LBL_NO_EYES_GOOD_TRANSFORM = 2
+LBL_EYES_CUT = 3  # eyeballs visible but clipped by the bounding box
+LBL_EYES_FAINT = 4  # eyeballs visible but faint
+LBL_DATASET_SKIPPED = -99
+
+# Labels that count as usable eye signal. `LBL_EYES_CUT` and `LBL_EYES_FAINT` are
+# included: clipped or faint eyeballs still carry gaze information, and dropping
+# those would cost whole datasets under the all-or-nothing rule. They are kept as
+# distinct labels (rather than folded into `LBL_EYES`) so the corpus can be
+# filtered on them later.
+APPROVED_LABELS = (LBL_EYES, LBL_EYES_CUT, LBL_EYES_FAINT)
+
+
+def labels_pass(labels):
+    """The all-or-nothing rule: some labelled participant, and every one shows eyes.
+
+    A single 'no eyes' participant drops the whole dataset, since the same
+    scanner and protocol tend to fail the same way across participants.
+    """
+    labels = [int(x) for x in labels if int(x) != LBL_UNLABELED]
+    return len(labels) > 0 and all(x in APPROVED_LABELS for x in labels)
+
+
+def qa_status(h5_path):
+    """``{dataset: "pass" | "fail" | "not labelled" | "skipped"}`` for every
+    dataset in the registry, by :func:`labels_pass` on its subjects' labels."""
+    out = {}
+    with h5py.File(h5_path, "r") as f:
+        for ds in f.keys():
+            labels = [int(f[ds][s].attrs.get("approved", LBL_UNLABELED)) for s in f[ds].keys()]
+            if f[ds].attrs.get("approved", LBL_UNLABELED) == LBL_DATASET_SKIPPED:
+                out[ds] = "skipped"
+            elif all(x == LBL_UNLABELED for x in labels):
+                out[ds] = "not labelled"
+            else:
+                out[ds] = "pass" if labels_pass(labels) else "fail"
+    return out
 
 
 def _now():
