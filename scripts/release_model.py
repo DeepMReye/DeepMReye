@@ -54,7 +54,7 @@ correlation between the left and right orbit, and a ridge readout fitted on
 **{n_lab} gaze-labelled participants from {n_lab_ds} datasets**.
 
 ```bash
-pip install deepmreye
+pip install git+https://github.com/DeepMReye/DeepMReye.git@deepmreye2.0
 deepmreye decode sub-01_task-movie_bold.nii.gz -o gaze/
 ```
 
