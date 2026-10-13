@@ -41,8 +41,8 @@ SAMPLES_PER_TR = 10
 
 # Where the pretrained decoder lives. Override with $DEEPMREYE_MODEL_REPO, or
 # point $DEEPMREYE_MODEL at a local file to skip the Hub entirely.
-PRETRAINED_REPO = os.environ.get("DEEPMREYE_MODEL_REPO", "DeepMReye/deepmreye-2")
-PRETRAINED_FILE = "deepmreye2.npz"
+PRETRAINED_REPO = os.environ.get("DEEPMREYE_MODEL_REPO", "DeepMReye/deepmreye-unsupervised")
+PRETRAINED_FILE = "decoder.npz"
 # The full basis (256 canonical pairs) beside it, for training and evaluation.
 PRETRAINED_BASIS = "basis.npz"
 
@@ -97,13 +97,14 @@ def fit_ridge(parts, alphas=ALPHAS, readout=None):
       features are finite.
 
     Returns the fitted ``sklearn.linear_model.RidgeCV`` (penalty chosen over
-    ``alphas`` by efficient leave-one-out on the training rows), or, with a
+    ``alphas`` by efficient leave-one-out on the training rows; its
+    ``target_scales_`` holds each dataset's target mean and SD), or, with a
     custom ``readout(x, y, groups) -> predict``, whatever that returns. ``None``
     when no dataset has ten usable rows.
     """
     from sklearn.linear_model import RidgeCV
 
-    rows, ys, gs = [], [], []
+    rows, ys, gs, scales = [], [], [], {}
     for ds in sorted({p[0] for p in parts}):
         members = [p for p in parts if p[0] == ds]
         y = np.concatenate([np.asarray(lab).reshape(len(lab), 2 * SAMPLES_PER_TR)
@@ -116,6 +117,7 @@ def fit_ridge(parts, alphas=ALPHAS, readout=None):
             continue
         sd = y[ok].std(axis=0)
         sd[sd < 1e-9] = 1.0
+        scales[ds] = (y[ok].mean(axis=0), sd)
         ys.append((y[ok] - y[ok].mean(axis=0)) / sd)
         gs.append(g[ok])
         bounds = np.cumsum([0] + [len(o) for o in oks])
@@ -133,7 +135,9 @@ def fit_ridge(parts, alphas=ALPHAS, readout=None):
         x_all[pos:pos + n] = f[ok]
         pos += n
     if readout is None:
-        return RidgeCV(alphas=alphas).fit(x_all, y_all)
+        fitted = RidgeCV(alphas=alphas).fit(x_all, y_all)
+        fitted.target_scales_ = scales      # per dataset: (mean, sd) of the 20 targets
+        return fitted
     return readout(x_all, y_all, np.concatenate(gs))
 
 
@@ -263,7 +267,11 @@ class Decoder:
 
     @property
     def units(self):
-        return self.meta.get("calibrated_units", "deg") if self.gain is not None else "z"
+        """``"z"``: the training datasets' standard units; ``"labels"``: the units
+        of the one dataset the readout was trained on; else the calibration's."""
+        if self.gain is not None:
+            return self.meta.get("calibrated_units", "deg")
+        return self.meta.get("readout_units", "z")
 
     def fit(self, blocks, labels, datasets=None, alphas=ALPHAS):
         """Fit the readout on labelled eye blocks.
@@ -288,11 +296,18 @@ class Decoder:
         model = fit_ridge(parts, alphas)
         if model is None:
             raise ValueError("no dataset has ten volumes with finite gaze on all 20 samples")
-        self.coef, self.intercept = np.asarray(model.coef_), np.asarray(model.intercept_)
+        coef, intercept = np.asarray(model.coef_), np.asarray(model.intercept_)
+        trained_on = sorted(set(map(str, datasets)))
+        units = "z"
+        if len(trained_on) == 1:
+            # One dataset: undo its standardisation, so gaze comes out in its labels' units.
+            mean, sd = model.target_scales_[trained_on[0]]
+            coef, intercept = coef * sd[:, None], intercept * sd + mean
+            units = "labels"
+        self.coef, self.intercept = coef, intercept
         self.gain = self.offset = None
-        self.meta.update({"alpha": float(model.alpha_),
-                          "trained_on": sorted(set(map(str, datasets))),
-                          "n_runs": len(parts)})
+        self.meta.update({"alpha": float(model.alpha_), "trained_on": trained_on,
+                          "n_runs": len(parts), "readout_units": units})
         self.meta.pop("calibrated_units", None)
         return self
 

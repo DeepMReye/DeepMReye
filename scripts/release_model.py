@@ -6,7 +6,7 @@
 
 Writes to ``--out``:
 
-    deepmreye2.npz   the decoder: the basis at 32 pairs + the readout fitted on
+    decoder.npz      the decoder: the basis at 32 pairs + the readout fitted on
                      every gaze-labelled participant of the published corpus
     basis.npz        the basis at all stored pairs (for `train` and `evaluate`)
     evaluation.json  the leave-one-dataset-out result on the same basis
@@ -16,7 +16,7 @@ The readout is fitted through :meth:`Decoder.fit_features` on features computed
 by :meth:`Decoder.features` from the eye blocks themselves -- the inference
 path -- not from the evaluation cache. ``--upload`` pushes the directory to the
 HuggingFace model repo (``$DEEPMREYE_MODEL_REPO``, default
-``DeepMReye/deepmreye-2``), creating it if needed.
+``DeepMReye/deepmreye-unsupervised``), creating it if needed.
 """
 import argparse
 import json
@@ -54,7 +54,7 @@ correlation between the left and right orbit, and a ridge readout fitted on
 **{n_lab} gaze-labelled participants from {n_lab_ds} datasets**.
 
 ```bash
-pip install git+https://github.com/DeepMReye/DeepMReye.git@deepmreye2.0
+pip install git+https://github.com/DeepMReye/DeepMReye.git@deepmreye-unsupervised
 deepmreye decode sub-01_task-movie_bold.nii.gz -o gaze/
 ```
 

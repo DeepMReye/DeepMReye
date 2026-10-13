@@ -148,3 +148,38 @@ def test_cli_parses_every_command():
                  ["train", "-o", "m.npz"], ["calibrate", "--data-dir", "d", "-o", "m.npz"],
                  ["evaluate"], ["fit-basis", "-o", "b.npz"], ["download"]):
         assert callable(parser.parse_args(argv).func)
+
+
+def test_runs_selects_flat_folders_subjects_and_labelled_only(tmp_path):
+    from deepmreye.__main__ import _runs
+    from deepmreye.data import write_subject
+
+    block = np.zeros((2, 2, 2, 12), dtype=np.float32)
+    y = np.zeros((12, 10, 2), dtype=np.float32)
+    for sub in ("sub-01", "sub-02", "sub-03_task-movie"):
+        write_subject(tmp_path / "mystudy" / f"{sub}.h5", block, labels=y)
+    write_subject(tmp_path / "mystudy" / "sub-04.h5", block)              # no gaze
+    write_subject(tmp_path / "other" / "dsX" / "sub-01.h5", block, labels=y)
+
+    flat = [(d, s) for d, s, _ in _runs(tmp_path / "mystudy")]
+    assert flat == [("mystudy", "sub-01"), ("mystudy", "sub-02"), ("mystudy", "sub-03_task-movie")]
+    picked = [s for _, s, _ in _runs(tmp_path / "mystudy", subjects=["sub-01", "sub-03"])]
+    assert picked == ["sub-01", "sub-03_task-movie"]
+    assert [s for _, s, _ in _runs(tmp_path / "mystudy", subjects=["sub-0[2-4]"])] == [
+        "sub-02", "sub-03_task-movie"]      # sub-04 has no gaze
+    assert [(d, s) for d, s, _ in _runs(tmp_path / "other")] == [("dsX", "sub-01")]
+    assert len(list(_runs(tmp_path / "mystudy", labelled=False))) == 4
+
+
+def test_a_readout_trained_on_one_dataset_speaks_its_labels_units():
+    """Trained on a single study, gaze comes back in that study's units (degrees,
+    pixels...), not in z-units; trained on several, it stays in z-units."""
+    model = Decoder(_basis(), k=4, lags=1)
+    blocks, labels, _names = _runs(model, datasets=("mystudy",))
+    degrees = [4.0 * y + 7.0 for y in labels]
+    model.fit([blocks[0], blocks[2]], [degrees[0], degrees[2]])   # runs 0, 2, 4 share a gain
+    assert model.units == "labels"
+    pred = model.predict(blocks[4])
+    assert np.abs(pred - degrees[4]).mean() < 0.05 * np.abs(degrees[4]).mean()
+    model.fit(blocks, labels, ["a", "b", "a", "b", "a", "b"])
+    assert model.units == "z"

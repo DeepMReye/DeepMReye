@@ -190,3 +190,50 @@ def is_intact(path):
             return "eye_block" in f and len(f["eye_block"].shape) == 4
     except Exception:
         return False
+
+
+# --------------------------------------------------------------------------- #
+# Gaze labels from an eye tracker
+# --------------------------------------------------------------------------- #
+
+def bin_gaze(times, x, y, n_volumes, tr, n_sub=10, min_samples=1):
+    """A raw gaze stream -> labels ``[n_volumes, n_sub, 2]``.
+
+    ``times`` are seconds from the onset of the first volume (subtract the
+    scanner trigger's time first). Sub-bin ``j`` of volume ``t`` covers
+    ``[(t + j/n_sub) * tr, (t + (j+1)/n_sub) * tr)`` and holds the mean of the
+    samples in it, so the mean over a volume's ``n_sub`` bins is its mean gaze.
+    Bins with fewer than ``min_samples`` finite samples are NaN; pass blinks and
+    track loss as NaN and they are skipped. Units are whatever ``x`` and ``y``
+    are in (degrees of visual angle, for calibration).
+    """
+    times = np.asarray(times, dtype=np.float64)
+    xy = np.stack([np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)], axis=1)
+    n_bins = int(n_volumes) * int(n_sub)
+    out = np.full((n_bins, 2), np.nan)
+    # floor, so a sample exactly on a bin edge belongs to the bin it opens.
+    idx = np.floor(times / (float(tr) / n_sub)).astype(np.int64)
+    keep = np.isfinite(times) & (idx >= 0) & (idx < n_bins)
+    for col in range(2):
+        ok = keep & np.isfinite(xy[:, col])
+        counts = np.bincount(idx[ok], minlength=n_bins)
+        sums = np.bincount(idx[ok], weights=xy[ok, col], minlength=n_bins)
+        enough = counts >= min_samples
+        out[enough, col] = sums[enough] / counts[enough]
+    return out.reshape(int(n_volumes), int(n_sub), 2).astype(np.float32)
+
+
+def read_gaze_tsv(path):
+    """``(times, x, y)`` from a tab- or comma-separated file with a header row
+    naming ``time``, ``x`` and ``y`` columns (``onset`` is accepted for ``time``)."""
+    text = Path(path).read_text().splitlines()
+    sep = "\t" if "\t" in text[0] else ","
+    header = [h.strip().lower() for h in text[0].split(sep)]
+    col = {name: header.index(name) for name in header}
+    t_key = "time" if "time" in col else "onset"
+    if t_key not in col or "x" not in col or "y" not in col:
+        raise ValueError(f"{path}: need columns time (or onset), x and y; found {header}")
+    rows = np.genfromtxt(text[1:], delimiter=sep, dtype=np.float64, missing_values=("", "n/a", "NaN"),
+                         filling_values=np.nan)
+    rows = np.atleast_2d(rows)
+    return rows[:, col[t_key]], rows[:, col["x"]], rows[:, col["y"]]

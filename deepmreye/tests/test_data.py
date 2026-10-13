@@ -176,3 +176,40 @@ def test_no_download_raises_with_a_useful_message(tmp_path, monkeypatch, no_netw
     monkeypatch.setenv("DEEPMREYE_CACHE", str(tmp_path / "empty"))
     with pytest.raises(FileNotFoundError, match="DEEPMREYE_DATA"):
         data.resolve(download=False)
+
+
+# --- gaze labels from an eye tracker ---------------------------------------------
+
+
+def test_bin_gaze_means_samples_into_ten_bins_per_volume():
+    tr, n_vol = 2.0, 3
+    times = np.arange(0, n_vol * tr, 0.01)                   # 100 Hz
+    x, y = times.copy(), -times
+    labels = data.bin_gaze(times, x, y, n_vol, tr)
+    assert labels.shape == (3, 10, 2)
+    # Bin j of volume t covers [(t + j/10) tr, (t + (j+1)/10) tr): its mean time.
+    assert labels[1, 3, 0] == pytest.approx((1 + 3.5 / 10) * tr, abs=0.01)
+    assert labels[1, 3, 1] == pytest.approx(-(1 + 3.5 / 10) * tr, abs=0.01)
+    # The mean of a volume's bins is its mean gaze.
+    assert labels[2, :, 0].mean() == pytest.approx(x[(times >= 4) & (times < 6)].mean(), abs=0.01)
+
+
+def test_bin_gaze_leaves_unrecorded_bins_nan_and_skips_blinks():
+    times = np.arange(0, 4.0, 0.01)
+    x = np.ones_like(times)
+    x[(times >= 0.2) & (times < 0.4)] = np.nan               # a blink over bin 1 of volume 0
+    labels = data.bin_gaze(times, x, x, n_volumes=3, tr=2.0)  # the run outlasts the recording
+    assert np.isnan(labels[0, 1]).all() and np.isfinite(labels[0, 0]).all()
+    assert np.isnan(labels[2]).all()
+    assert np.nanmax(labels) == 1.0
+
+
+def test_read_gaze_tsv_finds_columns_by_name(tmp_path):
+    path = tmp_path / "g.tsv"
+    path.write_text("x\ttime\ty\n1.0\t0.0\t2.0\nn/a\t0.5\t3.0\n")
+    t, x, y = data.read_gaze_tsv(path)
+    assert list(t) == [0.0, 0.5] and x[0] == 1.0 and np.isnan(x[1]) and list(y) == [2.0, 3.0]
+    bad = tmp_path / "bad.csv"
+    bad.write_text("a,b\n1,2\n")
+    with pytest.raises(ValueError, match="time"):
+        data.read_gaze_tsv(bad)

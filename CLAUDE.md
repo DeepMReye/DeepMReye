@@ -1,8 +1,9 @@
 # CLAUDE.md
 
-Orientation for an agent working on the `deepmreye2.0` branch: the user-facing
-release of DeepMReye 2.0. Read **`README.md`** (how a user runs it) and
-**`docs/method.md`** (what the method is and what it scores) first.
+Orientation for an agent working on the `deepmreye-unsupervised` branch: the user-facing
+release of the unsupervised DeepMReye. Read **`README.md`** first: it is the
+whole user documentation (install, every use case, output conventions, the
+method and its results), deliberately in one file.
 
 This branch is the method and nothing else. The research record -- every arm
 that was tried, the controls, the closed directions, the corpus ingestion, the
@@ -17,19 +18,20 @@ the research notes in `docs/` are author-local and gitignored.
 ```
 deepmreye/
   __init__.py     decode(), extract_eye_block(), load_model(), Decoder
-  __main__.py     the CLI: decode, preprocess, train, calibrate, evaluate, fit-basis, download
+  __main__.py     the CLI: decode, features, preprocess, train, calibrate, evaluate,
+                  fit-basis, download
   preprocess.py   NIfTI -> eye block: ANTs registration, crop, normalisation
   basis.py        the corpus definition, the streaming accumulator, the lr-cca fit
   model.py        Decoder (features, readout, confidence, calibration, save/load,
                   pretrained) and fit_ridge, the one readout fit
   evaluate.py     leave-one-dataset-out, the one implementation of the score
   metrics.py      r, R2, Euclidean error, calibration, orbit agreement
-  data.py         HuggingFace resolution and the per-participant HDF5 layout
+  data.py         HuggingFace resolution, the per-participant HDF5 layout, and
+                  bin_gaze (eye-tracker samples -> [T, 10, 2] labels)
   thumbnail.py    the QA image of a registration
   masks/          the template and the two eye masks
 scripts/
   release_model.py  builds (and with --upload publishes) the pretrained release
-docs/method.md
 ```
 
 ## Where things live
@@ -38,13 +40,15 @@ docs/method.md
   participants, 921 folders, 77 GB; the nine `dsL*` folders are the 337 labelled
   participants, 20 GB). `deepmreye.data.resolve` finds or downloads it.
 - **Pretrained decoder and basis**: HuggingFace model repo
-  `DeepMReye/deepmreye-2` (`deepmreye2.npz`, `basis.npz`). `$DEEPMREYE_MODEL` /
+  `DeepMReye/deepmreye-unsupervised` (`decoder.npz`, `basis.npz`). `$DEEPMREYE_MODEL` /
   `$DEEPMREYE_BASIS` point at local files instead.
 - **Release**: `python scripts/release_model.py --basis <basis.npz> --out
   release/` builds the decoder, the basis, `evaluation.json` and the model card,
   and refuses to build unless the protocol reproduces the published numbers;
   `--upload` publishes the directory. Publishing is outward-facing: only when
   the user asks.
+- **Versions** are git tags (`v2.0.0`, ...), read by hatch-vcs; the decoder file
+  records the version it was built with. Rebuild the release after tagging.
 
 ## Rules that are not negotiable
 
@@ -70,8 +74,12 @@ docs/method.md
 
 - Gaze is `[T, 10, 2]`: ten samples per volume, sample `j` covering
   `[(t + j/10) TR, (t + (j+1)/10) TR)`; x to the right, y **downwards**.
-- Uncalibrated output is in the training datasets' z-units (`Decoder.units ==
-  "z"`); `calibrate` makes it label units.
+- Uncalibrated output of a readout trained on several datasets (the pretrained
+  one) is in z-units (`Decoder.units == "z"`); a readout trained on one dataset
+  is in that dataset's label units (`"labels"`); `calibrate` gives label units.
+- README's "Which setup fits your data?" table quotes measured numbers (FINDINGS
+  on `pytorch_unsup`, "A new study with a few labelled participants" and the
+  schemes table). Change a recommendation only with a measurement behind it.
 - An eye block is `[47, 29, 18, T]`, normalised, non-eye voxels zero, exactly as
   `preprocess.extract_eye_block` writes it. A change to preprocessing changes the
   input distribution of a basis fitted on the published corpus: check it against
