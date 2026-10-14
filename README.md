@@ -1,3 +1,5 @@
+<p align="center"><img src="media/deepmreye_logo.png" alt="DeepMReye" width="640"></p>
+
 # DeepMReye: gaze from fMRI, without an eye tracker
 
 [![tests](https://github.com/DeepMReye/DeepMReye/actions/workflows/tests.yml/badge.svg?branch=deepmreye-unsupervised)](https://github.com/DeepMReye/DeepMReye/actions/workflows/tests.yml)
