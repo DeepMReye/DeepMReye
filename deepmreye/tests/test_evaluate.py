@@ -255,3 +255,21 @@ def test_orbit_views_average_to_the_scored_prediction():
     for key, pred in out["predictions"].items():
         mean = 0.5 * (out["views"]["left"][key] + out["views"]["right"][key])
         assert np.allclose(mean, pred, atol=1e-6)   # the cache is float32
+
+
+def test_calibration_never_sees_the_participant_it_scores():
+    """R2 and error are calibrated on the *other* participants of the dataset.
+    A participant alone in its dataset gets no calibration at all, and a
+    participant's gain is the one fitted on the others."""
+    from deepmreye import metrics
+
+    rng = np.random.default_rng(0)
+    true = rng.normal(size=(200, 2))
+    alone = {("dsA", "s1"): {"subtr": (true * 2.0, true)}}
+    assert tp._score_fold(alone)[0]["subtr"]["gain_x"] is None
+
+    pair = {("dsA", "s1"): {"subtr": (true * 2.0, true)},
+            ("dsA", "s2"): {"subtr": (true * 4.0, true)}}
+    rows = {r["subject"]: r for r in tp._score_fold(pair)}
+    assert rows["s1"]["subtr"]["gain_x"] == pytest.approx(metrics.fit_affine(true * 4.0, true)[0][0])
+    assert rows["s1"]["subtr"]["gain_x"] == pytest.approx(0.25)

@@ -69,3 +69,21 @@ def test_normalize_clips_outliers():
     block[1, 1, 1, 5] = 1e4
     out = preprocess.normalize(block, std_cut=5)
     assert np.abs(out).max() <= 5 * np.nanstd(out) + 1.0
+
+
+def test_crop_puts_the_orbits_in_the_corpus_order():
+    """The basis splits the block at x = 24 into its two orbits, so the crop must
+    lay them out exactly as the corpus was: the eye at larger template x first,
+    filling x < 24, then the other. Swapping them would feed each orbit's
+    weights the other eye's voxels without any error."""
+    from deepmreye.basis import LR_SPLIT_X
+
+    masks = preprocess.get_masks()
+    mask = masks["eyemask_small"].numpy()
+    x_index = np.broadcast_to(np.arange(mask.shape[0], dtype=np.float32)[:, None, None], mask.shape)
+    block = preprocess.crop_eyes((x_index + 1.0)[..., None], masks)[..., 0]
+    (_x1, x0, x3, x2) = masks["edges"][0]
+    first, second = block[:LR_SPLIT_X], block[LR_SPLIT_X:]
+    assert x3 - x2 == LR_SPLIT_X
+    assert first[first > 0].min() >= x2 + 1 and first[first > 0].max() <= x3
+    assert second[second > 0].min() >= x0 + 1 and second[second > 0].max() < x2 + 1

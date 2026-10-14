@@ -154,24 +154,6 @@ def test_unlabeled_subjects_excludes_labeled_partial_and_short(tmp_path):
     assert [(d, s) for d, s, _p, _t in got] == [("ds000001", "sub-01")]
 
 
-def test_include_labeled_folds_in_labeled_voxels(tmp_path):
-    root, n_vox = _corpus(tmp_path)
-    got = unlabeled_subjects(root, min_voxels=n_vox, include_labeled=True)
-    assert {d for d, _s, _p, _t in got} == {
-        "ds000001", "dsL01_guided_fixations", "dsL02_pursuit"}
-
-
-def test_exclude_datasets_holds_out_one_fold(tmp_path):
-    """The honest form of --include-labeled: the held-out dataset stays out, so
-    the fold is still leave-one-dataset-out."""
-    root, n_vox = _corpus(tmp_path)
-    got = unlabeled_subjects(root, min_voxels=n_vox, include_labeled=True,
-                             exclude_datasets=["dsL02_pursuit"])
-    datasets = {d for d, _s, _p, _t in got}
-    assert "dsL02_pursuit" not in datasets
-    assert "dsL01_guided_fixations" in datasets
-
-
 def test_corpus_subjects_is_every_eligible_participant_but_evaluation_sources(tmp_path):
     """The corpus is every eligible participant, never an evaluation dataset's
     own accession, shuffled; nested in n for one seed, a new draw for another."""
@@ -214,3 +196,24 @@ def test_orbit_projections_average_to_project():
     zl, zr = orbit_projections(x, arrays, k=3)
     assert zl.shape == zr.shape == (30, 3)
     assert np.allclose(0.5 * (zl + zr), project(arrays, x, k=3))
+
+
+def test_whitening_is_shrunk_so_a_rank_deficient_orbit_stays_finite():
+    """Eye-region voxels are strongly collinear; an orbit whose covariance has
+    zero eigenvalues inside the reduction would be whitened by 1/sqrt(0). The
+    shrinkage is what keeps the canonical weights finite and the correlations
+    at most one."""
+    shape, split_x = (8, 2, 1), 4                 # 8 voxels per orbit
+    mask = np.ones(shape, dtype=bool)
+    rng = np.random.default_rng(5)
+    m = Moments(16, batch_rows=64)
+    for _ in range(10):
+        z = rng.normal(size=(50, 2))
+        left = np.repeat(z, 4, axis=1)            # 8 voxels, rank 2
+        right = np.repeat(z @ rng.normal(size=(2, 2)), 4, axis=1) + 0.1 * rng.normal(size=(50, 8))
+        m.add(np.hstack([left, right]).astype(np.float32))
+    m.symmetrise()
+    basis = fit_lr_cca(m, mask, k=2, n_reduce=6, split_x=split_x)
+    assert np.isfinite(basis["left_weights"]).all() and np.isfinite(basis["right_weights"]).all()
+    cc = basis["canonical_correlations"]
+    assert np.isfinite(cc).all() and 0.0 <= cc.min() and cc.max() <= 1.0 + 1e-6

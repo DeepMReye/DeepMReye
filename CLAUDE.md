@@ -86,6 +86,25 @@ scripts/
   a published participant (extract one from its OpenNeuro run and compare; the
   current pipeline gives voxel r ~0.99 and decoded-gaze r ~0.999).
 
+## Tests
+
+`deepmreye/tests/` is what tells the next person what they broke; keep it that way.
+
+- **Every README recipe has a test** in `test_recipes.py`, run through the real
+  CLI on the synthetic world of `conftest.py` (a 48-voxel two-orbit "eye" driven
+  by gaze; registration replaced by a lookup). Change a recipe in the README,
+  change its test.
+- `test_integration.py`: ANTs registration of a run built from the template
+  (full eye coverage, ~5 s), and, opt-in (`DEEPMREYE_NETWORK_TESTS=1`, weekly in
+  CI), the published decoder on a published participant.
+- Unit tests pin the properties that fail silently: the orbit order of the crop,
+  per-dataset z-scoring, edge-padded lags, calibration that never sees the
+  scored participant, the shrunk whitening, the corpus exclusions. On
+  2026-10-14 twelve planted bugs of that kind were each caught by a test; a new
+  silent failure mode deserves a test that would have caught it.
+- CI (`.github/workflows/tests.yml`): flake8 and the suite on Python 3.9, 3.11
+  and 3.13 for every push and pull request.
+
 ## Dev
 
 `uv` + `pyproject.toml`; use `.venv/bin/python`. Install the package into the

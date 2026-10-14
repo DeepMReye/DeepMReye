@@ -91,55 +91,37 @@ def corpus_mask(data_dir, max_files=40):
     return acc
 
 
-def unlabeled_subjects(data_dir, labelled_prefix="dsL", min_voxels=FULL_MASK_VOXELS,
-                       min_trs=32, include_labeled=False, exclude_datasets=(),
+def unlabeled_subjects(data_dir, labelled_prefix="dsL", min_voxels=None, min_trs=32,
                        exclude_sources=True):
-    """Participants eligible to fit a basis: fully covered, and label-free *as
-    used here*.
+    """Participants eligible for the corpus: fully covered, long enough, no gaze.
 
-    By default the gaze-labeled datasets are excluded outright, which makes the
-    basis strictly inductive. ``include_labeled`` folds their **voxels** in --
-    never their labels, which this module cannot even read. That is a different
-    and weaker claim, so the two must not be confused:
-
-    - excluded (default): the basis has never seen the evaluation domain at all.
-    - included, minus the held-out fold (``exclude_datasets``): unsupervised
-      *domain adaptation*. The basis sees the training datasets' voxels, which
-      the fold is entitled to, and still never sees the test dataset.
-    - included, held-out fold and all (``exclude_datasets=()``): **transductive**.
-      Defensible for this application -- at deploy time you do have the
-      participant's scan, you just have no eye tracker -- but it is no longer a
-      leave-one-dataset-out number, and reporting it as one would be wrong.
-
-    ``exclude_datasets`` is what buys the middle case, one basis per fold.
-    ``exclude_sources`` also drops the OpenNeuro accessions the labelled
-    datasets came from (:data:`EVALUATION_SOURCES`), which hold the same runs.
-
-    This is eligibility only (coverage, length); :func:`corpus_subjects` makes
-    the draw.
+    A participant is eligible when its file carries no ``labels``, its dataset
+    is not a gaze-labelled one (``labelled_prefix``) or, with
+    ``exclude_sources``, one of the OpenNeuro accessions those were taken from
+    (:data:`EVALUATION_SOURCES`, which hold the same runs), it has at least
+    ``min_trs`` volumes, and at least ``min_voxels`` (default: every eye-mask
+    voxel) carry signal. This is eligibility only; :func:`corpus_subjects`
+    makes the draw.
     """
-    exclude = set(exclude_datasets)
-    if exclude_sources:
-        exclude |= set(EVALUATION_SOURCES.values())
+    min_voxels = FULL_MASK_VOXELS if min_voxels is None else min_voxels
+    exclude = set(EVALUATION_SOURCES.values()) if exclude_sources else set()
     out = []
     for path in sorted(Path(data_dir).glob("*/*.h5")):
         dataset = path.parent.name
-        if dataset in exclude:
-            continue
-        if dataset.startswith(labelled_prefix) and not include_labeled:
+        if dataset in exclude or dataset.startswith(labelled_prefix):
             continue
         try:
             with h5py.File(path, "r") as f:
-                if "labels" in f and not include_labeled:
+                if "labels" in f:
                     continue
                 n_trs = f["eye_block"].shape[-1]
                 if n_trs < min_trs:
                     continue
-                probe = f["eye_block"][..., : min(4, n_trs)]
+                first = f["eye_block"][..., : min(4, n_trs)]
         except Exception as e:
             logging.debug(f"skipping {path}: {e}")
             continue
-        if int((np.abs(probe).sum(-1) > 0).sum()) < min_voxels:
+        if int((np.abs(first).sum(-1) > 0).sum()) < min_voxels:
             continue
         out.append((dataset, path.stem, str(path), int(n_trs)))
     return out
@@ -290,7 +272,7 @@ def _top_eigenvectors(cov, k, seed=0):
 
 
 def fit_lr_cca(moments, mask, k, n_reduce=256, shrinkage=1e-3, seed=0,
-               split_x=LR_SPLIT_X, cached=None):
+               split_x=None, cached=None):
     """Canonical correlation between the left and right orbit.
 
     Solved in a PCA-reduced, whitened space rather than on the raw halves:
@@ -302,6 +284,7 @@ def fit_lr_cca(moments, mask, k, n_reduce=256, shrinkage=1e-3, seed=0,
     ``cached`` takes ``(cov, mu)`` to skip rebuilding the covariance.
     """
     cov, mu = cached if cached is not None else moments.covariance()
+    split_x = LR_SPLIT_X if split_x is None else split_x
 
     # Which rows of the masked-voxel vector belong to which orbit.
     xs = np.nonzero(mask.reshape(-1))[0] // (mask.shape[1] * mask.shape[2])

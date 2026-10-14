@@ -1,5 +1,7 @@
 # DeepMReye: gaze from fMRI, without an eye tracker
 
+[![tests](https://github.com/DeepMReye/DeepMReye/actions/workflows/tests.yml/badge.svg?branch=deepmreye-unsupervised)](https://github.com/DeepMReye/DeepMReye/actions/workflows/tests.yml)
+
 The eyeballs are inside the field of view of most fMRI runs, and their signal
 moves with gaze. DeepMReye reads it out: give it a BOLD run and get ten gaze
 samples per volume back, with no eye tracker and no labels from your study.
@@ -363,6 +365,18 @@ commands at a copy elsewhere. Each run is one HDF5 file:
 | `deepmreye.data.bin_gaze(times, x, y, n_volumes, tr)` | eye-tracker samples -> labels |
 | `deepmreye.basis.fit_corpus(data_dir, out)` | fit a basis |
 | `deepmreye.evaluate.lodo(records, feature_fn)` | the evaluation protocol |
+
+## Development
+
+```bash
+git clone -b deepmreye-unsupervised https://github.com/DeepMReye/DeepMReye.git
+cd DeepMReye && pip install -e ".[test]"
+pytest deepmreye/tests -q
+```
+
+Every recipe above has an end-to-end test in `deepmreye/tests/test_recipes.py`.
+`DEEPMREYE_NETWORK_TESTS=1` adds a check of the published decoder on a
+published participant.
 
 ## Citation
 
