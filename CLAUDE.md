@@ -36,7 +36,9 @@ scripts/
 
 ## Where things live
 
-- **Corpus**: HuggingFace dataset `DeepMReye/eyeballs` (public; 3,684
+- **Corpus**: HuggingFace dataset `DeepMReye/eyeballs` (public but gated, auto-approved:
+  anonymous downloads get 401, so `evaluate`/`download`/published `train` need
+  `hf auth login`; the decoder repo is not gated; 3,684
   participants, 921 folders, 77 GB; the nine `dsL*` folders are the 337 labelled
   participants, 20 GB). `deepmreye.data.resolve` finds or downloads it.
 - **Pretrained decoder and basis**: HuggingFace model repo

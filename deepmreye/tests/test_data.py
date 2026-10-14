@@ -213,3 +213,17 @@ def test_read_gaze_tsv_finds_columns_by_name(tmp_path):
     bad.write_text("a,b\n1,2\n")
     with pytest.raises(ValueError, match="time"):
         data.read_gaze_tsv(bad)
+
+
+def test_a_gated_corpus_says_how_to_get_access(tmp_path, monkeypatch):
+    import huggingface_hub
+
+    class GatedRepoError(Exception):
+        pass
+
+    def gated(**kw):
+        raise GatedRepoError("401")
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", gated)
+    with pytest.raises(RuntimeError, match="hf auth login"):
+        data.fetch(data.LABELLED, target=tmp_path, quiet=True)

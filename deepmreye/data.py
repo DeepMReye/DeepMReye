@@ -13,6 +13,7 @@ tracker recorded nothing. Gaze-labelled datasets are the ``dsL*`` folders.
 **The published corpus** is the HuggingFace dataset ``DeepMReye/eyeballs``:
 eye blocks of 3,684 participants in 921 dataset folders (77 GB), drawn from
 OpenNeuro. Nine of the folders, ``dsL*`` (337 participants, 20 GB), carry gaze.
+It is gated: accept its terms once on the Hub and log in (``hf auth login``).
 Resolution order for a command that needs data:
 
 1. an explicit ``data_dir`` (``--data-dir``);
@@ -108,8 +109,16 @@ def fetch(patterns=None, target=None, repo_id=None, quiet=False):
     if not quiet:
         what = "everything" if not patterns else ", ".join(patterns)
         print(f"[data] {repo_id}: {what} -> {target}", flush=True)
-    snapshot_download(repo_id=repo_id, repo_type="dataset", local_dir=str(target),
-                      allow_patterns=patterns)
+    try:
+        snapshot_download(repo_id=repo_id, repo_type="dataset", local_dir=str(target),
+                          allow_patterns=patterns)
+    except Exception as e:
+        if type(e).__name__ in ("GatedRepoError", "RepositoryNotFoundError"):
+            raise RuntimeError(
+                f"{repo_id} is gated: accept its terms (one click, approved automatically) at "
+                f"https://huggingface.co/datasets/{repo_id}, then log in with `hf auth login`. "
+                f"The pretrained decoder itself needs neither.") from e
+        raise
     return target
 
 

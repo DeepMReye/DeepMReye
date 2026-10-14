@@ -55,4 +55,6 @@ jobs:
       - name: Test
         env:
           DEEPMREYE_NETWORK_TESTS: "1"
+          # The corpus is gated: a token of an account that accepted its terms.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python -m pytest deepmreye/tests -q -m network
