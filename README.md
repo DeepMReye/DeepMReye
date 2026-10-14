@@ -159,8 +159,6 @@ labelled data from setups of your own (one folder each):
 deepmreye train --data-dir labelled/ --include-published -o my_general_decoder.npz
 ```
 
-(The published datasets are gated; see [Data](#data).)
-
 Gaze is z-scored within each folder before the readout is fitted, so datasets
 with different screens and units can be pooled. Check the result with the
 evaluation protocol before trusting it more than the pretrained decoder (see
@@ -189,7 +187,7 @@ deepmreye train --basis my_basis.npz -o my_decoder.npz
 The corpus is every run under `corpus/` that has no gaze, at least 32 volumes,
 and all 14,236 eye-mask voxels inside the field of view. Fitting takes about
 three minutes for 2,060 participants. Without `--data-dir` it is the published
-corpus (77 GB, downloaded on first use; see [Data](#data) for access). A corpus needs hundreds of
+corpus (77 GB, downloaded on first use). A corpus needs hundreds of
 participants: accuracy rises steeply up to about 400 and slowly after 800, and
 below 400 the result depends heavily on which participants happen to be in it.
 
@@ -332,8 +330,7 @@ acquisition: the studyforrest film decodes at 0.29, the other eight datasets at
 deepmreye evaluate --check
 ```
 
-downloads the nine labelled datasets (20 GB; see [Data](#data) for access) and
-the published basis, checks that
+downloads the nine labelled datasets (20 GB) and the published basis, checks that
 the protocol reproduces the numbers above, and prints every dataset at both
 resolutions. `--basis my_basis.npz` evaluates another basis the same way, and
 `deepmreye.evaluate.lodo(records, feature_fn)` is the protocol from Python.
@@ -342,13 +339,10 @@ resolutions. `--basis my_basis.npz` evaluates another basis the same way, and
 
 The published corpus is [DeepMReye/eyeballs](https://huggingface.co/datasets/DeepMReye/eyeballs)
 on HuggingFace: the preprocessed eye blocks of 3,684 OpenNeuro participants, of
-which the nine `dsL*` folders (337 participants) carry gaze. It is gated: accept
-its terms on the dataset page (one click, approved automatically) and log in
-once with `hf auth login`. Decoding with the pretrained decoder needs neither;
-`evaluate`, `download`, `train` on the published datasets and `fit-basis` on the
-published corpus do. `deepmreye download` fetches the labelled folders, `--all`
-everything; `$DEEPMREYE_DATA` points the commands at a copy elsewhere. Each run
-is one HDF5 file:
+which the nine `dsL*` folders (337 participants) carry gaze. No account is
+needed. `deepmreye download` fetches the labelled folders, `--all` everything;
+`$DEEPMREYE_DATA` points the commands at a copy elsewhere. Each run is one HDF5
+file:
 
 ```
 <dataset>/<subject>.h5
