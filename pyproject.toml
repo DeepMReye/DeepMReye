@@ -18,6 +18,7 @@ dependencies = [
     "scikit-learn",
     "antspyx",
     "tensorflow>=2.15.0",
+    "tf-keras",
     "pytest",
     "nbmake",
     "ipywidgets>=7.0.0",
