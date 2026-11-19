@@ -1,9 +1,5 @@
-import platform
-
-import tensorflow as tf
-import tensorflow.keras.backend as K
-from tensorflow.keras import constraints, initializers, regularizers
-from tensorflow.keras.layers import (
+from keras import constraints, initializers, ops, regularizers
+from keras.layers import (
     Activation,
     Add,
     AveragePooling3D,
@@ -21,7 +17,8 @@ from tensorflow.keras.layers import (
     UpSampling3D,
     concatenate,
 )
-from tensorflow.keras.models import Model
+from keras.models import Model
+from keras.optimizers import Adam
 
 
 def create_standard_model(input_shape, opts):
@@ -88,37 +85,18 @@ def create_standard_model(input_shape, opts):
     # Create model
     real_regression_shape = list(out_regression.shape)
     real_regression = Input(real_regression_shape[1::])
-    model = Model(inputs=[input_layer, real_regression], outputs=[out_regression])
+    # Losses are added by a layer that passes the regression output through
+    out_training = StandardLoss(
+        weight_euclidean=opts["loss_euclidean"],
+        weight_confidence=opts["loss_confidence"],
+    )([real_regression, out_regression, out_confidence])
+    model = Model(inputs=[input_layer, real_regression], outputs=[out_training])
     model_inference = Model(inputs=input_layer, outputs=[out_regression, out_confidence])
 
-    # Add losses
-    loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_regression, out_regression)
-    model.add_loss(opts["loss_euclidean"] * loss_euclidean)
-    model.add_loss(opts["loss_confidence"] * loss_confidence)
-
     # Compile it
-    optimizer = get_adam_optimizer(opts["lr"])
-    model.compile(optimizer=optimizer)
-    model.metrics.append(loss_euclidean)
-    model.metrics_names.append("Euclidean loss")
-    model.metrics.append(loss_confidence)
-    model.metrics_names.append("Confidence loss")
+    model.compile(optimizer=Adam(learning_rate=opts["lr"]))
 
     return model, model_inference
-
-
-def get_adam_optimizer(learning_rate):
-    is_mac = platform.system() == "Darwin"
-    is_arm = platform.machine() in ["arm64", "aarch64"]
-
-    if is_mac and is_arm:
-        # Apple Silicon detected
-        from tensorflow.keras.optimizers.legacy import Adam
-
-        print("Apple Silicon detected - using legacy Adam optimizer.")
-    else:
-        from tensorflow.keras.optimizers import Adam
-    return Adam(learning_rate=learning_rate)
 
 
 # --- adult blocks
@@ -162,7 +140,7 @@ def regression_block(
     # Split timesteps so each gets its own weight
     all_xs = []
     for i in range(inner_timesteps):
-        x0 = Lambda(lambda x: x[:, i, :])(x)  # noqa
+        x0 = Lambda(lambda x, i=i: x[:, i, :])(x)
         for _ in range(num_dense):
             x0 = Dense(num_fc, activation=activation)(x0)
             x0 = Dropout(dropout_rate)(x0, training=mc_dropout)
@@ -213,19 +191,47 @@ def compute_standard_loss(out_confidence, real_reg, pred_reg):
     loss_euclidean = euclidean_distance(real_reg, pred_reg)
     loss_confidence = mean_squared_error(loss_euclidean, out_confidence)
 
-    return K.mean(loss_euclidean), K.mean(loss_confidence)
+    return ops.mean(loss_euclidean), ops.mean(loss_confidence)
 
 
 def euclidean_distance(y_true, y_pred):
-    return tf.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
+    return ops.sqrt(ops.sum(ops.square(y_true - y_pred), axis=-1))
 
 
 def mean_squared_error(y_true, y_pred):
-    return K.square(y_true - y_pred)
+    return ops.square(y_true - y_pred)
 
 
 # --- Custom Layers
-# Group Norm --- from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py
+class StandardLoss(Layer):
+    """Add the weighted euclidean and confidence losses to the model.
+
+    Takes the real regression, the predicted regression and the confidence as inputs
+    and returns the predicted regression unchanged.
+    """
+
+    def __init__(self, weight_euclidean=1.0, weight_confidence=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.weight_euclidean = weight_euclidean
+        self.weight_confidence = weight_confidence
+
+    def call(self, inputs):
+        real_reg, pred_reg, out_confidence = inputs
+        loss_euclidean, loss_confidence = compute_standard_loss(out_confidence, real_reg, pred_reg)
+        self.add_loss(self.weight_euclidean * loss_euclidean)
+        self.add_loss(self.weight_confidence * loss_confidence)
+        return pred_reg
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[1]
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"weight_euclidean": self.weight_euclidean, "weight_confidence": self.weight_confidence})
+        return config
+
+
+# Group Norm --- adapted from https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py
 class GroupNormalization(Layer):
     """Group normalization layer.
 
@@ -282,7 +288,7 @@ class GroupNormalization(Layer):
         gamma_constraint=None,
         **kwargs,
     ):
-        super(GroupNormalization, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.supports_masking = True
         self.groups = groups
         self.axis = axis
@@ -341,49 +347,48 @@ class GroupNormalization(Layer):
             self.beta = None
         self.built = True
 
-    def call(self, inputs, **kwargs):
-        input_shape = K.int_shape(inputs)
-        tensor_input_shape = K.shape(inputs)
+    def call(self, inputs):
+        # This reproduces the original implementation, which reshapes the (channels last) input
+        # to (batch, groups, ..., channels // groups) without moving the channels axis first.
+        # Groups are therefore contiguous chunks of the flattened input and not groups of channels,
+        # so this is not equivalent to keras.layers.GroupNormalization.
+        # Kept as is so that existing pretrained weights give the same results.
+        input_shape = inputs.shape
 
         # Prepare broadcasting shape.
-        reduction_axes = list(range(len(input_shape)))
-        del reduction_axes[self.axis]
         broadcast_shape = [1] * len(input_shape)
         broadcast_shape[self.axis] = input_shape[self.axis] // self.groups
         broadcast_shape.insert(1, self.groups)
 
-        reshape_group_shape = K.shape(inputs)
-        group_axes = [reshape_group_shape[i] for i in range(len(input_shape))]
+        # Non batch dimensions are static, use -1 for the (dynamic) batch dimension
+        group_axes = [-1] + list(input_shape[1:])
         group_axes[self.axis] = input_shape[self.axis] // self.groups
         group_axes.insert(1, self.groups)
 
         # reshape inputs to new group shape
         group_shape = [group_axes[0], self.groups] + group_axes[2:]
-        group_shape = K.stack(group_shape)
-        inputs = K.reshape(inputs, group_shape)
+        inputs = ops.reshape(inputs, group_shape)
 
         group_reduction_axes = list(range(len(group_axes)))
         group_reduction_axes = group_reduction_axes[2:]
 
-        mean = K.mean(inputs, axis=group_reduction_axes, keepdims=True)
-        variance = K.var(inputs, axis=group_reduction_axes, keepdims=True)
+        mean = ops.mean(inputs, axis=group_reduction_axes, keepdims=True)
+        variance = ops.var(inputs, axis=group_reduction_axes, keepdims=True)
 
-        inputs = (inputs - mean) / (K.sqrt(variance + self.epsilon))
+        inputs = (inputs - mean) / (ops.sqrt(variance + self.epsilon))
 
-        # prepare broadcast shape
-        inputs = K.reshape(inputs, group_shape)
         outputs = inputs
 
         # In this case we must explicitly broadcast all parameters.
         if self.scale:
-            broadcast_gamma = K.reshape(self.gamma, broadcast_shape)
+            broadcast_gamma = ops.reshape(self.gamma, broadcast_shape)
             outputs = outputs * broadcast_gamma
 
         if self.center:
-            broadcast_beta = K.reshape(self.beta, broadcast_shape)
+            broadcast_beta = ops.reshape(self.beta, broadcast_shape)
             outputs = outputs + broadcast_beta
 
-        outputs = K.reshape(outputs, tensor_input_shape)
+        outputs = ops.reshape(outputs, [-1] + list(input_shape[1:]))
 
         return outputs
 
@@ -401,7 +406,7 @@ class GroupNormalization(Layer):
             "beta_constraint": constraints.serialize(self.beta_constraint),
             "gamma_constraint": constraints.serialize(self.gamma_constraint),
         }
-        base_config = super(GroupNormalization, self).get_config()
+        base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):

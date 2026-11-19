@@ -32,9 +32,14 @@ conda create --name deepmreye python=3.11
 conda activate deepmreye
 pip install deepmreye
 ```
-For GPU support, follow tensorflow [install](https://www.tensorflow.org/install/pip) instruction, e.g.:
+For GPU support (Linux only), follow the tensorflow [install](https://www.tensorflow.org/install/pip) instructions, e.g.:
 ```
-conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0
+pip install "tensorflow[and-cuda]"
+```
+
+To run the example notebooks, install the extra dependencies they need:
+```
+pip install "deepmreye[notebooks]"
 ```
 If installation of [ANTsPy](https://github.com/ANTsX/ANTsPy) fails try to manually install it via:
 ```
@@ -81,8 +86,7 @@ Please read our [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye
 ```bash
 git clone https://github.com/DeepMReye/DeepMReye.git
 cd DeepMReye
-pip install .
-pip install streamlit
+pip install ".[streamlit]"
 streamlit run streamlit/streamlit.py
 ```
 
@@ -94,17 +98,18 @@ The <u>**fMRI data**</u> should be organized in 4D NIFTI files (.nii), containin
 The GPU version of DeepMReye requires a NVIDIA GPU.
 
 ## Software requirements
-The following python dependencies are being automatically installed when installing DeepMReye (specified in setup.cfg):
+DeepMReye requires Python 3.11 or later. The following python dependencies are automatically installed when installing DeepMReye (see [pyproject.toml](./pyproject.toml); minimum versions in parentheses):
 ```
-tensorflow-gpu (2.2.0)
-numpy (1.19.1)
-pandas (1.0.5)
-matplotlib (3.2.2)
-scipy (1.5.0)
-ipython (7.13.0)
-plotly (4.14.3)
+tensorflow (2.16.1)
+keras (3.0.0)
+antspyx (0.4.2)
+numpy (1.23.5)
+pandas (1.5.0)
+scipy (1.9.2)
+scikit-learn (1.1.3)
+plotly (5.0.0)
 ```
-Version in parentheses indicate the ones used for testing the framework. Its extensively tested on Linux 16.04 but should run on all OS (Windows, Mac, Linux) supporting a Python version >3.8 and pip. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda).
+The tests are run on Linux with Python 3.11 and 3.12, both with the minimum and the latest versions of the dependencies, and the example notebook is run on Linux and macOS. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda or venv).
 
 ## BIDS app
 If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/).

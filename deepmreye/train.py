@@ -1,10 +1,9 @@
-import platform
+import warnings
 from os.path import join
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow.keras.backend as K
+from keras.backend import clear_session
 
 from deepmreye import architecture
 from deepmreye.util import data_generator, util
@@ -17,8 +16,8 @@ def train_model(
     clear_graph=True,
     save=False,
     model_path="./",
-    workers=4,
-    use_multiprocessing=True,
+    workers=None,
+    use_multiprocessing=None,
     models=None,
     return_untrained=False,
     verbose=0,
@@ -41,10 +40,10 @@ def train_model(
         If model weights should be saved to file, by default False
     model_path : str, optional
         Filepath to where model weights should be stored, by default './'
-    workers : int, optional
-        Number of workers used when using multiprocessing, by default 4
-    use_multiprocessing : bool, optional
-        If multiprocessing should be used, can speed up training by 10x if data loader is bottleneck, by default True
+    workers : None
+        Deprecated and ignored: not supported with Keras 3 and python generators.
+    use_multiprocessing : None
+        Deprecated and ignored: not supported with Keras 3 and python generators.
     models : Keras Model instance, optional
         Can be provided if already trained model should be used instead of training a new one, by default None
     return_untrained : bool, optional
@@ -59,21 +58,16 @@ def train_model(
     model_inference : Keras Model
         Model instance used for inference, provides uncertainty estimate (unsupervised model)
     """
-    # Disable multiprocessing on MacOS
-    is_mac = platform.system() == "Darwin"
-    is_arm = platform.machine() in ["arm64", "aarch64"]
-    if is_mac and is_arm:
-        if use_multiprocessing:
-            print("Apple Silicon detected - Multiprocessing is not supported. Disabling it.")
-        use_multiprocessing = False
+    if workers is not None or use_multiprocessing is not None:
+        warnings.warn(
+            "'workers' and 'use_multiprocessing' are ignored and will be removed in a future version.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Clear session if needed
     if clear_graph:
-        K.clear_session()
-    if use_multiprocessing:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    else:
-        workers = 1
+        clear_session()
 
     # Unpack generators
     (
@@ -88,7 +82,7 @@ def train_model(
     ) = generators
 
     # Test datagenerator and get representative X and y
-    (X, y), _ = next(training_generator)
+    ((X, y),) = next(training_generator)
     if verbose > 0:
         print(f"Input shape {X.shape}, Output shape {y.shape}")
         print(
@@ -105,7 +99,6 @@ def train_model(
     else:
         model, model_inference = models
     if return_untrained:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
         return (model, model_inference)
 
     # Train model
@@ -118,15 +111,11 @@ def train_model(
         validation_data=testing_generator,
         validation_steps=opts["validation_steps"],
         callbacks=[lr_sched],
-        use_multiprocessing=use_multiprocessing,
-        workers=workers,
     )
 
     # Save model weights
     if save:
-        model_inference.save_weights(join(model_path, f"modelinference_{dataset}.h5"))
-    if use_multiprocessing:
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+        model_inference.save_weights(join(model_path, f"modelinference_{dataset}.weights.h5"))
 
     return (model, model_inference)
 
