@@ -4,10 +4,10 @@ import pickle
 import numpy as np
 import pandas as pd
 import requests
+import streamlit.components.v1 as components
 
 import deepmreye
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(layout="wide")
 

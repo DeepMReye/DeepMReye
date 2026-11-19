@@ -62,9 +62,6 @@ streamlit = ["streamlit>=1.30.0"]
 [project.urls]
 home = "https://github.com/DeepMReye/DeepMReye"
 
-[tool.black]
-line-length = 120
-
 [tool.codespell]
 builtin = "clear,rare"
 ignore-words-list = "ags,bu,fo,fro,nd,no,noe,ot,slite,te,vas,woh,yhe,joO"
@@ -79,12 +76,6 @@ packages = ["deepmreye"]
 [tool.hatch.version]
 source = "vcs"
 
-[tool.isort]
-combine_as_imports = true
-line_length = 120
-profile = "black"
-skip_gitignore = true
-
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers --doctest-modules --showlocals -s -vv --durations=0"
 doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
@@ -93,3 +84,34 @@ log_cli_level = "INFO"
 minversion = "9.0"
 testpaths = ["tests"]
 xfail_strict = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+exclude = ["media"]
+ignore = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D107",
+    "E722",
+    # adding strict= to zip() could change behavior
+    "B905"
+]
+select = ["B", "C90", "D", "E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 11
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E501", "F401"]
+"*/__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"

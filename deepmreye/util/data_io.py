@@ -71,12 +71,12 @@ def get_all_subject_labels_ign(subject_string, num_downsampled=10):
     np.testing.assert_(np.unique(np.diff(np.where(subj_data[:, 0] == 1)[0]))[0] == 510)
 
     all_labels, all_runs = [], []
-    for idx, l in enumerate(subj_data):
-        if l[1] == 0:
+    for idx, row in enumerate(subj_data):
+        if row[1] == 0:
             if all_labels:
                 all_runs.append(np.array(all_labels))
             all_labels = []
-        bln_tr = int(l[0])
+        bln_tr = int(row[0])
         if bln_tr:
             if (idx + 510) >= subj_data.shape[0]:
                 this_label = subj_data[np.linspace(idx, subj_data.shape[0] - 1, num_downsampled, dtype=int), 2:4]
@@ -169,4 +169,4 @@ def download_mask(data_path, remote_path="https://github.com/DeepMReye/DeepMReye
     try:
         f, m = urllib.request.urlretrieve(mask_remote, data_path)
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Failed to download '{mask_remote}'. '{e.reason}'")
+        raise RuntimeError(f"Failed to download '{mask_remote}'. '{e.reason}'") from e
