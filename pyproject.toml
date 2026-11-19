@@ -89,7 +89,7 @@ xfail_strict = true
 line-length = 120
 
 [tool.ruff.lint]
-exclude = ["media", "tests"]
+exclude = ["media"]
 ignore = [
     "D100",
     "D101",
