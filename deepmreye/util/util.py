@@ -154,8 +154,8 @@ def angle_between_points(y_true, y_pred):
 
 def get_model_scores(real_y, pred_y, euc_pred, **args):
     try:
-        (agg_scores, subtr_scores) = quantify_predictions(real_y, pred_y, euc_pred, percentile_cut=None)
-        (agg_scores_pct, subtr_scores_pct) = quantify_predictions(real_y, pred_y, euc_pred, **args)
+        agg_scores, subtr_scores = quantify_predictions(real_y, pred_y, euc_pred, percentile_cut=None)
+        agg_scores_pct, subtr_scores_pct = quantify_predictions(real_y, pred_y, euc_pred, **args)
     except ValueError:
         # Participant has only NaNs or no data, return empty dataframes
         agg_scores, subtr_scores, agg_scores_pct, subtr_scores_pct = (

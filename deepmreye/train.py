@@ -87,7 +87,7 @@ def train_model(
     ) = generators
 
     # Test datagenerator and get representative X and y
-    ((X, y), _) = next(training_generator)
+    (X, y), _ = next(training_generator)
     if verbose > 0:
         print(f"Input shape {X.shape}, Output shape {y.shape}")
         print(
@@ -173,7 +173,7 @@ def evaluate_model(dataset, model, generators, save=False, model_path="./", mode
     evaluation, scores = dict(), dict()
     for idx, subj in enumerate(full_testing_list):
         X, real_y = data_generator.get_all_subject_data(subj)
-        (pred_y, euc_pred) = model.predict(X, verbose=verbose - 2, batch_size=16)
+        pred_y, euc_pred = model.predict(X, verbose=verbose - 2, batch_size=16)
         evaluation[subj] = {"real_y": real_y, "pred_y": pred_y, "euc_pred": euc_pred}
 
         # Quantify predictions

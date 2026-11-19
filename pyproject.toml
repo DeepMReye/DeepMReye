@@ -3,7 +3,7 @@ build-backend = "hatchling.build"
 requires = ["hatchling", "hatch-vcs"]
 
 [project]
-authors = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
+authors = [{ name = " Markus Frey", email = "markus.frey1@gmail.com" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -25,8 +25,8 @@ dependencies = [
 ]
 description = "MR-based eye tracker without eye tracking"
 dynamic = ["version"]
-license = {file = "LICENSE"}
-maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
+license = { file = "LICENSE" }
+maintainers = [{ name = " Markus Frey", email = "markus.frey1@gmail.com" }]
 name = "deepmreye"
 readme = "README.md"
 requires-python = ">=3.11"

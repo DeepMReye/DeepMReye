@@ -40,7 +40,7 @@ generators = data_generator.create_leaveoneout_generators(
 opts["epochs"] = 100
 
 # Train model and save weights into weights_path
-(model, model_inference) = train.train_model(
+model, model_inference = train.train_model(
     dataset="_".join(parsed_datasets),
     generators=generators[0],
     opts=opts,
