@@ -49,7 +49,7 @@ RUN apt-get update -qq \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install jupyterlab deepmreye
+RUN pip install jupyterlab "deepmreye[notebooks]"
 
 RUN test "$(getent passwd neuro)" || useradd --no-user-group --create-home --shell /bin/bash neuro
 USER neuro
@@ -79,7 +79,7 @@ RUN echo '{ \
     \n    ], \
     \n    [ \
     \n      "run", \
-    \n      "pip install jupyterlab deepmreye" \
+    \n      "pip install jupyterlab \"deepmreye[notebooks]\"" \
     \n    ], \
     \n    [ \
     \n      "user", \

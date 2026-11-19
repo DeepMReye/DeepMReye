@@ -6,4 +6,16 @@ updates:
 -   package-ecosystem: github-actions
     directory: /
     schedule:
-        interval: weekly
+        interval: semiannually
+    groups:
+        github-actions:
+            patterns: ['*']
+
+# updates uv.lock (and pyproject.toml if a new version is outside the allowed range)
+-   package-ecosystem: uv
+    directory: /
+    schedule:
+        interval: semiannually
+    groups:
+        python-dependencies:
+            patterns: ['*']

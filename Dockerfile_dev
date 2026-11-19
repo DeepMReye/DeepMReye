@@ -53,7 +53,7 @@ COPY ["deepmreye", "setup.py", "setup.cfg", "MANIFEST.in", "README.md", "/deepmr
 
 WORKDIR /deepmreye
 
-RUN pip install .
+RUN pip install ".[notebooks]"
 
 RUN pip install jupyterlab
 
@@ -100,7 +100,7 @@ RUN echo '{ \
     \n    ], \
     \n    [ \
     \n      "run", \
-    \n      "pip install ." \
+    \n      "pip install \".[notebooks]\"" \
     \n    ], \
     \n    [ \
     \n      "run", \

@@ -58,7 +58,7 @@ Dockerfile:
 		--base python:3.11-slim-bookworm \
 		--pkg-manager apt \
 		--install "wget build-essential" \
-		--run "pip install jupyterlab deepmreye" \
+		--run "pip install jupyterlab \"deepmreye[notebooks]\"" \
 		--user neuro \
 		--workdir /home/neuro \
 		--copy notebooks /home/neuro/notebooks \
@@ -73,7 +73,7 @@ Dockerfile_dev:
 		--install "wget build-essential" \
 		--copy deepmreye setup.py setup.cfg MANIFEST.in README.md /deepmreye/ \
 		--workdir /deepmreye \
-		--run "pip install ." \
+		--run "pip install \".[notebooks]\"" \
 		--run "pip install jupyterlab" \
 		--user neuro \
 		--workdir /home/neuro \
