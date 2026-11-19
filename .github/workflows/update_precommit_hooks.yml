@@ -33,15 +33,13 @@ jobs:
         steps:
         -   name: Checkout repo
             uses: actions/checkout@v6
-        -   name: Set up Python
-            uses: actions/setup-python@v7
+        -   name: Set up uv and Python
+            uses: astral-sh/setup-uv@v10
             with:
                 python-version: '3.12'
-        -   name: Install pre-commit
-            run: pip install pre-commit
         -   name: Update pre-commit hooks and run them
             run: |
-                pre-commit autoupdate
+                uvx pre-commit autoupdate
         -   name: Create Pull Request
             uses: peter-evans/create-pull-request@v8
             with:
