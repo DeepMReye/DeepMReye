@@ -30,10 +30,11 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12"
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13"
 ]
 dependencies = [
-    "antspyx>=0.4.2",
+    "antspyx>=0.6.1",
     "keras>=3.0.0",
     "numpy>=1.23.5",
     "pandas>=1.5.0",
@@ -115,3 +116,8 @@ max-complexity = 11
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
+
+[tool.uv]
+# tensorflow and antspyx do not provide wheels for python >= 3.14 yet:
+# only lock dependencies for supported python versions
+environments = ["python_version < '3.14'"]
