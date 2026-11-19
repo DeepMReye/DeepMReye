@@ -167,6 +167,6 @@ def download_mask(data_path, remote_path="https://github.com/DeepMReye/DeepMReye
     mask_name = os.path.basename(data_path)
     mask_remote = f"{remote_path}{mask_name}?raw=true"
     try:
-        (f, m) = urllib.request.urlretrieve(mask_remote, data_path)
+        f, m = urllib.request.urlretrieve(mask_remote, data_path)
     except urllib.error.URLError as e:
         raise RuntimeError(f"Failed to download '{mask_remote}'. '{e.reason}'")

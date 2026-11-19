@@ -22,8 +22,7 @@ def main():
         channels="RGB",
         output_format="auto",
     )
-    st.markdown(
-        """
+    st.markdown("""
 
         This app enables reconstructing gaze position from the MR-signal of the eyeballs.
         Load your fMRI data below, pick one of the pretrained models,
@@ -32,8 +31,7 @@ def main():
         Please read the [paper](https://doi.org/10.1038/s41593-021-00947-w)
         and [user recommendations](https://deepmreye.slite.com/p/channel/MUgmvViEbaATSrqt3susLZ/notes/kKdOXmLqe)
         before using it.
-        """
-    )
+        """)
 
     # Create a file uploader widget
     uploaded_file = st.file_uploader("Choose a NIFTI file (head motion-corrected)", type=["nii"])
@@ -53,8 +51,7 @@ def main():
         ),
     )
 
-    st.markdown(
-        """
+    st.markdown("""
 
         The models have been trained on following datasets:
 
@@ -66,8 +63,7 @@ def main():
         * dataset6: 4 Participants of [Frey & Nau et al. 2021](https://www.nature.com/articles/s41593-021-00947-w)
         * datasets_1to6: Datasets 1-6
         * datasets_1to5: Datasets 1-5 (recommended)
-    """
-    )
+    """)
 
     # Show the uploaded file
     if uploaded_file:
@@ -88,7 +84,7 @@ def main():
 def run_participant(path_to_nifti, model_str):
     participant_string = os.path.splitext(os.path.basename(path_to_nifti))[0]
     # Preprocess nifti file
-    (eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges) = deepmreye.preprocess.get_masks()
+    eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges = deepmreye.preprocess.get_masks()
     with st.spinner(f"Transform {path_to_nifti} into MNI space..."):
         deepmreye.preprocess.run_participant(
             path_to_nifti,
@@ -126,7 +122,7 @@ def run_participant(path_to_nifti, model_str):
 
     # Run through tensorflow model
     with st.spinner("Predicting gaze coordinates..."):
-        (evaluation, _) = deepmreye.train.evaluate_model(
+        evaluation, _ = deepmreye.train.evaluate_model(
             dataset=participant_string,
             model=model,
             generators=generators,
@@ -243,7 +239,7 @@ def load_model(fn_participant, model_str):
     test_participants = [fn_participant]
     generators = deepmreye.util.data_generator.create_generators(test_participants, test_participants)
     generators = (*generators, test_participants, test_participants)  # Add participant list
-    (model, model_inference) = deepmreye.train.train_model(
+    model, model_inference = deepmreye.train.train_model(
         dataset="example_data", generators=generators, opts=opts, return_untrained=True
     )
     model_weights = os.path.join(os.path.dirname(__file__), "weights", model_str + ".h5")

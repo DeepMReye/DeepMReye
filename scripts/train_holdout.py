@@ -36,7 +36,7 @@ generators = data_generator.create_holdout_generators(
 # opts['epochs'] = 15
 
 # Train model and save weights into weights_path
-(model, model_inference) = train.train_model(
+model, model_inference = train.train_model(
     dataset=dataset_name,
     generators=generators,
     opts=opts,

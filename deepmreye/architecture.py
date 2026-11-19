@@ -113,11 +113,11 @@ def get_adam_optimizer(learning_rate):
 
     if is_mac and is_arm:
         # Apple Silicon detected
-        from keras.optimizers.legacy import Adam
+        from tensorflow.keras.optimizers.legacy import Adam
 
         print("Apple Silicon detected - using legacy Adam optimizer.")
     else:
-        from keras.optimizers import Adam
+        from tensorflow.keras.optimizers import Adam
     return Adam(learning_rate=learning_rate)
 
 

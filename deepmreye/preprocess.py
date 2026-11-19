@@ -1,8 +1,8 @@
 import pickle
+from pathlib import Path
 
 import ants
 import numpy as np
-from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.io import loadmat
@@ -77,17 +77,17 @@ def register_to_eye_masks(dme_template, func, masks, verbose=1, transforms=None,
 
 
 def run_participant(
-        fp_func,
-        dme_template,
-        eyemask_big,
-        eyemask_small,
-        x_edges,
-        y_edges,
-        z_edges,
-        replace_with=0,
-        transforms=None,
-        save_path=None,
-        as_pickle=True,
+    fp_func,
+    dme_template,
+    eyemask_big,
+    eyemask_small,
+    x_edges,
+    y_edges,
+    z_edges,
+    replace_with=0,
+    transforms=None,
+    save_path=None,
+    as_pickle=True,
 ):
     """Run preprocessing for one participant with templates and masks preloaded to avoid computational overhead.
 
@@ -112,7 +112,7 @@ def run_participant(
     """
     # Load subject specific run. File should be Nifti and 4D
     # but should also work with other formats which can be read with AntsPy
-    func = ants.image_read(fp_func)
+    func = ants.image_read(str(fp_func))
     # Register to deepmreye template (dme_template).
     transform_to_dme, transformation_statistics = register_to_eye_masks(
         dme_template,
@@ -120,9 +120,9 @@ def run_participant(
         masks=[None, eyemask_big, eyemask_small],
         transforms=["Affine", "Affine", "SyNAggro"],
     )
-    
+
     # Cut mask and save to subject folder with subject report / quality control plots
-    (original_input, masked_eye, mask) = cut_mask(
+    original_input, masked_eye, mask = cut_mask(
         transform_to_dme,
         eyemask_small.numpy(),
         x_edges,
@@ -172,7 +172,7 @@ def get_masks(data_path=""):
             return ants.image_read(str(fn_mask))
         print(f"Downloading mask: {fn_mask}")
         download_mask(fn_mask)
-        return ants.image_read(fn_mask)
+        return ants.image_read(str(fn_mask))
 
     if data_path == "":
         data_path = Path(__file__).resolve().parent / "masks"
@@ -180,7 +180,7 @@ def get_masks(data_path=""):
     eyemask_small = load_from_path(Path(data_path) / "eyemask_small.nii")
     eyemask_big = load_from_path(Path(data_path) / "eyemask_big.nii")
     dme_template = load_from_path(Path(data_path) / "dme_template.nii")
-    (mask, x_edges, y_edges, z_edges) = get_mask_edges(mask=eyemask_small)
+    mask, x_edges, y_edges, z_edges = get_mask_edges(mask=eyemask_small)
     return eyemask_small, eyemask_big, dme_template, mask, x_edges, y_edges, z_edges
 
 
@@ -221,17 +221,17 @@ def get_mask_edges(mask, split=True):
 
 
 def cut_mask(
-        to_mask,
-        mask,
-        x_edges,
-        y_edges,
-        z_edges,
-        replace_with=0,
-        save_overview=True,
-        fp_func=None,
-        verbose=0,
-        save_path=None,
-        as_pickle=True,
+    to_mask,
+    mask,
+    x_edges,
+    y_edges,
+    z_edges,
+    replace_with=0,
+    save_overview=True,
+    fp_func=None,
+    verbose=0,
+    save_path=None,
+    as_pickle=True,
 ):
     """Cut mask into given shape given edges.
 

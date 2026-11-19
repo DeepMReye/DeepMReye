@@ -20,7 +20,7 @@ def test_download(path_to_masks):
 
 
 def test_masks(path_to_masks):
-    (eyemask_small, eyemask_big, dme_template, mask, x_edges, _, _) = preprocess.get_masks(str(path_to_masks))
+    eyemask_small, eyemask_big, dme_template, mask, x_edges, _, _ = preprocess.get_masks(str(path_to_masks))
     for m in [eyemask_small, eyemask_big, dme_template, mask]:
         np.testing.assert_equal(m.shape, (91, 109, 91))
     np.testing.assert_equal(x_edges, (41, 18, 73, 49))
@@ -29,8 +29,8 @@ def test_masks(path_to_masks):
 def test_example_participant(path_to_masks, path_to_testdata):
     # Create eye mask for example participant
     path_to_participant = path_to_testdata / "test_participant.nii"
-    (eyemask_small, eyemask_big, dme_template, _, x_edges, y_edges, z_edges) = preprocess.get_masks(str(path_to_masks))
-    (masked_eye, transformation_statistics) = preprocess.run_participant(
+    eyemask_small, eyemask_big, dme_template, _, x_edges, y_edges, z_edges = preprocess.get_masks(str(path_to_masks))
+    masked_eye, transformation_statistics = preprocess.run_participant(
         str(path_to_participant), dme_template, eyemask_big, eyemask_small, x_edges, y_edges, z_edges
     )
     np.testing.assert_equal(masked_eye.shape, (47, 29, 18, 2))
@@ -38,7 +38,9 @@ def test_example_participant(path_to_masks, path_to_testdata):
     # Ants transform is not fully deterministic so check for rough match of transformation
     assert transformation_statistics[0] < -2
     assert transformation_statistics[1] < 0.5
-    assert transformation_statistics[2] < 0.5
+    # The final (SyNAggro) registration varies a lot between runs
+    # (observed values from ~0.1 to ~1.1 across antspyx 0.4.2 - 0.6.3)
+    assert transformation_statistics[2] < 1.5
 
     # Combine with labels
     this_mask = preprocess.normalize_img(masked_eye)
@@ -84,7 +86,7 @@ def test_model_training(path_to_testdata):
     )
 
     # Train model
-    (_, model_inference) = train.train_model(
+    _, model_inference = train.train_model(
         dataset="example_data",
         generators=generators[0],
         opts=opts,
@@ -95,7 +97,7 @@ def test_model_training(path_to_testdata):
     )
 
     # Evaluate model
-    (evaluation, _) = train.evaluate_model(
+    evaluation, _ = train.evaluate_model(
         dataset="example_data",
         model=model_inference,
         generators=generators[0],
@@ -116,7 +118,7 @@ def test_model_evaluation():
     util.get_model_scores(real_y, pred_y, euc_pred)
 
     # For all NaN participant
-    real_y = np.random.rand(num_points, 10, 2) * np.NaN
-    pred_y = np.random.rand(num_points, 10, 2) * np.NaN
-    euc_pred = np.random.rand(num_points, 10, 1) * np.NaN
+    real_y = np.random.rand(num_points, 10, 2) * np.nan
+    pred_y = np.random.rand(num_points, 10, 2) * np.nan
+    euc_pred = np.random.rand(num_points, 10, 1) * np.nan
     util.get_model_scores(real_y, pred_y, euc_pred)

@@ -55,7 +55,7 @@ release: dist ## package and upload a release (requires the twine package)
 .PHONY: Dockerfile
 Dockerfile:
 	docker run --rm repronim/neurodocker:0.7.0 generate docker \
-		--base python:3.9.12-slim-buster \
+		--base python:3.11-slim-bookworm \
 		--pkg-manager apt \
 		--install "wget build-essential" \
 		--run "pip install jupyterlab deepmreye" \
@@ -68,7 +68,7 @@ Dockerfile:
 
 Dockerfile_dev:
 	docker run --rm repronim/neurodocker:0.7.0 generate docker \
-		--base python:3.9.12-slim-buster \
+		--base python:3.11-slim-bookworm \
 		--pkg-manager apt \
 		--install "wget build-essential" \
 		--copy deepmreye setup.py setup.cfg MANIFEST.in README.md /deepmreye/ \
