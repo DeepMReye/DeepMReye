@@ -830,7 +830,11 @@ streamlit = [
 ]
 
 [package.dev-dependencies]
-all = [
+demo = [
+    { name = "nbmake" },
+    { name = "pytest" },
+]
+dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -839,10 +843,6 @@ all = [
     { name = "sphinx-argparse" },
     { name = "sphinx-rtd-theme" },
     { name = "tox" },
-]
-demo = [
-    { name = "nbmake" },
-    { name = "pytest" },
 ]
 doc = [
     { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -888,17 +888,17 @@ requires-dist = [
 provides-extras = ["notebooks", "streamlit"]
 
 [package.metadata.requires-dev]
-all = [
+demo = [
+    { name = "nbmake", specifier = ">=1.5.0" },
+    { name = "pytest", specifier = ">=9.0.0" },
+]
+dev = [
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "sphinx", specifier = ">=7.0.0" },
     { name = "sphinx-argparse", specifier = ">=0.4.0" },
     { name = "sphinx-rtd-theme", specifier = ">=2.0.0" },
     { name = "tox", specifier = ">=4.0.0" },
-]
-demo = [
-    { name = "nbmake", specifier = ">=1.5.0" },
-    { name = "pytest", specifier = ">=9.0.0" },
 ]
 doc = [
     { name = "sphinx", specifier = ">=7.0.0" },

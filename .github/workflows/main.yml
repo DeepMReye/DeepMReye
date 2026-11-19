@@ -35,10 +35,10 @@ jobs:
                 enable-cache: true
         -   name: Install dependencies (locked)
             if: matrix.resolution == 'locked'
-            run: uv sync --locked --group test
+            run: uv sync --locked --no-default-groups --group test
         -   name: Install dependencies (minimum versions)
             if: matrix.resolution == 'lowest-direct'
-            run: uv sync --resolution lowest-direct --group test
+            run: uv sync --resolution lowest-direct --no-default-groups --group test
         -   name: Display installed packages
             run: uv pip list
         -   name: Test with pytest

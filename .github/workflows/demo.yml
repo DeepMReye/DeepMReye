@@ -45,7 +45,7 @@ jobs:
                 enable-cache: true
 
         -   name: Install deepmreye and dependencies
-            run: uv sync --locked --group demo --extra notebooks
+            run: uv sync --locked --no-default-groups --group demo --extra notebooks
 
         -   name: Display Python version and packages
             run: |

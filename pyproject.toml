@@ -3,14 +3,14 @@ build-backend = "hatchling.build"
 requires = ["hatchling", "hatch-vcs"]
 
 [dependency-groups]
-all = [
+# run the example notebooks as tests (see .github/workflows/demo.yml)
+# use with the "notebooks" extra: uv sync --group demo --extra notebooks
+demo = ["nbmake>=1.5.0", "pytest>=9.0.0"]
+dev = [
     { include-group = "doc" },
     { include-group = "style" },
     { include-group = "test" }
 ]
-# run the example notebooks as tests (see .github/workflows/demo.yml)
-# use with the "notebooks" extra: uv sync --group demo --extra notebooks
-demo = ["nbmake>=1.5.0", "pytest>=9.0.0"]
 doc = [
     "sphinx>=7.0.0",
     "sphinx-argparse>=0.4.0",
