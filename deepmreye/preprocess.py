@@ -112,7 +112,7 @@ def run_participant(
     """
     # Load subject specific run. File should be Nifti and 4D
     # but should also work with other formats which can be read with AntsPy
-    func = ants.image_read(fp_func)
+    func = ants.image_read(str(fp_func))
     # Register to deepmreye template (dme_template).
     transform_to_dme, transformation_statistics = register_to_eye_masks(
         dme_template,
@@ -172,7 +172,7 @@ def get_masks(data_path=""):
             return ants.image_read(str(fn_mask))
         print(f"Downloading mask: {fn_mask}")
         download_mask(fn_mask)
-        return ants.image_read(fn_mask)
+        return ants.image_read(str(fn_mask))
 
     if data_path == "":
         data_path = Path(__file__).resolve().parent / "masks"
