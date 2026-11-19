@@ -1,23 +1,21 @@
+# Dependencies are defined in pyproject.toml:
+# this installs the package (with the dependencies needed to run the notebooks)
+# so that the two stay in sync.
+# uv users can instead use the uv.lock file: uv sync --extra notebooks
+
 [dev-packages]
+pytest = ">=9.0.0"
+pytest-cov = ">=6.0.0"
 
 [packages]
-antspyx = "*"
-anywidget = "*"
-ipython = "*"
-jupyter = "*"
-matplotlib = "*"
-nbformat = "*"
-numpy = "*"
-pandas = "*"
-plotly = "*"
-scikit-learn = "*"
-scipy = "*"
-tensorflow = "==2.15.0"
+deepmreye = { path = ".", editable = true, extras = ["notebooks"] }
+jupyterlab = ">=4.0.0"
 
 [[source]]
 name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
+# install with: pipenv install --categories streamlit
 [streamlit]
-streamlit = "*"
+deepmreye = { path = ".", editable = true, extras = ["streamlit"] }
