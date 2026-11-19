@@ -8,10 +8,10 @@ from math import atan2
 
 import numpy as np
 import pandas as pd
-import tensorflow.keras.backend as K
+from keras import ops
+from keras.callbacks import LearningRateScheduler
 from scipy import ndimage
 from sklearn.metrics import r2_score
-from tensorflow.keras.callbacks import LearningRateScheduler
 
 
 def augment_input(X, rotation=0, shift=0, zoom=0):
@@ -129,7 +129,7 @@ def augment_input(X, rotation=0, shift=0, zoom=0):
 
 
 def mish(x):
-    return x * K.tanh(K.softplus(x))
+    return x * ops.tanh(ops.softplus(x))
 
 
 def step_decay_schedule(initial_lr=1e-4, decay_factor=0.9, num_epochs=50):

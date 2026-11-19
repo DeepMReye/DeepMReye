@@ -90,7 +90,6 @@ def test_model_training(path_to_testdata):
         dataset="example_data",
         generators=generators[0],
         opts=opts,
-        use_multiprocessing=True,
         return_untrained=False,
         verbose=1,
         save=False,
