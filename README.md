@@ -82,7 +82,7 @@ Please read our [FAQ page](https://github.com/DeepMReye/DeepMReye/wiki/DeepMReye
 git clone https://github.com/DeepMReye/DeepMReye.git
 cd DeepMReye
 pip install .
-pip install streamlit
+pip install "streamlit<1.38.0"
 streamlit run streamlit/streamlit.py
 ```
 
