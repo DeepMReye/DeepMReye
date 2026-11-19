@@ -102,14 +102,14 @@ DeepMReye requires Python 3.11 or later. The following python dependencies are a
 ```
 tensorflow (2.16.1)
 keras (3.0.0)
-antspyx (0.4.2)
+antspyx (0.6.1)
 numpy (1.23.5)
 pandas (1.5.0)
 scipy (1.9.2)
 scikit-learn (1.1.3)
 plotly (5.0.0)
 ```
-The tests are run on Linux with Python 3.11 and 3.12, both with the minimum and the latest versions of the dependencies, and the example notebook is run on Linux and macOS. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda or venv).
+The tests are run on Linux with Python 3.11, 3.12 and 3.13, both with the minimum and the latest versions of the dependencies, and the example notebook is run on Linux and macOS. It is recommended to install the framework and dependencies in a virtual environment (e.g. conda or venv).
 
 ## BIDS app
 If you would like to run a pretrained version of DeepMReye on datasets that follow the Brain Imaging Data Structure (BIDS) format, check out [bidsMReye](https://pypi.org/project/bidsmreye/): a wrapper for DeepMReye for BIDS datasets (incl. [fMRIprep](https://fmriprep.org/en/stable/) outputs) developed by [Remi Gau](https://remi-gau.github.io/).
