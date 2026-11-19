@@ -9,7 +9,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3"
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12"
 ]
 dependencies = [
     "plotly",
@@ -27,7 +29,7 @@ license = {file = "LICENSE"}
 maintainers = [{name = " Markus Frey", email = "markus.frey1@gmail.com"}]
 name = "deepmreye"
 readme = "README.md"
-requires-python = ">=3.9.0"
+requires-python = ">=3.11"
 
 [project.optional-dependencies]
 all = ["deepmreye[doc,test,style]"]

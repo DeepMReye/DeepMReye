@@ -8,7 +8,7 @@
 #
 #     https://github.com/ReproNim/neurodocker
 
-FROM python:3.9.12-slim-buster
+FROM python:3.11-slim-bookworm
 
 USER root
 
@@ -75,7 +75,7 @@ RUN echo '{ \
     \n  "instructions": [ \
     \n    [ \
     \n      "base", \
-    \n      "python:3.9.12-slim-buster" \
+    \n      "python:3.11-slim-bookworm" \
     \n    ], \
     \n    [ \
     \n      "install", \

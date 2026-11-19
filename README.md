@@ -28,7 +28,7 @@ pip install deepmreye
 
 To encapsulate DeepMReye in a virtual environment install with the following commands:
 ```
-conda create --name deepmreye python=3.9
+conda create --name deepmreye python=3.11
 conda activate deepmreye
 pip install deepmreye
 ```
