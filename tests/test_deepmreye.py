@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pytest
 
-from deepmreye import preprocess, train
+from deepmreye import architecture, preprocess, train
 from deepmreye.util import data_generator, model_opts, util
 
 
@@ -106,6 +106,22 @@ def test_model_training(path_to_testdata):
         percentile_cut=80,
     )
     assert isinstance(evaluation, dict)
+
+
+def test_pretrained_weights(path_to_testdata, path_to_pretrained_weights):
+    """Check that the pretrained weights (saved with keras 2) still give the same predictions.
+
+    The reference predictions were computed with the keras 2 version of the code (tf-keras).
+    """
+    reference = np.load(path_to_testdata / "pretrained_weights_reference.npz")
+    X = reference["X"]
+
+    _, model_inference = architecture.create_standard_model(X.shape[1:], model_opts.get_opts())
+    model_inference.load_weights(path_to_pretrained_weights)
+    pred_y, euc_pred = model_inference.predict(X, verbose=0)
+
+    np.testing.assert_allclose(pred_y, reference["pred_y"], rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(euc_pred, reference["euc_pred"], rtol=1e-4, atol=1e-4)
 
 
 def test_model_evaluation():

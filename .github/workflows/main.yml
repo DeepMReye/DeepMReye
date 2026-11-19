@@ -33,6 +33,11 @@ jobs:
             with:
                 python-version: ${{ matrix.python-version }}
                 enable-cache: true
+        -   name: Cache pretrained weights used by the tests
+            uses: actions/cache@v6
+            with:
+                path: tests/data/weights
+                key: pretrained-weights-mr87v
         -   name: Install dependencies (locked)
             if: matrix.resolution == 'locked'
             run: uv sync --locked --no-default-groups --group test
