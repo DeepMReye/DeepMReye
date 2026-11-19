@@ -308,12 +308,12 @@ class GroupNormalization(Layer):
 
         if dim < self.groups:
             raise ValueError(
-                f"Number of groups ({str(self.groups)}) cannot be " f"more than the number of channels ({str(dim)})."
+                f"Number of groups ({str(self.groups)}) cannot be more than the number of channels ({str(dim)})."
             )
 
         if dim % self.groups != 0:
             raise ValueError(
-                f"Number of groups ({str(self.groups)}) must be a " f"multiple of the number of channels ({str(dim)})."
+                f"Number of groups ({str(self.groups)}) must be a multiple of the number of channels ({str(dim)})."
             )
 
         self.input_spec = InputSpec(ndim=len(input_shape), axes={self.axis: dim})

@@ -273,7 +273,6 @@ class color:
 # ------------------------Command Line Options------------------------------------
 # --------------------------------------------------------------------------------
 class Arg:
-
     def __init__(self, *args, **kwargs):
         self.cli = args
         self.kwargs = kwargs

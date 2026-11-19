@@ -23,8 +23,9 @@ def train_model(
     return_untrained=False,
     verbose=0,
 ):
-    """Train the model given a cross validation, \
-       hold out or leave one out generator, given model options.
+    """Train the model.
+
+    Uses a cross validation, hold out or leave one out generator, given model options.
 
     Parameters
     ----------
@@ -131,8 +132,9 @@ def train_model(
 
 
 def evaluate_model(dataset, model, generators, save=False, model_path="./", model_description="", verbose=0, **args):
-    """Evaluate model performance given model and generators \
-       used for training the model.
+    """Evaluate model performance.
+
+       Uses the model and generators used for training the model.
 
        Evaluate only on test set.
 
